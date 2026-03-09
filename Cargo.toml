@@ -40,4 +40,3 @@ umadb-dcb = { git = "https://github.com/tqwewe/umadb", branch = "feat/serde", fe
 uuid = { version = "1.22", features = ["serde", "v4"] }
 wasmtime = "42.0"
 wasmtime-wasi = "42.0"
-

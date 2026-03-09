@@ -3,33 +3,26 @@ use serde::Deserialize;
 
 use events::OpenedAccount;
 
-#[unsafe(no_mangle)]
-pub extern "C" fn query(ptr: i32, len: i32) -> i64 {
-    rivo_core::runtime::query_command::<OpenAccount>(ptr, len)
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn execute(ptr: i32, len: i32) -> i64 {
-    rivo_core::runtime::execute_command::<OpenAccount>(ptr, len)
-}
+// Export this command as a WASM component
+export_command!(OpenAccount);
 
 /// Events this command reads
 #[derive(EventSet)]
-pub enum Query {
+enum Query {
     OpenedAccount(OpenedAccount),
 }
 
 /// Command payload with domain ID bindings
 #[derive(CommandInput, Deserialize)]
-pub struct OpenAccountInput {
+struct OpenAccountInput {
     #[domain_id]
-    pub account_id: String,
-    pub initial_balance: f64,
+    account_id: String,
+    initial_balance: f64,
 }
 
 /// Handler State
 #[derive(Default)]
-pub struct OpenAccount {
+struct OpenAccount {
     is_open: bool,
 }
 

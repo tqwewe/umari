@@ -76,7 +76,7 @@
 //! }
 //! ```
 
-pub use rivo_macros::{CommandInput, Event, EventSet};
+pub use rivo_macros::{CommandInput, Event, EventSet, export_command};
 
 pub mod command;
 pub mod domain_id;
@@ -94,7 +94,7 @@ pub mod prelude {
     pub use crate::emit::*;
     pub use crate::error::*;
     pub use crate::event::*;
-    pub use rivo_macros::{CommandInput, Event, EventSet};
+    pub use rivo_macros::{CommandInput, Event, EventSet, export_command};
 }
 
 #[doc(hidden)]

@@ -10,7 +10,7 @@ use kameo_actors::{
     pubsub::{PubSub, Subscribe},
 };
 use thiserror::Error;
-use wasmtime::{Engine, Linker};
+use wasmtime::{Engine, component::Linker};
 use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxView, WasiView};
 
 use crate::{
@@ -76,7 +76,7 @@ impl Actor for RuntimeSupervisor {
 
         let engine = Engine::default();
         let mut linker = Linker::new(&engine);
-        wasmtime_wasi::p1::add_to_linker_sync(&mut linker, |s| s)?;
+        wasmtime_wasi::p2::add_to_linker_sync(&mut linker)?;
         // let mut linker: Linker<ComponentRunStates> = Linker::new(&engine);
         // wasmtime_wasi::p2::add_to_linker_sync(&mut linker)?;
 

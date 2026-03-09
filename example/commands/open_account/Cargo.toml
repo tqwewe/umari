@@ -9,3 +9,5 @@ crate-type = ["cdylib"]
 events.workspace = true
 rivo-core.workspace = true
 serde.workspace = true
+serde_json.workspace = true
+wit-bindgen.workspace = true

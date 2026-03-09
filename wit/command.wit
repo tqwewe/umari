@@ -2,44 +2,26 @@ package rivo:command@0.1.0;
 
 /// Core types for the command system
 interface types {
-    /// Arbitrary JSON value for flexible input/output
-    /// Represented as a JSON string for simplicity across the boundary
-    type json-value = string;
+    /// JSON encoded as UTF-8 string
+    /// The host passes JSON through without parsing, guest deserializes as needed
+    type json = string;
 
-    /// Timestamp in RFC3339 format
-    type timestamp = string;
+    /// Unix timestamp in milliseconds since epoch (1970-01-01T00:00:00Z)
+    type timestamp = s64;
 
     /// Event type identifier (e.g., "user.created", "order.placed")
     type event-type = string;
 
-    /// Domain ID value used in queries
-    record domain-id-value {
-        /// The domain entity type (e.g., "user_id", "order_id")
-        field: string,
-        /// The actual value as JSON
-        value: json-value,
-    }
-
-    /// Query item for DCB event store queries
-    record query-item {
-        /// Event type to query for
-        event-type: event-type,
-        /// Domain ID bindings for this query
-        domain-ids: list<domain-id-value>,
-    }
-
-    /// DCB Query structure for querying the event store
-    record dcb-query {
-        /// List of query items (event types + domain IDs)
-        items: list<query-item>,
-    }
+    /// DCB Query as JSON string
+    /// This is the serialized form of umadb_dcb::DCBQuery
+    type dcb-query = json;
 
     /// Event data as stored/retrieved from the event store
     record event-data {
         /// Event type identifier
         event-type: event-type,
         /// Event payload as JSON
-        data: json-value,
+        data: json,
         /// When the event occurred
         timestamp: timestamp,
     }
@@ -47,9 +29,17 @@ interface types {
     /// Input for command execution (after query has fetched events)
     record execute-input {
         /// Original command input
-        input: json-value,
+        input: json,
         /// Events fetched from the event store
         events: list<event-data>,
+    }
+
+    /// Domain ID value - optional identifier for event routing/querying
+    variant domain-id-value {
+        /// Present domain ID value
+        value(string),
+        /// Absent optional domain ID
+        none,
     }
 
     /// Emitted event from command execution
@@ -57,7 +47,9 @@ interface types {
         /// Event type identifier
         event-type: event-type,
         /// Event payload as JSON
-        data: json-value,
+        data: json,
+        /// Domain IDs for event routing (field name -> value)
+        domain-ids: list<tuple<string, domain-id-value>>,
     }
 
     /// Output from command execution
@@ -87,15 +79,11 @@ interface types {
 
 /// The command world - what a command module must implement
 world command {
-    import types;
-
-    /// Validate command input before querying
-    /// Returns ok(unit) if valid, or error with validation details
-    export validate: func(input: json-value) -> result<_, command-error>;
+    use types.{json, dcb-query, command-error, execute-input, execute-output};
 
     /// Build a query from command input to fetch relevant events
     /// This determines what events need to be loaded from the event store
-    export query: func(input: json-value) -> result<dcb-query, command-error>;
+    export query: func(input: json) -> result<dcb-query, command-error>;
 
     /// Execute the command with input and fetched events
     /// Returns events to be emitted/persisted

@@ -74,26 +74,26 @@ async fn main() {
         .expect("failed to lookup command actor")
         .expect("command actor should be registered");
 
-    store_ref
-        .ask(SaveModule {
-            module_type: ModuleType::Command,
-            name: "open_account".into(),
-            version: "0.0.3".parse().unwrap(),
-            wasm_bytes: Arc::new(*include_bytes!(
-                "../../../example/target/wasm32-wasip1/release/open_account.wasm"
-            )),
-        })
-        .await
-        .unwrap();
+    // store_ref
+    //     .ask(SaveModule {
+    //         module_type: ModuleType::Command,
+    //         name: "open_account".into(),
+    //         version: "0.0.4".parse().unwrap(),
+    //         wasm_bytes: Arc::new(*include_bytes!(
+    //             "../../../example/target/wasm32-wasip2/release/open_account.wasm"
+    //         )),
+    //     })
+    //     .await
+    //     .unwrap();
 
-    store_ref
-        .ask(ActivateModule {
-            module_type: ModuleType::Command,
-            name: "open_account".into(),
-            version: "0.0.3".parse().unwrap(),
-        })
-        .await
-        .unwrap();
+    // store_ref
+    //     .ask(ActivateModule {
+    //         module_type: ModuleType::Command,
+    //         name: "open_account".into(),
+    //         version: "0.0.4".parse().unwrap(),
+    //     })
+    //     .await
+    //     .unwrap();
 
     // Start API server
     let api_handle = tokio::spawn({
