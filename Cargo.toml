@@ -1,0 +1,43 @@
+[workspace]
+resolver = "3"
+members = [
+  "crates/api",
+  "crates/cli",
+  "crates/core",
+  "crates/macros",
+  "crates/runtime",
+]
+
+[workspace.dependencies]
+rivo-api = { path = "crates/api" }
+rivo-core = { path = "crates/core" }
+rivo-macros = { path = "crates/macros" }
+rivo-runtime = { path = "crates/runtime" }
+
+axum = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4.5", features = ["derive"] }
+futures-util = "0.3"
+hex = "0.4"
+kameo = { path = "/home/ari/dev/tqwewe/kameo" } # { git = "https://github.com/tqwewe/kameo", branch = "main" }
+kameo_actors = { path = "/home/ari/dev/tqwewe/kameo/actors" } # { git = "https://github.com/tqwewe/kameo", branch = "main", package = "kameo_actors" }
+libc = "0.2"
+proc-macro2 = "1.0"
+quote = "1.0"
+rusqlite = "0.38"
+semver = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+strum = { version = "0.28", features = ["derive"] }
+syn = "2.0"
+thiserror = "2.0"
+tokio = { version = "1.50", features = ["macros", "rt-multi-thread"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+umadb-client = { git = "https://github.com/tqwewe/umadb", branch = "feat/serde" }
+umadb-dcb = { git = "https://github.com/tqwewe/umadb", branch = "feat/serde", features = ["serde"] }
+uuid = { version = "1.22", features = ["serde", "v4"] }
+wasmtime = "42.0"
+wasmtime-wasi = "42.0"
+

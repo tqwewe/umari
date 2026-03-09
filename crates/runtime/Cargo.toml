@@ -1,0 +1,27 @@
+[package]
+name = "rivo-runtime"
+edition = "2024"
+
+[dependencies]
+rivo-core.workspace = true
+
+chrono.workspace = true
+futures-util.workspace = true
+hex.workspace = true
+kameo.workspace = true
+kameo_actors.workspace = true
+rusqlite.workspace = true
+semver.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+strum.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+umadb-client.workspace = true
+umadb-dcb.workspace = true
+uuid.workspace = true
+wasmtime.workspace = true
+wasmtime-wasi.workspace = true

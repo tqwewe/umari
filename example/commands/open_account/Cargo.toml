@@ -1,0 +1,11 @@
+[package]
+name = "open_account"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+events.workspace = true
+rivo-core.workspace = true
+serde.workspace = true

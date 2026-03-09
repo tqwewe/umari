@@ -1,0 +1,7 @@
+[package]
+name = "events"
+edition = "2024"
+
+[dependencies]
+rivo-core.workspace = true
+serde.workspace = true

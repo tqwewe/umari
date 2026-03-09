@@ -1,0 +1,103 @@
+package rivo:command@0.1.0;
+
+/// Core types for the command system
+interface types {
+    /// Arbitrary JSON value for flexible input/output
+    /// Represented as a JSON string for simplicity across the boundary
+    type json-value = string;
+
+    /// Timestamp in RFC3339 format
+    type timestamp = string;
+
+    /// Event type identifier (e.g., "user.created", "order.placed")
+    type event-type = string;
+
+    /// Domain ID value used in queries
+    record domain-id-value {
+        /// The domain entity type (e.g., "user_id", "order_id")
+        field: string,
+        /// The actual value as JSON
+        value: json-value,
+    }
+
+    /// Query item for DCB event store queries
+    record query-item {
+        /// Event type to query for
+        event-type: event-type,
+        /// Domain ID bindings for this query
+        domain-ids: list<domain-id-value>,
+    }
+
+    /// DCB Query structure for querying the event store
+    record dcb-query {
+        /// List of query items (event types + domain IDs)
+        items: list<query-item>,
+    }
+
+    /// Event data as stored/retrieved from the event store
+    record event-data {
+        /// Event type identifier
+        event-type: event-type,
+        /// Event payload as JSON
+        data: json-value,
+        /// When the event occurred
+        timestamp: timestamp,
+    }
+
+    /// Input for command execution (after query has fetched events)
+    record execute-input {
+        /// Original command input
+        input: json-value,
+        /// Events fetched from the event store
+        events: list<event-data>,
+    }
+
+    /// Emitted event from command execution
+    record emitted-event {
+        /// Event type identifier
+        event-type: event-type,
+        /// Event payload as JSON
+        data: json-value,
+    }
+
+    /// Output from command execution
+    record execute-output {
+        /// Events to be persisted
+        events: list<emitted-event>,
+    }
+
+    /// Error codes for command errors
+    enum error-code {
+        /// Input validation failed
+        validation-error,
+        /// Command handler logic error
+        command-error,
+        /// Failed to deserialize input
+        deserialization-error,
+    }
+
+    /// Structured error from command execution
+    record command-error {
+        /// Error code for categorization
+        code: error-code,
+        /// Human-readable error message
+        message: string,
+    }
+}
+
+/// The command world - what a command module must implement
+world command {
+    import types;
+
+    /// Validate command input before querying
+    /// Returns ok(unit) if valid, or error with validation details
+    export validate: func(input: json-value) -> result<_, command-error>;
+
+    /// Build a query from command input to fetch relevant events
+    /// This determines what events need to be loaded from the event store
+    export query: func(input: json-value) -> result<dcb-query, command-error>;
+
+    /// Execute the command with input and fetched events
+    /// Returns events to be emitted/persisted
+    export execute: func(input: execute-input) -> result<execute-output, command-error>;
+}

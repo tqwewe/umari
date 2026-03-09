@@ -1,0 +1,12 @@
+[workspace]
+resolver = "3"
+members = [
+  "events",
+  "commands/open_account",
+]
+
+[workspace.dependencies]
+events = { path = "events"}
+
+rivo-core = { path = "../crates/core" }
+serde = { version = "1.0", features = ["derive"] }

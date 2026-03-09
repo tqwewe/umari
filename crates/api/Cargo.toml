@@ -1,0 +1,23 @@
+[package]
+name = "rivo-api"
+edition = "2024"
+
+[dependencies]
+rivo-core.workspace = true
+rivo-runtime.workspace = true
+
+axum.workspace = true
+# hex.workspace = true
+kameo.workspace = true
+# kameo_actors.workspace = true
+# rusqlite.workspace = true
+# semver.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# sha2.workspace = true
+# strum.workspace = true
+# thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+# tracing-subscriber.workspace = true
+# wasmtime.workspace = true

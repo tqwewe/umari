@@ -1,0 +1,15 @@
+[package]
+name = "rivo-core"
+edition = "2024"
+
+[dependencies]
+rivo-macros.workspace = true
+
+chrono.workspace = true
+libc.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+umadb-dcb.workspace = true
+uuid.workspace = true

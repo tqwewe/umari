@@ -1,0 +1,17 @@
+[package]
+name = "rivo-cli"
+edition = "2024"
+
+[[bin]]
+name = "rivo"
+path = "src/main.rs"
+
+[dependencies]
+rivo-api.workspace = true
+rivo-runtime.workspace = true
+
+clap.workspace = true
+kameo.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
