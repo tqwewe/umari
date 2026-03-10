@@ -25,17 +25,17 @@ impl DeriveEvent {
         let domain_id_fields = domain_ids.values();
         let domain_ids_inserts = domain_ids.iter().map(|(ident, domain_id)| {
             quote! {
-                ids.insert(#domain_id, ::rivo_core::domain_id::DomainIdValue::from(::std::clone::Clone::clone(&self.#ident)));
+                ids.insert(#domain_id, ::umari_core::domain_id::DomainIdValue::from(::std::clone::Clone::clone(&self.#ident)));
             }
         });
 
         quote! {
             #[automatically_derived]
-            impl ::rivo_core::event::Event for #ident {
+            impl ::umari_core::event::Event for #ident {
                 const EVENT_TYPE: &'static str = #event_type;
                 const DOMAIN_ID_FIELDS: &'static [&'static str] = &[#( #domain_id_fields ,)*];
 
-                fn domain_ids(&self) -> ::rivo_core::domain_id::DomainIdValues {
+                fn domain_ids(&self) -> ::umari_core::domain_id::DomainIdValues {
                     let mut ids = ::std::collections::HashMap::new();
                     #( #domain_ids_inserts )*
                     ids
@@ -43,7 +43,7 @@ impl DeriveEvent {
             }
 
             #[automatically_derived]
-            impl ::rivo_core::event::AsEvent<#ident> for #ident {
+            impl ::umari_core::event::AsEvent<#ident> for #ident {
                 #[inline]
                 fn as_event(&self) -> ::std::option::Option<&#ident> {
                     Some(self)
@@ -51,7 +51,7 @@ impl DeriveEvent {
             }
 
             #[automatically_derived]
-            impl ::rivo_core::event::IntoEvent<#ident> for #ident {
+            impl ::umari_core::event::IntoEvent<#ident> for #ident {
                 #[inline]
                 fn into_event(self) -> ::std::option::Option<#ident> {
                     Some(self)

@@ -2,18 +2,18 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use chrono::Utc;
 use kameo::prelude::*;
-use rivo_core::{
-    emit::encode_with_envelope,
-    event::{EventEnvelope, StoredEventData},
-    prelude::{CommandContext, DomainIdValue},
-    runtime::{EventData, ExecuteOutput},
-};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::{error, info, warn};
 use umadb_client::AsyncUmaDBClient;
 use umadb_dcb::{DCBAppendCondition, DCBEvent, DCBEventStoreAsync, DCBQuery};
+use umari_core::{
+    emit::encode_with_envelope,
+    event::{EventEnvelope, StoredEventData},
+    prelude::{CommandContext, DomainIdValue},
+    runtime::{EventData, ExecuteOutput},
+};
 use uuid::Uuid;
 use wasmtime::{
     Engine, Store,
@@ -24,8 +24,10 @@ use wasmtime_wasi::{ResourceTable, WasiCtx};
 // Generate host-side bindings from WIT in a separate module
 mod wit {
     wasmtime::component::bindgen!({
-        world: "command",
-        path: "../../wit",
+        path: "../../wit/command",
+        exports: {
+            default: async,
+        },
     });
 }
 
@@ -135,12 +137,6 @@ pub struct EmittedEvent {
     pub tags: Vec<String>,
 }
 
-#[derive(Serialize)]
-pub struct CommandResult {
-    pub name: String,
-    pub version: Version,
-}
-
 #[messages]
 impl CommandActor {
     #[message(ctx)]
@@ -158,7 +154,7 @@ impl CommandActor {
         let event_store = self.event_store.clone();
 
         ctx.spawn(async move {
-            let query = module.query(&command.input)?;
+            let query = module.query(&command.input).await?;
 
             let (events, head) = event_store
                 .read(Some(query.clone()), Some(0), false, None, false)
@@ -181,7 +177,7 @@ impl CommandActor {
                 })
                 .collect();
 
-            let execute_output = module.execute(&command.input, events)?;
+            let execute_output = module.execute(&command.input, events).await?;
 
             // Convert emitted events to DCBEvents and persist to event store
             let timestamp = Utc::now();
@@ -264,6 +260,7 @@ impl CommandActor {
         let state = ComponentRunStates {
             wasi_ctx,
             resource_table: ResourceTable::new(),
+            conn: None,
         };
         let mut store = Store::new(&self.engine, state);
 
@@ -285,7 +282,7 @@ struct InstantiatedModule {
 }
 
 impl InstantiatedModule {
-    fn query(&mut self, input: &Value) -> Result<DCBQuery, CommandError> {
+    async fn query(&mut self, input: &Value) -> Result<DCBQuery, CommandError> {
         // Serialize command input to JSON
         let input_json = serde_json::to_string(input).map_err(|err| CommandError::Internal {
             message: format!("failed to serialize input: {err}"),
@@ -298,6 +295,7 @@ impl InstantiatedModule {
         let wit_result = self
             .command
             .call_query(&mut self.store, &input_json)
+            .await
             .map_err(|err| CommandError::Internal {
                 message: format!("query function call failed: {err}"),
             })?;
@@ -311,36 +309,36 @@ impl InstantiatedModule {
                 })
             }
             Err(err) => Err(match err.code {
-                wit::rivo::command::types::ErrorCode::ValidationError => {
+                wit::umari::command::types::ErrorCode::ValidationError => {
                     CommandError::ValidationError {
                         message: err.message,
                     }
                 }
-                wit::rivo::command::types::ErrorCode::DeserializationError => {
+                wit::umari::command::types::ErrorCode::DeserializationError => {
                     CommandError::QueryInputDeserialization {
                         message: err.message,
                     }
                 }
-                wit::rivo::command::types::ErrorCode::CommandError => CommandError::Internal {
+                wit::umari::command::types::ErrorCode::CommandError => CommandError::Internal {
                     message: err.message,
                 },
             }),
         }
     }
 
-    fn execute(
+    async fn execute(
         &mut self,
         input: &Value,
         events: Vec<EventData>,
     ) -> Result<ExecuteOutput, CommandError> {
         // Build ExecuteInput for WIT
-        let wit_input = wit::rivo::command::types::ExecuteInput {
+        let wit_input = wit::umari::command::types::ExecuteInput {
             input: serde_json::to_string(input).map_err(|err| CommandError::Internal {
                 message: format!("failed to serialize input: {err}"),
             })?,
             events: events
                 .into_iter()
-                .map(|e| wit::rivo::command::types::EventData {
+                .map(|e| wit::umari::command::types::EventData {
                     event_type: e.event_type,
                     data: e.data,
                     timestamp: e.timestamp,
@@ -352,6 +350,7 @@ impl InstantiatedModule {
         let result = self
             .command
             .call_execute(&mut self.store, &wit_input)
+            .await
             .map_err(|err| CommandError::Internal {
                 message: format!("execute function call failed: {err}"),
             })?;
@@ -370,10 +369,10 @@ impl InstantiatedModule {
                                 .into_iter()
                                 .map(|(k, v)| {
                                     let value = match v {
-                                        wit::rivo::command::types::DomainIdValue::Value(s) => {
+                                        wit::umari::command::types::DomainIdValue::Value(s) => {
                                             DomainIdValue::Value(s)
                                         }
-                                        wit::rivo::command::types::DomainIdValue::None => {
+                                        wit::umari::command::types::DomainIdValue::None => {
                                             DomainIdValue::None
                                         }
                                     };
@@ -381,7 +380,7 @@ impl InstantiatedModule {
                                 })
                                 .collect();
 
-                            rivo_core::runtime::SerializableEmittedEvent {
+                            umari_core::runtime::SerializableEmittedEvent {
                                 event_type: event.event_type,
                                 data: event.data,
                                 domain_ids,
@@ -391,17 +390,17 @@ impl InstantiatedModule {
                 })
             }
             Err(err) => Err(match err.code {
-                wit::rivo::command::types::ErrorCode::DeserializationError => {
+                wit::umari::command::types::ErrorCode::DeserializationError => {
                     CommandError::EventDeserialization {
                         message: err.message,
                     }
                 }
-                wit::rivo::command::types::ErrorCode::CommandError => {
+                wit::umari::command::types::ErrorCode::CommandError => {
                     CommandError::CommandHandler {
                         message: err.message,
                     }
                 }
-                wit::rivo::command::types::ErrorCode::ValidationError => {
+                wit::umari::command::types::ErrorCode::ValidationError => {
                     CommandError::ValidationError {
                         message: err.message,
                     }

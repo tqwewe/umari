@@ -30,14 +30,14 @@ impl DeriveEventSet {
                 Some(scope) => {
                     let scope = scope.iter().map(|s| LitStr::new(&s.to_string(), s.span()));
                     quote! {
-                        (<#ty as ::rivo_core::event::Event>::EVENT_TYPE, &[
+                        (<#ty as ::umari_core::event::Event>::EVENT_TYPE, &[
                             #( #scope , )*
                         ])
                     }
                 },
                 None => {
                     quote! {
-                        (<#ty as ::rivo_core::event::Event>::EVENT_TYPE, <#ty as ::rivo_core::event::Event>::DOMAIN_ID_FIELDS)
+                        (<#ty as ::umari_core::event::Event>::EVENT_TYPE, <#ty as ::umari_core::event::Event>::DOMAIN_ID_FIELDS)
                     }
                 },
             }
@@ -50,11 +50,11 @@ impl DeriveEventSet {
                  ..
              }| {
                 quote! {
-                    <#ty as ::rivo_core::event::Event>::EVENT_TYPE => {
+                    <#ty as ::umari_core::event::Event>::EVENT_TYPE => {
                         ::std::option::Option::Some(
-                            ::rivo_core::__private::serde_json::from_value::<#ty>(data)
+                            ::umari_core::__private::serde_json::from_value::<#ty>(data)
                                 .map(#ident::#variant_ident)
-                                .map_err(::rivo_core::error::SerializationError::from)
+                                .map_err(::umari_core::error::SerializationError::from)
                         )
                     }
                 }
@@ -69,7 +69,7 @@ impl DeriveEventSet {
              }| {
                 quote! {
                     #[automatically_derived]
-                    impl ::rivo_core::event::AsEvent<#ty> for #ident {
+                    impl ::umari_core::event::AsEvent<#ty> for #ident {
                         fn as_event(&self) -> ::std::option::Option<&#ty> {
                             match self {
                                 #ident::#variant_ident(ev) => ::std::option::Option::Some(ev),
@@ -79,7 +79,7 @@ impl DeriveEventSet {
                     }
 
                     #[automatically_derived]
-                    impl ::rivo_core::event::IntoEvent<#ty> for #ident {
+                    impl ::umari_core::event::IntoEvent<#ty> for #ident {
                         fn into_event(self) -> ::std::option::Option<#ty> {
                             match self {
                                 #ident::#variant_ident(ev) => ::std::option::Option::Some(ev),
@@ -121,7 +121,7 @@ impl DeriveEventSet {
                                 true
                             }
                     
-                            if !contains_str(<#ty as ::rivo_core::event::Event>::DOMAIN_ID_FIELDS, #field_str) {
+                            if !contains_str(<#ty as ::umari_core::event::Event>::DOMAIN_ID_FIELDS, #field_str) {
                                 panic!(concat!("Domain ID '", #field_str, "' not found in ", stringify!(#ty), "::DOMAIN_ID_FIELDS"));
                             }
                         };
@@ -136,11 +136,11 @@ impl DeriveEventSet {
 
         quote! {
             #[automatically_derived]
-            impl ::rivo_core::event::EventSet for #ident {
-                const EVENT_TYPES: &'static [&'static str] = &[ #( <#event_types as ::rivo_core::event::Event>::EVENT_TYPE, )* ];
+            impl ::umari_core::event::EventSet for #ident {
+                const EVENT_TYPES: &'static [&'static str] = &[ #( <#event_types as ::umari_core::event::Event>::EVENT_TYPE, )* ];
                 const EVENT_DOMAIN_IDS: &'static [(&'static str, &'static [&'static str])] = &[ #( #event_domain_ids , )* ];
 
-                fn from_event(event_type: &str, data: ::rivo_core::__private::serde_json::Value) -> ::std::option::Option<::std::result::Result<Self, ::rivo_core::error::SerializationError>> {
+                fn from_event(event_type: &str, data: ::umari_core::__private::serde_json::Value) -> ::std::option::Option<::std::result::Result<Self, ::umari_core::error::SerializationError>> {
                     match event_type {
                         #( #match_arms )*
                         _ => ::std::option::Option::None

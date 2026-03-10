@@ -1,7 +1,7 @@
 use std::{process, time::Duration};
 
 use kameo::actor::{ActorRef, Spawn};
-use rivo_runtime::supervisor::{RuntimeConfig, RuntimeSupervisor};
+use umari_runtime::supervisor::{RuntimeConfig, RuntimeSupervisor};
 use tokio::signal;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;

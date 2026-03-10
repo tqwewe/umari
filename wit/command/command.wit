@@ -1,4 +1,4 @@
-package rivo:command@0.1.0;
+package umari:command;
 
 /// Core types for the command system
 interface types {

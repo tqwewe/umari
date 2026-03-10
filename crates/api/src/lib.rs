@@ -3,7 +3,7 @@ mod routes;
 
 use axum::{Router, routing::post};
 use kameo::actor::ActorRef;
-use rivo_runtime::{command::actor::CommandActor, store::actor::StoreActor};
+use umari_runtime::{command::actor::CommandActor, store::actor::StoreActor};
 use tokio::{io, net::ToSocketAddrs};
 
 use crate::routes::execute::execute;

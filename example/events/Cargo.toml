@@ -3,5 +3,5 @@ name = "events"
 edition = "2024"
 
 [dependencies]
-rivo-core.workspace = true
+umari-core.workspace = true
 serde.workspace = true

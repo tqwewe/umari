@@ -1,4 +1,4 @@
-use rivo_core::prelude::*;
+use umari_core::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Event, Serialize, Deserialize)]

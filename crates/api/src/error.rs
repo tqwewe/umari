@@ -87,58 +87,58 @@ where
     }
 }
 
-impl From<rivo_runtime::command::CommandError> for Error {
-    fn from(err: rivo_runtime::command::CommandError) -> Self {
+impl From<umari_runtime::command::CommandError> for Error {
+    fn from(err: umari_runtime::command::CommandError) -> Self {
         match err {
-            rivo_runtime::command::CommandError::DuplicateActiveModule { .. } => {
+            umari_runtime::command::CommandError::DuplicateActiveModule { .. } => {
                 Error::new(ErrorCode::Duplicate).with_message(err.to_string())
             }
-            rivo_runtime::command::CommandError::ModuleNotFound { .. } => {
+            umari_runtime::command::CommandError::ModuleNotFound { .. } => {
                 Error::new(ErrorCode::NotFound).with_message(err.to_string())
             }
-            rivo_runtime::command::CommandError::QueryInputDeserialization { .. }
-            | rivo_runtime::command::CommandError::ExecuteInputDeserialization { .. }
-            | rivo_runtime::command::CommandError::ValidationError { .. } => {
+            umari_runtime::command::CommandError::QueryInputDeserialization { .. }
+            | umari_runtime::command::CommandError::ExecuteInputDeserialization { .. }
+            | umari_runtime::command::CommandError::ValidationError { .. } => {
                 Error::new(ErrorCode::InvalidInput).with_message(err.to_string())
             }
-            rivo_runtime::command::CommandError::EventDeserialization { .. } => {
+            umari_runtime::command::CommandError::EventDeserialization { .. } => {
                 Error::new(ErrorCode::Integrity).with_message(err.to_string())
             }
-            rivo_runtime::command::CommandError::CommandHandler { .. } => {
+            umari_runtime::command::CommandError::CommandHandler { .. } => {
                 Error::new(ErrorCode::InvalidInput).with_message(err.to_string())
             }
-            rivo_runtime::command::CommandError::QueryOutputDeserialization { .. }
-            | rivo_runtime::command::CommandError::ExecuteOutputDeserialization { .. }
-            | rivo_runtime::command::CommandError::Internal { .. } => {
+            umari_runtime::command::CommandError::QueryOutputDeserialization { .. }
+            | umari_runtime::command::CommandError::ExecuteOutputDeserialization { .. }
+            | umari_runtime::command::CommandError::Internal { .. } => {
                 Error::new(ErrorCode::Internal).with_message(err.to_string())
             }
-            rivo_runtime::command::CommandError::EventStore(_) => {
+            umari_runtime::command::CommandError::EventStore(_) => {
                 Error::new(ErrorCode::Database).with_message(err.to_string())
             }
-            rivo_runtime::command::CommandError::StoreSendError(send_err) => send_err.into(),
-            rivo_runtime::command::CommandError::Wasmtime(_) => {
+            umari_runtime::command::CommandError::StoreSendError(send_err) => send_err.into(),
+            umari_runtime::command::CommandError::Wasmtime(_) => {
                 Error::new(ErrorCode::Internal).with_message(err.to_string())
             }
         }
     }
 }
 
-impl From<rivo_runtime::store::StoreError> for Error {
-    fn from(err: rivo_runtime::store::StoreError) -> Self {
+impl From<umari_runtime::store::StoreError> for Error {
+    fn from(err: umari_runtime::store::StoreError) -> Self {
         match err {
-            rivo_runtime::store::StoreError::ModuleNotFound { .. } => {
+            umari_runtime::store::StoreError::ModuleNotFound { .. } => {
                 Error::new(ErrorCode::NotFound).with_message(err.to_string())
             }
-            rivo_runtime::store::StoreError::ModuleAlreadyExists => {
+            umari_runtime::store::StoreError::ModuleAlreadyExists => {
                 Error::new(ErrorCode::Duplicate).with_message(err.to_string())
             }
-            rivo_runtime::store::StoreError::Database(_) => {
+            umari_runtime::store::StoreError::Database(_) => {
                 Error::new(ErrorCode::Database).with_message(err.to_string())
             }
-            rivo_runtime::store::StoreError::Integrity(_) => {
+            umari_runtime::store::StoreError::Integrity(_) => {
                 Error::new(ErrorCode::Integrity).with_message(err.to_string())
             }
-            rivo_runtime::store::StoreError::ModulePubSubSendError(_) => {
+            umari_runtime::store::StoreError::ModulePubSubSendError(_) => {
                 Error::new(ErrorCode::Internal).with_message(err.to_string())
             }
         }

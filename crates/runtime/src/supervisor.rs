@@ -9,12 +9,14 @@ use kameo_actors::{
     DeliveryStrategy,
     pubsub::{PubSub, Subscribe},
 };
+use rusqlite::Connection;
 use thiserror::Error;
 use wasmtime::{Engine, component::Linker};
 use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxView, WasiView};
 
 use crate::{
     command::actor::{CommandActor, CommandActorArgs},
+    projection::supervisor::{ProjectionSupervisor, ProjectionSupervisorArgs},
     store::actor::{StoreActor, StoreActorArgs},
 };
 
@@ -76,13 +78,30 @@ impl Actor for RuntimeSupervisor {
 
         let engine = Engine::default();
         let mut linker = Linker::new(&engine);
-        wasmtime_wasi::p2::add_to_linker_sync(&mut linker)?;
-        // let mut linker: Linker<ComponentRunStates> = Linker::new(&engine);
-        // wasmtime_wasi::p2::add_to_linker_sync(&mut linker)?;
+        wasmtime_wasi::p2::add_to_linker_async(&mut linker)?;
 
         let command_ref = CommandActor::supervise(
             &supervisor_ref,
             CommandActorArgs {
+                engine: engine.clone(),
+                linker: linker.clone(),
+                event_store: event_store.clone(),
+                store_ref: store_ref.clone(),
+            },
+        )
+        .restart_policy(RestartPolicy::Permanent)
+        .restart_limit(5, Duration::from_secs(10))
+        .spawn()
+        .await;
+        command_ref.register("command")?;
+        module_pubsub
+            .ask(Subscribe(command_ref))
+            .await
+            .map_err(|_| RuntimeError::ModulePubSubSendError)?;
+
+        let projection_ref = ProjectionSupervisor::supervise(
+            &supervisor_ref,
+            ProjectionSupervisorArgs {
                 engine,
                 linker,
                 event_store,
@@ -93,9 +112,9 @@ impl Actor for RuntimeSupervisor {
         .restart_limit(5, Duration::from_secs(10))
         .spawn()
         .await;
-        command_ref.register("command")?;
+        projection_ref.register("projection")?;
         module_pubsub
-            .ask(Subscribe(command_ref))
+            .ask(Subscribe(projection_ref))
             .await
             .map_err(|_| RuntimeError::ModulePubSubSendError)?;
 
@@ -109,6 +128,7 @@ pub struct ComponentRunStates {
     // impl of WasiView is required by [`wasmtime_wasi::p2::add_to_linker_sync`]
     pub wasi_ctx: WasiCtx,
     pub resource_table: ResourceTable,
+    pub conn: Option<Connection>,
     // You can add other custom host states if needed
 }
 

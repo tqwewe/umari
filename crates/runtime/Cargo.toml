@@ -1,9 +1,9 @@
 [package]
-name = "rivo-runtime"
+name = "umari-runtime"
 edition = "2024"
 
 [dependencies]
-rivo-core.workspace = true
+umari-core.workspace = true
 
 chrono.workspace = true
 futures-util.workspace = true

@@ -1,14 +1,14 @@
 [package]
-name = "rivo-cli"
+name = "umari-cli"
 edition = "2024"
 
 [[bin]]
-name = "rivo"
+name = "umari"
 path = "src/main.rs"
 
 [dependencies]
-rivo-api.workspace = true
-rivo-runtime.workspace = true
+umari-api.workspace = true
+umari-runtime.workspace = true
 
 clap.workspace = true
 kameo.workspace = true

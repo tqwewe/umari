@@ -92,7 +92,7 @@ checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 name = "events"
 version = "0.0.0"
 dependencies = [
- "rivo-core",
+ "umari-core",
  "serde",
 ]
 
@@ -289,9 +289,7 @@ name = "open_account"
 version = "0.0.0"
 dependencies = [
  "events",
- "rivo-core",
- "serde",
- "serde_json",
+ "umari-core",
  "wit-bindgen 0.53.1",
 ]
 
@@ -336,12 +334,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
-name = "rivo-core"
+name = "umari-core"
 version = "0.0.0"
 dependencies = [
  "chrono",
  "libc",
- "rivo-macros",
+ "umari-macros",
  "serde",
  "serde_json",
  "thiserror",
@@ -351,7 +349,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rivo-macros"
+name = "umari-macros"
 version = "0.1.0"
 dependencies = [
  "proc-macro2",

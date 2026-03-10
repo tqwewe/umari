@@ -76,7 +76,7 @@
 //! }
 //! ```
 
-pub use rivo_macros::{CommandInput, Event, EventSet, export_command};
+pub use umari_macros::{CommandInput, Event, EventSet, export_command};
 
 pub mod command;
 pub mod domain_id;
@@ -85,6 +85,7 @@ pub mod error;
 pub mod event;
 #[macro_use]
 mod macros;
+pub mod projection;
 pub mod runtime;
 
 pub mod prelude {
@@ -94,10 +95,12 @@ pub mod prelude {
     pub use crate::emit::*;
     pub use crate::error::*;
     pub use crate::event::*;
-    pub use rivo_macros::{CommandInput, Event, EventSet, export_command};
+    pub use crate::projection::*;
+    pub use umari_macros::{CommandInput, Event, EventSet, export_command};
 }
 
 #[doc(hidden)]
 pub mod __private {
     pub use serde_json;
+    pub use umadb_dcb;
 }

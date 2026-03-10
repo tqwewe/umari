@@ -37,9 +37,9 @@ pub fn event_set(input: TokenStream) -> TokenStream {
 /// # Example
 ///
 /// ```rust,ignore
-/// use rivo_core::prelude::*;
+/// use umari_core::prelude::*;
 ///
-/// rivo_core::export_command!(OpenAccount);
+/// umari_core::export_command!(OpenAccount);
 ///
 /// // Your clean command implementation
 /// #[derive(Default)]

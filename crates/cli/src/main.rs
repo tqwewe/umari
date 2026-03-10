@@ -2,8 +2,11 @@ use std::{process, sync::Arc, time::Duration};
 
 use clap::Parser;
 use kameo::{actor::ActorRef, prelude::Spawn};
-use rivo_api::{AppState, start_server};
-use rivo_runtime::{
+use tokio::signal;
+use tracing::{error, info};
+use tracing_subscriber::{EnvFilter, fmt::format::FmtSpan};
+use umari_api::{AppState, start_server};
+use umari_runtime::{
     command::actor::CommandActor,
     store::{
         ModuleType,
@@ -11,12 +14,9 @@ use rivo_runtime::{
     },
     supervisor::{RuntimeConfig, RuntimeSupervisor},
 };
-use tokio::signal;
-use tracing::{error, info};
-use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
-#[command(name = "rivo")]
+#[command(name = "umari")]
 #[command(about = "Rivo runtime and API server", long_about = None)]
 struct Cli {
     /// Path to the runtime database file
@@ -35,6 +35,8 @@ struct Cli {
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
+        .without_time()
+        .with_target(false)
         .with_env_filter(
             EnvFilter::builder()
                 .with_default_directive("info".parse().unwrap())
@@ -76,11 +78,11 @@ async fn main() {
 
     // store_ref
     //     .ask(SaveModule {
-    //         module_type: ModuleType::Command,
-    //         name: "open_account".into(),
+    //         module_type: ModuleType::Projection,
+    //         name: "accounts".into(),
     //         version: "0.0.4".parse().unwrap(),
     //         wasm_bytes: Arc::new(*include_bytes!(
-    //             "../../../example/target/wasm32-wasip2/release/open_account.wasm"
+    //             "../../../target/wasm32-wasip2/release/accounts.wasm"
     //         )),
     //     })
     //     .await
@@ -88,8 +90,8 @@ async fn main() {
 
     // store_ref
     //     .ask(ActivateModule {
-    //         module_type: ModuleType::Command,
-    //         name: "open_account".into(),
+    //         module_type: ModuleType::Projection,
+    //         name: "accounts".into(),
     //         version: "0.0.4".parse().unwrap(),
     //     })
     //     .await

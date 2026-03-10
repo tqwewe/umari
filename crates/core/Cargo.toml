@@ -1,9 +1,9 @@
 [package]
-name = "rivo-core"
+name = "umari-core"
 edition = "2024"
 
 [dependencies]
-rivo-macros.workspace = true
+umari-macros.workspace = true
 
 chrono.workspace = true
 libc.workspace = true
@@ -13,3 +13,4 @@ thiserror.workspace = true
 tracing.workspace = true
 umadb-dcb.workspace = true
 uuid.workspace = true
+wit-bindgen.workspace = true

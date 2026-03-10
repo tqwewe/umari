@@ -1,10 +1,10 @@
 [package]
-name = "rivo-api"
+name = "umari-api"
 edition = "2024"
 
 [dependencies]
-rivo-core.workspace = true
-rivo-runtime.workspace = true
+umari-core.workspace = true
+umari-runtime.workspace = true
 
 axum.workspace = true
 # hex.workspace = true

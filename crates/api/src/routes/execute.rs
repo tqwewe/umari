@@ -2,7 +2,7 @@ use axum::{
     Json,
     extract::{Path, State},
 };
-use rivo_runtime::command::actor::{CommandPayload, EmittedEvent, Execute};
+use umari_runtime::command::actor::{CommandPayload, EmittedEvent, Execute};
 use serde::Serialize;
 
 use crate::{AppState, error::Error};

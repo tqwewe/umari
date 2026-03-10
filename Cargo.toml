@@ -6,13 +6,20 @@ members = [
   "crates/core",
   "crates/macros",
   "crates/runtime",
+  "example/events",
+  "example/commands/open_account",
+  "example/projections/accounts",
 ]
 
 [workspace.dependencies]
-rivo-api = { path = "crates/api" }
-rivo-core = { path = "crates/core" }
-rivo-macros = { path = "crates/macros" }
-rivo-runtime = { path = "crates/runtime" }
+umari-api = { path = "crates/api" }
+umari-core = { path = "crates/core" }
+umari-macros = { path = "crates/macros" }
+umari-runtime = { path = "crates/runtime" }
+
+# Example
+events = { path = "example/events" }
+wit-bindgen = "0.53"
 
 axum = "0.8"
 chrono = { version = "0.4", features = ["serde"] }

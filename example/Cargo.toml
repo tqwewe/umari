@@ -8,7 +8,7 @@ members = [
 [workspace.dependencies]
 events = { path = "events"}
 
-rivo-core = { path = "../crates/core" }
+umari-core = { path = "../crates/core" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 wit-bindgen = "0.53"
