@@ -1,5 +1,5 @@
 [package]
-name = "umari-cli"
+name = "umari-server"
 edition = "2024"
 
 [[bin]]

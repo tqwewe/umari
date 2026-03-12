@@ -3,21 +3,21 @@ name = "umari-api"
 edition = "2024"
 
 [dependencies]
-umari-core.workspace = true
-umari-runtime.workspace = true
+umari-core = { workspace = true, features = ["openapi"] }
+umari-runtime = { workspace = true, features = ["openapi"] }
 
 axum.workspace = true
-# hex.workspace = true
+hex.workspace = true
 kameo.workspace = true
-# kameo_actors.workspace = true
-# rusqlite.workspace = true
-# semver.workspace = true
+semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-# sha2.workspace = true
+sha2.workspace = true
 # strum.workspace = true
 # thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+utoipa.workspace = true
+utoipa-swagger-ui.workspace = true
 # tracing-subscriber.workspace = true
 # wasmtime.workspace = true

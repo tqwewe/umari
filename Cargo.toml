@@ -2,10 +2,10 @@
 resolver = "3"
 members = [
   "crates/api",
-  "crates/cli",
   "crates/core",
   "crates/macros",
   "crates/runtime",
+  "crates/server",
   "example/events",
   # "example/commands/open_account",
   # "example/projections/accounts",
@@ -21,7 +21,7 @@ umari-runtime = { path = "crates/runtime" }
 events = { path = "example/events" }
 wit-bindgen = "0.53"
 
-axum = "0.8"
+axum = { version = "0.8", features = ["multipart"] }
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.5", features = ["derive"] }
 futures-util = "0.3"
@@ -46,6 +46,8 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 umadb-client = { git = "https://github.com/tqwewe/umadb", branch = "feat/serde" }
 umadb-dcb = { git = "https://github.com/tqwewe/umadb", branch = "feat/serde", features = ["serde"] }
+utoipa = { version = "5.3", features = ["axum_extras", "uuid"] }
+utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
 uuid = { version = "1.22", features = ["serde", "v4"] }
 wasmtime = "42.0"
 wasmtime-wasi = "42.0"

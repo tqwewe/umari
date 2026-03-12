@@ -3,6 +3,7 @@ pub mod sqlite;
 
 use kameo::error::SendError;
 use semver::Version;
+use serde::{Deserialize, Serialize};
 use strum::Display;
 use thiserror::Error;
 
@@ -16,7 +17,8 @@ pub struct Module {
     pub wasm_bytes: Vec<u8>,
 }
 
-#[derive(Clone, Copy, Debug, Display, Hash, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Display, Hash, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum ModuleType {
     Command,
     Projection,

@@ -136,10 +136,14 @@ pub trait Command: Default + Send {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CommandContext {
-    pub command_id: Uuid,           // This execution's ID
-    pub correlation_id: Uuid,       // Original request ID (flows through everything)
-    pub triggered_by: Option<Uuid>, // Event ID that triggered this command (for sagas)
+    /// This execution's unique ID
+    pub command_id: Uuid,
+    /// Original request ID (flows through everything)
+    pub correlation_id: Uuid,
+    /// Event ID that triggered this command (for sagas)
+    pub triggered_by: Option<Uuid>,
 }
 
 impl CommandContext {

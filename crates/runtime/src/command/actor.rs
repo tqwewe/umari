@@ -112,21 +112,30 @@ impl Actor for CommandActor {
 }
 
 #[derive(Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CommandPayload {
+    /// Command input as JSON
     input: Value,
+    /// Optional command context for correlation and causation tracking
     #[serde(default)]
     context: Option<CommandContext>,
 }
 
 #[derive(Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ExecuteResult {
+    /// Event store position after command execution
     pub position: Option<u64>,
+    /// Events emitted by the command
     pub events: Vec<EmittedEvent>,
 }
 
 #[derive(Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct EmittedEvent {
+    /// Event type identifier
     pub event_type: String,
+    /// Domain ID tags for event categorization
     pub tags: Vec<String>,
 }
 

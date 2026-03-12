@@ -7,13 +7,14 @@ use axum::{
 };
 use kameo::error::SendError;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 pub struct Error {
     pub code: ErrorCode,
     pub message: Option<Cow<'static, str>>,
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ErrorCode {
     InvalidInput,
@@ -38,15 +39,16 @@ impl Error {
     }
 }
 
-#[derive(Serialize)]
-struct ErrorBody<'a> {
-    error: ErrorBodyInner<'a>,
+#[derive(Serialize, ToSchema)]
+pub struct ErrorResponse {
+    pub error: ErrorBody,
 }
 
-#[derive(Serialize)]
-struct ErrorBodyInner<'a> {
-    code: ErrorCode,
-    message: Option<&'a str>,
+#[derive(Serialize, ToSchema)]
+pub struct ErrorBody {
+    pub code: ErrorCode,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
 }
 
 impl IntoResponse for Error {
@@ -62,10 +64,10 @@ impl IntoResponse for Error {
 
         (
             status_code,
-            Json(ErrorBody {
-                error: ErrorBodyInner {
+            Json(ErrorResponse {
+                error: ErrorBody {
                     code: self.code,
-                    message: self.message.as_deref(),
+                    message: self.message.map(|m| m.to_string()),
                 },
             }),
         )

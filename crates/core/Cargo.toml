@@ -13,5 +13,9 @@ serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 umadb-dcb.workspace = true
+utoipa = { workspace = true, optional = true }
 uuid.workspace = true
 wit-bindgen.workspace = true
+
+[features]
+openapi = ["utoipa"]
