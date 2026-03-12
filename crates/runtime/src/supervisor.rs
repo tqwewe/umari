@@ -49,18 +49,23 @@ impl Actor for RuntimeSupervisor {
         config: Self::Args,
         supervisor_ref: ActorRef<Self>,
     ) -> Result<Self, Self::Error> {
+        let engine = Engine::default();
+
+        // Setup event store
         let event_store = Arc::new(
             umadb_client::UmaDBClient::new(config.event_store_url)
                 .connect_async()
                 .await?,
         );
 
+        // Setup pubsub
         let module_pubsub = PubSub::supervise_with(&supervisor_ref, || {
             PubSub::new(DeliveryStrategy::Guaranteed)
         })
         .spawn()
         .await;
 
+        // Setup module store
         let module_store_ref = ModuleStoreActor::supervise(
             &supervisor_ref,
             StoreActorArgs {
@@ -74,8 +79,7 @@ impl Actor for RuntimeSupervisor {
         .await;
         module_store_ref.register("module_store")?;
 
-        let engine = Engine::default();
-
+        // Setup command system
         let command_ref = CommandActor::supervise(
             &supervisor_ref,
             CommandActorArgs {
@@ -89,11 +93,13 @@ impl Actor for RuntimeSupervisor {
         .spawn()
         .await;
         command_ref.register("command")?;
+
         module_pubsub
             .ask(Subscribe(command_ref))
             .await
             .map_err(|_| RuntimeError::ModulePubSubSendError)?;
 
+        // Setup projection system
         let projection_ref = ProjectionSupervisor::supervise(
             &supervisor_ref,
             ProjectionSupervisorArgs {
@@ -107,6 +113,7 @@ impl Actor for RuntimeSupervisor {
         .spawn()
         .await;
         projection_ref.register("projection")?;
+
         module_pubsub
             .ask(Subscribe(projection_ref))
             .await

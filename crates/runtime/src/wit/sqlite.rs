@@ -230,6 +230,65 @@ impl umari::sqlite::statement::HostStmt for SqliteComponentState {
     }
 }
 
+impl From<SqliteErrorCode> for umari_core::error::SqliteErrorCode {
+    fn from(err: SqliteErrorCode) -> Self {
+        match err {
+            SqliteErrorCode::InternalMalfunction => {
+                umari_core::error::SqliteErrorCode::InternalMalfunction
+            }
+            SqliteErrorCode::PermissionDenied => {
+                umari_core::error::SqliteErrorCode::PermissionDenied
+            }
+            SqliteErrorCode::OperationAborted => {
+                umari_core::error::SqliteErrorCode::OperationAborted
+            }
+            SqliteErrorCode::DatabaseBusy => umari_core::error::SqliteErrorCode::DatabaseBusy,
+            SqliteErrorCode::DatabaseLocked => umari_core::error::SqliteErrorCode::DatabaseLocked,
+            SqliteErrorCode::OutOfMemory => umari_core::error::SqliteErrorCode::OutOfMemory,
+            SqliteErrorCode::ReadOnly => umari_core::error::SqliteErrorCode::ReadOnly,
+            SqliteErrorCode::OperationInterrupted => {
+                umari_core::error::SqliteErrorCode::OperationInterrupted
+            }
+            SqliteErrorCode::SystemIoFailure => umari_core::error::SqliteErrorCode::SystemIoFailure,
+            SqliteErrorCode::DatabaseCorrupt => umari_core::error::SqliteErrorCode::DatabaseCorrupt,
+            SqliteErrorCode::NotFound => umari_core::error::SqliteErrorCode::NotFound,
+            SqliteErrorCode::DiskFull => umari_core::error::SqliteErrorCode::DiskFull,
+            SqliteErrorCode::CannotOpen => umari_core::error::SqliteErrorCode::CannotOpen,
+            SqliteErrorCode::FileLockingProtocolFailed => {
+                umari_core::error::SqliteErrorCode::FileLockingProtocolFailed
+            }
+            SqliteErrorCode::SchemaChanged => umari_core::error::SqliteErrorCode::SchemaChanged,
+            SqliteErrorCode::TooBig => umari_core::error::SqliteErrorCode::TooBig,
+            SqliteErrorCode::ConstraintViolation => {
+                umari_core::error::SqliteErrorCode::ConstraintViolation
+            }
+            SqliteErrorCode::TypeMismatch => umari_core::error::SqliteErrorCode::TypeMismatch,
+            SqliteErrorCode::ApiMisuse => umari_core::error::SqliteErrorCode::ApiMisuse,
+            SqliteErrorCode::NoLargeFileSupport => {
+                umari_core::error::SqliteErrorCode::NoLargeFileSupport
+            }
+            SqliteErrorCode::AuthorizationForStatementDenied => {
+                umari_core::error::SqliteErrorCode::AuthorizationForStatementDenied
+            }
+            SqliteErrorCode::ParameterOutOfRange => {
+                umari_core::error::SqliteErrorCode::ParameterOutOfRange
+            }
+            SqliteErrorCode::NotADatabase => umari_core::error::SqliteErrorCode::NotADatabase,
+            SqliteErrorCode::Unknown => umari_core::error::SqliteErrorCode::Unknown,
+        }
+    }
+}
+
+impl From<SqliteError> for umari_core::error::SqliteError {
+    fn from(err: SqliteError) -> Self {
+        umari_core::error::SqliteError {
+            code: err.code.into(),
+            extended_code: err.extended_code,
+            message: err.message,
+        }
+    }
+}
+
 impl From<rusqlite::ErrorCode> for SqliteErrorCode {
     fn from(err: rusqlite::ErrorCode) -> Self {
         match err {

@@ -9,7 +9,10 @@ use umadb_client::AsyncUmaDBClient;
 use umadb_dcb::{
     DCBError, DCBEventStoreAsync, DCBQuery, DCBQueryItem, DCBReadResponseAsync, DCBSequencedEvent,
 };
-use umari_core::event::{StoredEvent, StoredEventData};
+use umari_core::{
+    error::DeserializeEventError,
+    event::{StoredEvent, StoredEventData},
+};
 use wasmtime::{
     Engine, Store,
     component::{Component, Linker, ResourceAny},
@@ -164,11 +167,14 @@ impl ProjectionActor {
     }
 
     async fn handle_event(&mut self, event: DCBSequencedEvent) -> Result<(), ProjectionError> {
-        let data: StoredEventData<Value> = serde_json::from_slice(&event.event.data)
-            .map_err(ProjectionError::EventDeserialization)?;
+        let data: StoredEventData<Value> =
+            serde_json::from_slice(&event.event.data).map_err(|err| DeserializeEventError {
+                code: umari_core::error::DeserializeEventErrorCode::InvalidData,
+                message: Some(err.to_string()),
+            })?;
 
         let event = StoredEvent {
-            id: event.event.uuid.ok_or(ProjectionError::MissingEventUuid)?,
+            id: event.event.uuid.ok_or(ProjectionError::MissingEventId)?,
             position: event.position,
             event_type: event.event.event_type,
             tags: event.event.tags,

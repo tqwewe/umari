@@ -7,8 +7,8 @@ members = [
   "crates/macros",
   "crates/runtime",
   "example/events",
-  "example/commands/open_account",
-  "example/projections/accounts",
+  # "example/commands/open_account",
+  # "example/projections/accounts",
 ]
 
 [workspace.dependencies]

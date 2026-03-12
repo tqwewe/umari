@@ -73,7 +73,41 @@ impl IntoResponse for Error {
     }
 }
 
+pub trait AsErrorCode {
+    fn error_code(&self) -> ErrorCode;
+}
+
 // ========== Impl from other error types
+
+/// Implements From<T> for Error (and &T), given T implements AsErrorCode
+macro_rules! impl_into_error {
+    // ([ $( $t:ty ),* $(,)? ]) => {};
+    ( $t:path $( : < $( $g:ident ),* > )? ) => {
+        impl$( < $($g),* > )? From<$t $( < $($g),* > )?> for Error {
+            fn from(err: $t $( < $($g),* > )?) -> Self {
+                Error::new(err.error_code()).with_message(err.to_string())
+            }
+        }
+
+        impl<'a $( , $($g),* )? >  From<&'a $t $( < $($g),* > )?> for Error {
+            fn from(err: &'a $t $( < $($g),* > )?) -> Self {
+                Error::new(err.error_code()).with_message(err.to_string())
+            }
+        }
+    };
+}
+
+impl<M, E> AsErrorCode for SendError<M, E>
+where
+    E: AsErrorCode,
+{
+    fn error_code(&self) -> ErrorCode {
+        match self {
+            SendError::HandlerError(err) => err.error_code(),
+            _ => ErrorCode::Internal,
+        }
+    }
+}
 
 impl<M, E> From<SendError<M, E>> for Error
 where
@@ -87,60 +121,46 @@ where
     }
 }
 
-impl From<umari_runtime::command::CommandError> for Error {
-    fn from(err: umari_runtime::command::CommandError) -> Self {
-        match err {
-            umari_runtime::command::CommandError::DuplicateActiveModule { .. } => {
-                Error::new(ErrorCode::Duplicate).with_message(err.to_string())
+impl AsErrorCode for umari_runtime::module_store::ModuleStoreError {
+    fn error_code(&self) -> ErrorCode {
+        match self {
+            umari_runtime::module_store::ModuleStoreError::ModuleNotFound { .. } => {
+                ErrorCode::NotFound
             }
-            umari_runtime::command::CommandError::ModuleNotFound { .. } => {
-                Error::new(ErrorCode::NotFound).with_message(err.to_string())
+            umari_runtime::module_store::ModuleStoreError::ModuleAlreadyExists => {
+                ErrorCode::Duplicate
             }
-            umari_runtime::command::CommandError::QueryInputDeserialization { .. }
-            | umari_runtime::command::CommandError::ExecuteInputDeserialization { .. }
-            | umari_runtime::command::CommandError::ValidationError { .. } => {
-                Error::new(ErrorCode::InvalidInput).with_message(err.to_string())
-            }
-            umari_runtime::command::CommandError::EventDeserialization { .. } => {
-                Error::new(ErrorCode::Integrity).with_message(err.to_string())
-            }
-            umari_runtime::command::CommandError::CommandHandler { .. } => {
-                Error::new(ErrorCode::InvalidInput).with_message(err.to_string())
-            }
-            umari_runtime::command::CommandError::QueryOutputDeserialization { .. }
-            | umari_runtime::command::CommandError::ExecuteOutputDeserialization { .. }
-            | umari_runtime::command::CommandError::Internal { .. } => {
-                Error::new(ErrorCode::Internal).with_message(err.to_string())
-            }
-            umari_runtime::command::CommandError::EventStore(_) => {
-                Error::new(ErrorCode::Database).with_message(err.to_string())
-            }
-            umari_runtime::command::CommandError::ModuleStore(send_err) => send_err.into(),
-            umari_runtime::command::CommandError::Wasmtime(_) => {
-                Error::new(ErrorCode::Internal).with_message(err.to_string())
+            umari_runtime::module_store::ModuleStoreError::Database(_) => ErrorCode::Database,
+            umari_runtime::module_store::ModuleStoreError::Integrity(_) => ErrorCode::Integrity,
+            umari_runtime::module_store::ModuleStoreError::ModulePubSubSendError(_) => {
+                ErrorCode::Internal
             }
         }
     }
 }
 
-impl From<umari_runtime::module_store::ModuleStoreError> for Error {
-    fn from(err: umari_runtime::module_store::ModuleStoreError) -> Self {
-        match err {
-            umari_runtime::module_store::ModuleStoreError::ModuleNotFound { .. } => {
-                Error::new(ErrorCode::NotFound).with_message(err.to_string())
+impl_into_error!(umari_runtime::module_store::ModuleStoreError);
+
+impl AsErrorCode for umari_runtime::command::CommandError {
+    fn error_code(&self) -> ErrorCode {
+        match self {
+            umari_runtime::command::CommandError::DuplicateActiveModule { .. } => {
+                ErrorCode::Duplicate
             }
-            umari_runtime::module_store::ModuleStoreError::ModuleAlreadyExists => {
-                Error::new(ErrorCode::Duplicate).with_message(err.to_string())
+            umari_runtime::command::CommandError::ModuleNotFound { .. } => ErrorCode::NotFound,
+            umari_runtime::command::CommandError::DeserializeInput { .. }
+            | umari_runtime::command::CommandError::SerializeInput { .. } => {
+                ErrorCode::InvalidInput
             }
-            umari_runtime::module_store::ModuleStoreError::Database(_) => {
-                Error::new(ErrorCode::Database).with_message(err.to_string())
-            }
-            umari_runtime::module_store::ModuleStoreError::Integrity(_) => {
-                Error::new(ErrorCode::Integrity).with_message(err.to_string())
-            }
-            umari_runtime::module_store::ModuleStoreError::ModulePubSubSendError(_) => {
-                Error::new(ErrorCode::Internal).with_message(err.to_string())
-            }
+            umari_runtime::command::CommandError::DeserializeEvent { .. } => ErrorCode::Integrity,
+            umari_runtime::command::CommandError::CommandHandler { .. } => ErrorCode::InvalidInput,
+            umari_runtime::command::CommandError::SerializeEvent { .. } => ErrorCode::Internal,
+            umari_runtime::command::CommandError::EventStore(_)
+            | umari_runtime::command::CommandError::MissingEventId => ErrorCode::Database,
+            umari_runtime::command::CommandError::ModuleStore(send_err) => send_err.error_code(),
+            umari_runtime::command::CommandError::Wasmtime(_) => ErrorCode::Internal,
         }
     }
 }
+
+impl_into_error!(umari_runtime::command::CommandError);

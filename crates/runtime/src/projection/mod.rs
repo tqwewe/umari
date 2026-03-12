@@ -13,17 +13,17 @@ pub enum ProjectionError {
     #[error("duplicate active projection module '{name}'")]
     DuplicateActiveModule { name: Arc<str> },
     #[error("failed to deserialize event: {0}")]
-    EventDeserialization(serde_json::Error),
-    #[error("missing event uuid")]
-    MissingEventUuid,
+    DeserializeEvent(#[from] umari_core::error::DeserializeEventError),
+    #[error("missing event id")]
+    MissingEventId,
     #[error("concurrent modification")]
     ConcurrentModification,
     #[error("projection error: {0}")]
-    Projection(#[from] wit::projection::Error),
+    Projection(String),
     #[error("event store error: {0}")]
     EventStore(#[from] umadb_dcb::DCBError),
     #[error("database error: {0}")]
-    Database(#[from] rusqlite::Error),
+    Database(#[from] umari_core::error::SqliteError),
     #[error("module store error: {0}")]
     ModuleStore(SendError<(), ModuleStoreError>),
     #[error("wasmtime error: {0}")]
@@ -33,5 +33,24 @@ pub enum ProjectionError {
 impl<M> From<SendError<M, ModuleStoreError>> for ProjectionError {
     fn from(err: SendError<M, ModuleStoreError>) -> Self {
         ProjectionError::ModuleStore(err.map_msg(|_| ()))
+    }
+}
+
+impl From<wit::projection::Error> for ProjectionError {
+    fn from(err: wit::projection::Error) -> Self {
+        match err {
+            wit::projection::Error::DeserializeEvent(err) => {
+                umari_core::error::DeserializeEventError::from(err).into()
+            }
+            wit::projection::Error::Sqlite(err) => umari_core::error::SqliteError::from(err).into(),
+            wit::projection::Error::Other(err) => ProjectionError::Projection(err),
+        }
+    }
+}
+
+impl From<rusqlite::Error> for ProjectionError {
+    fn from(err: rusqlite::Error) -> Self {
+        let wit_err = wit::sqlite::SqliteError::from(err);
+        ProjectionError::Database(wit_err.into())
     }
 }

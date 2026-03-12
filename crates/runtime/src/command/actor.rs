@@ -10,6 +10,7 @@ use umadb_client::AsyncUmaDBClient;
 use umadb_dcb::{DCBAppendCondition, DCBEvent, DCBEventStoreAsync, DCBQuery};
 use umari_core::{
     emit::encode_with_envelope,
+    error::{DeserializeEventError, DeserializeEventErrorCode},
     event::{EventEnvelope, StoredEventData},
     prelude::CommandContext,
 };
@@ -154,15 +155,27 @@ impl CommandActor {
                 .collect_with_head()
                 .await?;
 
-            let events: Vec<_> = events
+            let events = events
                 .into_iter()
-                .filter_map(|sequenced_event| {
-                    // Deserialize the stored event data
-                    let stored: StoredEventData<Value> =
-                        serde_json::from_slice(&sequenced_event.event.data).ok()?;
+                .map(|sequenced_event| {
+                    let id = sequenced_event
+                        .event
+                        .uuid
+                        .ok_or(CommandError::MissingEventId)?;
 
-                    Some(wit::common::StoredEvent {
-                        id: sequenced_event.event.uuid?.to_string(),
+                    let stored: StoredEventData<Value> =
+                        serde_json::from_slice(&sequenced_event.event.data).map_err(|err| {
+                            DeserializeEventError {
+                                code: DeserializeEventErrorCode::InvalidData,
+                                message: Some(err.to_string()),
+                            }
+                        })?;
+
+                    let data = serde_json::to_string(&stored.data)
+                        .map_err(|err| CommandError::SerializeEvent(err.to_string()))?;
+
+                    Ok(wit::common::StoredEvent {
+                        id: id.to_string(),
                         position: sequenced_event.position as i64,
                         event_type: sequenced_event.event.event_type,
                         tags: sequenced_event.event.tags,
@@ -172,10 +185,10 @@ impl CommandActor {
                         triggered_by: stored
                             .triggered_by
                             .map(|triggered_by| triggered_by.to_string()),
-                        data: serde_json::to_string(&stored.data).ok()?,
+                        data,
                     })
                 })
-                .collect();
+                .collect::<Result<Vec<_>, CommandError>>()?;
 
             let execute_output = module.execute(&command.input, events).await?;
 
@@ -208,9 +221,10 @@ impl CommandActor {
                     });
 
                     let data_value: Value = serde_json::from_str(&event.data).map_err(|err| {
-                        CommandError::Internal {
-                            message: format!("failed to deserialize event data: {err}"),
-                        }
+                        CommandError::DeserializeEvent(DeserializeEventError {
+                            code: DeserializeEventErrorCode::InvalidData,
+                            message: Some(err.to_string()),
+                        })
                     })?;
 
                     Ok(DCBEvent {
@@ -279,33 +293,14 @@ struct InstantiatedModule {
 
 impl InstantiatedModule {
     async fn query(&mut self, input: &Value) -> Result<DCBQuery, CommandError> {
-        // Serialize command input to JSON
-        let input_json = serde_json::to_string(input).map_err(|err| CommandError::Internal {
-            message: format!("failed to serialize input: {err}"),
-        })?;
-
-        // Call the component's query function
-        // Returns Result<Result<&str, CommandError>, wasmtime::Error>
-        // Outer Result: wasmtime runtime error (trap, etc.)
-        // Inner Result: WIT function result
-        let wit_result = self
+        let input_json = serde_json::to_string(input).map_err(CommandError::SerializeInput)?;
+        let query = self
             .command
             .call_query(&mut self.store, &input_json)
-            .await
-            .map_err(|err| CommandError::Internal {
-                message: format!("query function call failed: {err}"),
-            })?;
+            .await??
+            .into();
 
-        // Handle the WIT result
-        match wit_result {
-            Ok(query) => Ok(query.into()),
-            Err(err) => Err(match err {
-                wit::command::Error::Command(err) => CommandError::CommandHandler { message: err },
-                wit::command::Error::DeserializeEvent(err) => todo!(),
-                wit::command::Error::DeserializeInput(_) => todo!(),
-                wit::command::Error::SerializeEvent(_) => todo!(),
-            }),
-        }
+        Ok(query)
     }
 
     async fn execute(
@@ -313,23 +308,13 @@ impl InstantiatedModule {
         input: &Value,
         events: Vec<wit::common::StoredEvent>,
     ) -> Result<wit::command::ExecuteOutput, CommandError> {
-        let wit_input = serde_json::to_string(input).map_err(|err| CommandError::Internal {
-            message: format!("failed to serialize input: {err}"),
-        })?;
-
-        // Call the component's execute function
+        let wit_input = serde_json::to_string(input).map_err(CommandError::SerializeInput)?;
         let result = self
             .command
             .call_execute(&mut self.store, &wit_input, &events)
-            .await
-            .map_err(|err| CommandError::Internal {
-                message: format!("execute function call failed: {err}"),
-            })?;
+            .await??;
 
-        match result {
-            Ok(output) => Ok(output),
-            Err(err) => Err(todo!()),
-        }
+        Ok(result)
     }
 }
 

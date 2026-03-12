@@ -3,14 +3,6 @@
 version = 4
 
 [[package]]
-name = "accounts"
-version = "0.0.0"
-dependencies = [
- "events",
- "umari-core",
-]
-
-[[package]]
 name = "addr2line"
 version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1649,16 +1641,6 @@ name = "once_cell_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
-
-[[package]]
-name = "open_account"
-version = "0.0.0"
-dependencies = [
- "events",
- "serde",
- "umari-core",
- "wit-bindgen 0.53.1",
-]
 
 [[package]]
 name = "openssl-probe"
