@@ -115,7 +115,7 @@ pub trait Command: Default + Send {
     /// Domain IDs query.
     ///
     /// Defaults to filtering domain ids in the input.
-    fn query(&self, input: &Self::Input) -> DCBQuery {
+    fn query(input: &Self::Input) -> DCBQuery {
         let items = build_query_items::<Self::Query>(&input.domain_id_bindings());
         DCBQuery::with_items(items)
     }

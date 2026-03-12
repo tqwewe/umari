@@ -76,7 +76,7 @@
 //! }
 //! ```
 
-pub use umari_macros::{CommandInput, Event, EventSet, export_command};
+pub use umari_macros::{CommandInput, Event, EventSet};
 
 pub mod command;
 pub mod domain_id;
@@ -85,8 +85,10 @@ pub mod error;
 pub mod event;
 #[macro_use]
 mod macros;
+pub mod params;
 pub mod projection;
 pub mod runtime;
+pub mod sqlite;
 
 pub mod prelude {
     pub use crate::command::*;
@@ -96,7 +98,9 @@ pub mod prelude {
     pub use crate::error::*;
     pub use crate::event::*;
     pub use crate::projection::*;
-    pub use umari_macros::{CommandInput, Event, EventSet, export_command};
+    pub use crate::sqlite::*;
+    pub use crate::{export_command, export_projection};
+    pub use umari_macros::{CommandInput, Event, EventSet};
 }
 
 #[doc(hidden)]

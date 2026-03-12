@@ -1,13 +1,12 @@
 use std::{collections::HashMap, ops::ControlFlow, sync::Arc, time::Duration};
 
 use kameo::prelude::*;
-use rusqlite::params_from_iter;
 use semver::Version;
 use tracing::{error, info, warn};
 use umadb_client::AsyncUmaDBClient;
 use wasmtime::{
-    Engine, StoreContextMut,
-    component::{Component, Linker},
+    Engine,
+    component::{Component, HasSelf, Linker},
 };
 
 use super::{
@@ -17,27 +16,25 @@ use super::{
 };
 use crate::{
     events::ModuleEvent,
-    store::{
+    module_store::{
         ModuleType,
-        actor::{GetActiveModule, GetAllActiveModules, StoreActor},
+        actor::{GetActiveModule, GetAllActiveModules, ModuleStoreActor},
     },
-    supervisor::ComponentRunStates,
 };
 
 pub struct ProjectionSupervisor {
     engine: Engine,
-    linker: Linker<ComponentRunStates>,
+    linker: Linker<wit::SqliteComponentState>,
     event_store: Arc<AsyncUmaDBClient>,
-    store_ref: ActorRef<StoreActor>,
+    module_store_ref: ActorRef<ModuleStoreActor>,
     projections: HashMap<Arc<str>, VersionedProjection>,
 }
 
 #[derive(Clone)]
 pub struct ProjectionSupervisorArgs {
     pub engine: Engine,
-    pub linker: Linker<ComponentRunStates>,
     pub event_store: Arc<AsyncUmaDBClient>,
-    pub store_ref: ActorRef<StoreActor>,
+    pub module_store_ref: ActorRef<ModuleStoreActor>,
 }
 
 impl Actor for ProjectionSupervisor {
@@ -48,32 +45,22 @@ impl Actor for ProjectionSupervisor {
         "ProjectionSupervisor"
     }
 
-    async fn on_start(
-        mut args: Self::Args,
-        actor_ref: ActorRef<Self>,
-    ) -> Result<Self, Self::Error> {
-        args.linker.root().func_wrap(
-            "execute",
-            |caller: StoreContextMut<'_, ComponentRunStates>,
-             (sql, params): (String, Vec<wit::Value>)| {
-                let params = params
-                    .into_iter()
-                    .map(|value| value.into())
-                    .collect::<Vec<rusqlite::types::Value>>();
-                let res = caller
-                    .data()
-                    .conn
-                    .as_ref()
-                    .unwrap()
-                    .execute(&sql, params_from_iter(params.iter()))
-                    .map(|n| n as i64)
-                    .map_err(wit::SqliteError::from);
-                Ok((res,))
-            },
-        )?;
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
+        let mut linker = Linker::new(&args.engine);
+        wasmtime_wasi::p2::add_to_linker_async(&mut linker)?;
+        println!("adding common");
+        wit::common::Common::add_to_linker::<_, HasSelf<_>>(&mut linker, |s| s)?;
+        println!("adding sqlite");
+        wit::sqlite::Sqlite::add_to_linker::<_, HasSelf<_>>(&mut linker, |s| s)?;
+        // println!("adding projection");
+        // wit::projection::umari::projection::types::add_to_linker::<_, HasSelf<_>>(
+        //     &mut linker,
+        //     |s| s,
+        // )?;
+        // wit::projection::Projection::add_to_linker::<_, HasSelf<_>>(&mut linker, |s| s)?;
 
         let active_modules = args
-            .store_ref
+            .module_store_ref
             .ask(GetAllActiveModules {
                 module_type: Some(ModuleType::Projection),
             })
@@ -100,7 +87,7 @@ impl Actor for ProjectionSupervisor {
                 &actor_ref,
                 ProjectionActorArgs {
                     engine: args.engine.clone(),
-                    linker: args.linker.clone(),
+                    linker: linker.clone(),
                     event_store: args.event_store.clone(),
                     component,
                     name: name.clone(),
@@ -120,14 +107,14 @@ impl Actor for ProjectionSupervisor {
             if prev.is_some() {
                 return Err(ProjectionError::DuplicateActiveModule { name });
             }
-            info!("loaded projection module {name} v{}", module.version);
+            info!(%name, version = %module.version, "projection module loaded");
         }
 
         Ok(ProjectionSupervisor {
             engine: args.engine,
-            linker: args.linker,
+            linker,
             event_store: args.event_store,
-            store_ref: args.store_ref,
+            module_store_ref: args.module_store_ref,
             projections,
         })
     }
@@ -166,7 +153,7 @@ impl Message<ModuleEvent> for ProjectionSupervisor {
             } => {
                 if module_type == ModuleType::Projection {
                     let module = self
-                        .store_ref
+                        .module_store_ref
                         .ask(GetActiveModule {
                             module_type: ModuleType::Projection,
                             name: name.clone(),
@@ -195,7 +182,7 @@ impl Message<ModuleEvent> for ProjectionSupervisor {
                                     version: version.clone(),
                                 },
                             )
-                            .spawn()
+                            .spawn_in_thread()
                             .await;
 
                             self.projections.insert(
@@ -205,10 +192,10 @@ impl Message<ModuleEvent> for ProjectionSupervisor {
                                     projection_ref,
                                 },
                             );
-                            info!("loaded projection module {name} v{version}");
+                            info!(%name, %version, "projection module loaded");
                         }
                         None => {
-                            warn!("active module not found {name} v{version}");
+                            warn!(%name, %version, "active module not found");
                         }
                     }
                 }
@@ -217,7 +204,7 @@ impl Message<ModuleEvent> for ProjectionSupervisor {
                 if module_type == ModuleType::Projection
                     && let Some(module) = self.projections.remove(&name)
                 {
-                    info!("unloaded projection module {name} v{}", module.version);
+                    info!(%name, version = %module.version, "projection module unloaded");
                 }
             }
         }

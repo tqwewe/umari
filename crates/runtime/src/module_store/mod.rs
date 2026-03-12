@@ -24,7 +24,7 @@ pub enum ModuleType {
 }
 
 #[derive(Debug, Error)]
-pub enum StoreError {
+pub enum ModuleStoreError {
     #[error("module not found: {module_type}/{name}/{version}")]
     ModuleNotFound {
         module_type: ModuleType,
@@ -48,17 +48,17 @@ pub enum StoreError {
 /// Storage interface for managing WebAssembly modules.
 ///
 /// Handles persistence, versioning, and activation of modules.
-pub trait Store {
+pub trait ModuleStore {
     /// Saves a module to the store.
     ///
-    /// Returns `StoreError::ModuleAlreadyExists` if the module already exists.
+    /// Returns `ModuleStoreError::ModuleAlreadyExists` if the module already exists.
     fn save_module(
         &self,
         module_type: ModuleType,
         name: &str,
         version: Version,
         wasm_bytes: &[u8],
-    ) -> Result<(), StoreError>;
+    ) -> Result<(), ModuleStoreError>;
 
     /// Loads a specific version of a module.
     ///
@@ -68,7 +68,7 @@ pub trait Store {
         module_type: ModuleType,
         name: &str,
         version: Version,
-    ) -> Result<Option<Vec<u8>>, StoreError>;
+    ) -> Result<Option<Vec<u8>>, ModuleStoreError>;
 
     /// Activates a specific version of a module.
     ///
@@ -78,7 +78,7 @@ pub trait Store {
         module_type: ModuleType,
         name: &str,
         version: Version,
-    ) -> Result<bool, StoreError>;
+    ) -> Result<bool, ModuleStoreError>;
 
     /// Gets the currently active version of a module.
     ///
@@ -87,21 +87,25 @@ pub trait Store {
         &self,
         module_type: ModuleType,
         name: &str,
-    ) -> Result<Option<(Version, Vec<u8>)>, StoreError>;
+    ) -> Result<Option<(Version, Vec<u8>)>, ModuleStoreError>;
 
     /// Deactivates a module.
-    fn deactivate_module(&self, module_type: ModuleType, name: &str) -> Result<bool, StoreError>;
+    fn deactivate_module(
+        &self,
+        module_type: ModuleType,
+        name: &str,
+    ) -> Result<bool, ModuleStoreError>;
 
     /// Gets all currently active modules.
     fn get_all_active_modules(
         &self,
         module_type: Option<ModuleType>,
-    ) -> Result<Vec<Module>, StoreError>;
+    ) -> Result<Vec<Module>, ModuleStoreError>;
 
     /// Gets all available versions of a module.
     fn get_module_versions(
         &self,
         module_type: ModuleType,
         name: &str,
-    ) -> Result<Vec<Version>, StoreError>;
+    ) -> Result<Vec<Version>, ModuleStoreError>;
 }

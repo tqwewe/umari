@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use semver::Version;
 
-use crate::store::ModuleType;
+use crate::module_store::ModuleType;
 
 #[derive(Clone, Debug)]
 pub enum ModuleEvent {

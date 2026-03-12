@@ -3,14 +3,14 @@ mod routes;
 
 use axum::{Router, routing::post};
 use kameo::actor::ActorRef;
-use umari_runtime::{command::actor::CommandActor, store::actor::StoreActor};
 use tokio::{io, net::ToSocketAddrs};
+use umari_runtime::{command::actor::CommandActor, module_store::actor::ModuleStoreActor};
 
 use crate::routes::execute::execute;
 
 #[derive(Clone, Debug)]
 pub struct AppState {
-    pub store_ref: ActorRef<StoreActor>,
+    pub module_store_ref: ActorRef<ModuleStoreActor>,
     pub command_ref: ActorRef<CommandActor>,
 }
 

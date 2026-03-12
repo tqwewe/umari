@@ -115,7 +115,7 @@ impl From<umari_runtime::command::CommandError> for Error {
             umari_runtime::command::CommandError::EventStore(_) => {
                 Error::new(ErrorCode::Database).with_message(err.to_string())
             }
-            umari_runtime::command::CommandError::StoreSendError(send_err) => send_err.into(),
+            umari_runtime::command::CommandError::ModuleStore(send_err) => send_err.into(),
             umari_runtime::command::CommandError::Wasmtime(_) => {
                 Error::new(ErrorCode::Internal).with_message(err.to_string())
             }
@@ -123,22 +123,22 @@ impl From<umari_runtime::command::CommandError> for Error {
     }
 }
 
-impl From<umari_runtime::store::StoreError> for Error {
-    fn from(err: umari_runtime::store::StoreError) -> Self {
+impl From<umari_runtime::module_store::ModuleStoreError> for Error {
+    fn from(err: umari_runtime::module_store::ModuleStoreError) -> Self {
         match err {
-            umari_runtime::store::StoreError::ModuleNotFound { .. } => {
+            umari_runtime::module_store::ModuleStoreError::ModuleNotFound { .. } => {
                 Error::new(ErrorCode::NotFound).with_message(err.to_string())
             }
-            umari_runtime::store::StoreError::ModuleAlreadyExists => {
+            umari_runtime::module_store::ModuleStoreError::ModuleAlreadyExists => {
                 Error::new(ErrorCode::Duplicate).with_message(err.to_string())
             }
-            umari_runtime::store::StoreError::Database(_) => {
+            umari_runtime::module_store::ModuleStoreError::Database(_) => {
                 Error::new(ErrorCode::Database).with_message(err.to_string())
             }
-            umari_runtime::store::StoreError::Integrity(_) => {
+            umari_runtime::module_store::ModuleStoreError::Integrity(_) => {
                 Error::new(ErrorCode::Integrity).with_message(err.to_string())
             }
-            umari_runtime::store::StoreError::ModulePubSubSendError(_) => {
+            umari_runtime::module_store::ModuleStoreError::ModulePubSubSendError(_) => {
                 Error::new(ErrorCode::Internal).with_message(err.to_string())
             }
         }

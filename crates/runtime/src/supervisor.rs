@@ -9,15 +9,13 @@ use kameo_actors::{
     DeliveryStrategy,
     pubsub::{PubSub, Subscribe},
 };
-use rusqlite::Connection;
 use thiserror::Error;
-use wasmtime::{Engine, component::Linker};
-use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxView, WasiView};
+use wasmtime::Engine;
 
 use crate::{
     command::actor::{CommandActor, CommandActorArgs},
+    module_store::actor::{ModuleStoreActor, StoreActorArgs},
     projection::supervisor::{ProjectionSupervisor, ProjectionSupervisorArgs},
-    store::actor::{StoreActor, StoreActorArgs},
 };
 
 pub struct RuntimeSupervisor;
@@ -63,7 +61,7 @@ impl Actor for RuntimeSupervisor {
         .spawn()
         .await;
 
-        let store_ref = StoreActor::supervise(
+        let module_store_ref = ModuleStoreActor::supervise(
             &supervisor_ref,
             StoreActorArgs {
                 store_path: config.store_path,
@@ -74,19 +72,16 @@ impl Actor for RuntimeSupervisor {
         .restart_limit(5, Duration::from_secs(10))
         .spawn_in_thread()
         .await;
-        store_ref.register("store")?;
+        module_store_ref.register("module_store")?;
 
         let engine = Engine::default();
-        let mut linker = Linker::new(&engine);
-        wasmtime_wasi::p2::add_to_linker_async(&mut linker)?;
 
         let command_ref = CommandActor::supervise(
             &supervisor_ref,
             CommandActorArgs {
                 engine: engine.clone(),
-                linker: linker.clone(),
                 event_store: event_store.clone(),
-                store_ref: store_ref.clone(),
+                module_store_ref: module_store_ref.clone(),
             },
         )
         .restart_policy(RestartPolicy::Permanent)
@@ -103,9 +98,8 @@ impl Actor for RuntimeSupervisor {
             &supervisor_ref,
             ProjectionSupervisorArgs {
                 engine,
-                linker,
                 event_store,
-                store_ref,
+                module_store_ref,
             },
         )
         .restart_policy(RestartPolicy::Permanent)
@@ -119,24 +113,5 @@ impl Actor for RuntimeSupervisor {
             .map_err(|_| RuntimeError::ModulePubSubSendError)?;
 
         Ok(RuntimeSupervisor)
-    }
-}
-
-pub struct ComponentRunStates {
-    // These two are required basically as a standard way to enable the impl of IoView and
-    // WasiView.
-    // impl of WasiView is required by [`wasmtime_wasi::p2::add_to_linker_sync`]
-    pub wasi_ctx: WasiCtx,
-    pub resource_table: ResourceTable,
-    pub conn: Option<Connection>,
-    // You can add other custom host states if needed
-}
-
-impl WasiView for ComponentRunStates {
-    fn ctx(&mut self) -> WasiCtxView<'_> {
-        WasiCtxView {
-            ctx: &mut self.wasi_ctx,
-            table: &mut self.resource_table,
-        }
     }
 }

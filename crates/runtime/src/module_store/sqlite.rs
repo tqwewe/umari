@@ -5,15 +5,15 @@ use rusqlite::{
 use semver::Version;
 use sha2::{Digest, Sha256};
 
-use super::{Module, ModuleType, Store, StoreError};
+use super::{Module, ModuleStore, ModuleStoreError, ModuleType};
 
-pub struct SqliteStore {
+pub struct SqliteModuleStore {
     conn: Connection,
 }
 
-impl SqliteStore {
+impl SqliteModuleStore {
     pub fn new(conn: Connection) -> Self {
-        SqliteStore { conn }
+        SqliteModuleStore { conn }
     }
 
     pub fn init(&self) -> rusqlite::Result<()> {
@@ -24,7 +24,7 @@ impl SqliteStore {
 
                 module_type TEXT NOT NULL,
                 name TEXT NOT NULL,
-                version INTEGER NOT NULL,
+                version TEXT NOT NULL,
 
                 wasm_bytes BLOB NOT NULL,
                 sha256 TEXT NOT NULL,
@@ -46,14 +46,14 @@ impl SqliteStore {
     }
 }
 
-impl Store for SqliteStore {
+impl ModuleStore for SqliteModuleStore {
     fn save_module(
         &self,
         module_type: ModuleType,
         name: &str,
         version: Version,
         wasm_bytes: &[u8],
-    ) -> Result<(), StoreError> {
+    ) -> Result<(), ModuleStoreError> {
         let sha256 = hex::encode(Sha256::digest(wasm_bytes));
         self.conn
             .execute(
@@ -72,9 +72,9 @@ impl Store for SqliteStore {
                 rusqlite::Error::SqliteFailure(err, _msg)
                     if err.code == ErrorCode::ConstraintViolation =>
                 {
-                    StoreError::ModuleAlreadyExists
+                    ModuleStoreError::ModuleAlreadyExists
                 }
-                err => StoreError::Database(err),
+                err => ModuleStoreError::Database(err),
             })?;
 
         Ok(())
@@ -85,7 +85,7 @@ impl Store for SqliteStore {
         module_type: ModuleType,
         name: &str,
         version: Version,
-    ) -> Result<Option<Vec<u8>>, StoreError> {
+    ) -> Result<Option<Vec<u8>>, ModuleStoreError> {
         let Some((wasm_bytes, sha256)) = self.conn.query_row(
             r#"
             SELECT wasm_bytes, sha256 FROM modules WHERE module_type = ?1 AND name = ?2 AND version = ?3
@@ -102,7 +102,7 @@ impl Store for SqliteStore {
 
         let computed_sha256 = hex::encode(Sha256::digest(&wasm_bytes));
         if sha256 != computed_sha256 {
-            return Err(StoreError::Integrity(format!(
+            return Err(ModuleStoreError::Integrity(format!(
                 "sha256 mismatch: expected {computed_sha256}, got {sha256}"
             )));
         }
@@ -115,7 +115,7 @@ impl Store for SqliteStore {
         module_type: ModuleType,
         name: &str,
         version: Version,
-    ) -> Result<bool, StoreError> {
+    ) -> Result<bool, ModuleStoreError> {
         let tx = self.conn.transaction()?;
 
         let module_id: i64 = tx
@@ -124,7 +124,7 @@ impl Store for SqliteStore {
                 params![module_type, name, version.to_string()],
                 |row| row.get(0),
             )
-            .map_err(|_| StoreError::ModuleNotFound {
+            .map_err(|_| ModuleStoreError::ModuleNotFound {
                 module_type,
                 name: name.to_string(),
                 version,
@@ -149,7 +149,7 @@ impl Store for SqliteStore {
         &self,
         module_type: ModuleType,
         name: &str,
-    ) -> Result<Option<(Version, Vec<u8>)>, StoreError> {
+    ) -> Result<Option<(Version, Vec<u8>)>, ModuleStoreError> {
         let result = self.conn.query_row(
             r#"
             SELECT m.version, m.wasm_bytes
@@ -171,11 +171,15 @@ impl Store for SqliteStore {
         match result {
             Ok(row) => Ok(Some(row)),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(err) => Err(StoreError::Database(err)),
+            Err(err) => Err(ModuleStoreError::Database(err)),
         }
     }
 
-    fn deactivate_module(&self, module_type: ModuleType, name: &str) -> Result<bool, StoreError> {
+    fn deactivate_module(
+        &self,
+        module_type: ModuleType,
+        name: &str,
+    ) -> Result<bool, ModuleStoreError> {
         let rows_affected = self.conn.execute(
             "DELETE FROM active_modules WHERE module_type = ?1 AND name = ?2",
             params![module_type, name],
@@ -187,7 +191,7 @@ impl Store for SqliteStore {
     fn get_all_active_modules(
         &self,
         module_type: Option<ModuleType>,
-    ) -> Result<Vec<Module>, StoreError> {
+    ) -> Result<Vec<Module>, ModuleStoreError> {
         let map_fn = |row: &Row| {
             let module_type: ModuleType = row.get(0)?;
             let name: String = row.get(1)?;
@@ -229,14 +233,14 @@ impl Store for SqliteStore {
                 .query_map([], map_fn)?
                 .collect::<Result<Vec<_>, _>>(),
         }
-        .map_err(StoreError::Database)
+        .map_err(ModuleStoreError::Database)
     }
 
     fn get_module_versions(
         &self,
         module_type: ModuleType,
         name: &str,
-    ) -> Result<Vec<Version>, StoreError> {
+    ) -> Result<Vec<Version>, ModuleStoreError> {
         let mut stmt = self.conn.prepare(
             "SELECT version FROM modules WHERE module_type = ?1 AND name = ?2 ORDER BY id ASC",
         )?;
@@ -250,7 +254,7 @@ impl Store for SqliteStore {
             })?
             .collect::<Result<Vec<_>, _>>();
 
-        rows.map_err(StoreError::Database)
+        rows.map_err(ModuleStoreError::Database)
     }
 }
 
@@ -282,7 +286,7 @@ mod save_load_tests {
     #[test]
     fn test_save_load_module() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
-        let store = SqliteStore::new(conn);
+        let store = SqliteModuleStore::new(conn);
         store.init().unwrap();
         store
             .save_module(
@@ -301,7 +305,7 @@ mod save_load_tests {
     #[test]
     fn test_load_module_not_found() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
-        let store = SqliteStore::new(conn);
+        let store = SqliteModuleStore::new(conn);
         store.init().unwrap();
         store
             .save_module(
@@ -320,7 +324,7 @@ mod save_load_tests {
     #[test]
     fn test_load_module_integrity() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
-        let store = SqliteStore::new(conn);
+        let store = SqliteModuleStore::new(conn);
         store.init().unwrap();
         store
             .save_module(
@@ -337,7 +341,7 @@ mod save_load_tests {
             .unwrap();
 
         let result = store.load_module(ModuleType::Command, "hello", "0.1.2".parse().unwrap());
-        assert!(matches!(result, Err(StoreError::Integrity(_))));
+        assert!(matches!(result, Err(ModuleStoreError::Integrity(_))));
     }
 }
 
@@ -348,7 +352,7 @@ mod active_tests {
     #[test]
     fn test_activate_module_success() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
-        let mut store = SqliteStore::new(conn);
+        let mut store = SqliteModuleStore::new(conn);
         store.init().unwrap();
 
         // Save a module
@@ -392,19 +396,22 @@ mod active_tests {
     #[test]
     fn test_activate_module_not_found() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
-        let mut store = SqliteStore::new(conn);
+        let mut store = SqliteModuleStore::new(conn);
         store.init().unwrap();
 
         // Attempt to activate a module that doesn't exist
         let result = store.activate_module(ModuleType::Command, "hello", "0.1.2".parse().unwrap());
 
-        assert!(matches!(result, Err(StoreError::ModuleNotFound { .. })));
+        assert!(matches!(
+            result,
+            Err(ModuleStoreError::ModuleNotFound { .. })
+        ));
     }
 
     #[test]
     fn test_activate_module_switch_version() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
-        let mut store = SqliteStore::new(conn);
+        let mut store = SqliteModuleStore::new(conn);
         store.init().unwrap();
 
         // Save two versions of the same module
@@ -460,7 +467,7 @@ mod active_tests {
     #[test]
     fn test_get_active_module() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
-        let mut store = SqliteStore::new(conn);
+        let mut store = SqliteModuleStore::new(conn);
         store.init().unwrap();
 
         store
@@ -486,7 +493,7 @@ mod active_tests {
     #[test]
     fn test_deactivate_module() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
-        let mut store = SqliteStore::new(conn);
+        let mut store = SqliteModuleStore::new(conn);
         store.init().unwrap();
 
         store
@@ -519,7 +526,7 @@ mod all_active_tests {
     #[test]
     fn test_get_all_active_modules_empty() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
-        let store = SqliteStore::new(conn);
+        let store = SqliteModuleStore::new(conn);
         store.init().unwrap();
 
         let active = store.get_all_active_modules(None).unwrap();
@@ -529,7 +536,7 @@ mod all_active_tests {
     #[test]
     fn test_get_all_active_modules_single() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
-        let mut store = SqliteStore::new(conn);
+        let mut store = SqliteModuleStore::new(conn);
         store.init().unwrap();
 
         store
@@ -557,7 +564,7 @@ mod all_active_tests {
     #[test]
     fn test_get_all_active_modules_multiple() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
-        let mut store = SqliteStore::new(conn);
+        let mut store = SqliteModuleStore::new(conn);
         store.init().unwrap();
 
         // Save multiple modules
@@ -607,7 +614,7 @@ mod all_active_tests {
     #[test]
     fn test_get_all_active_modules_switch_version() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
-        let mut store = SqliteStore::new(conn);
+        let mut store = SqliteModuleStore::new(conn);
         store.init().unwrap();
 
         // Save two versions
@@ -648,7 +655,7 @@ mod all_active_tests {
     #[test]
     fn test_get_all_active_modules_filter_by_type() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
-        let mut store = SqliteStore::new(conn);
+        let mut store = SqliteModuleStore::new(conn);
         store.init().unwrap();
 
         // Save and activate modules of different types
@@ -729,7 +736,7 @@ mod all_active_tests {
     #[test]
     fn test_get_all_active_modules_filter_empty_type() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
-        let mut store = SqliteStore::new(conn);
+        let mut store = SqliteModuleStore::new(conn);
         store.init().unwrap();
 
         // Save and activate only Command modules
@@ -766,7 +773,7 @@ mod module_versions_tests {
     #[test]
     fn test_get_module_versions() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
-        let store = SqliteStore::new(conn);
+        let store = SqliteModuleStore::new(conn);
         store.init().unwrap();
 
         store

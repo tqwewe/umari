@@ -1,121 +1,25 @@
-package umari:projection;
+package umari:projection@0.1.0;
 
-interface types {
-    /// JSON encoded as UTF-8 string
-    /// The host passes JSON through without parsing, guest deserializes as needed
-    type json = string;
-
-    /// Unix timestamp in milliseconds since epoch (1970-01-01T00:00:00Z)
-    type timestamp = s64;
-
-    /// Event type identifier (e.g., "user.created", "order.placed")
-    type event-type = string;
-
-    type sql = string;
-
-    variant value {
-        null,
-        integer(s64),
-        real(f64),
-        text(string),
-        blob(list<u8>),
-    }
-
-    record dcb-query {
-        items: list<dcb-query-item>,
-    }
-
-    record dcb-query-item {
-        types: list<string>,
-        tags: list<string>,
-    }
-
-    /// Event data as stored/retrieved from the event store
-    record stored-event-data {
-        id: string,
-        position: s64,
-        event-type: event-type,
-        tags: list<string>,
-        timestamp: timestamp,
-        correlation-id: string,
-        causation-id: string,
-        triggered-by: option<string>,
-        data: json,
-    }
-
-    enum projection-error-code {
-        deserialization-error,
-        other,
-    }
-
-    enum sqlite-error-code {
-        internal-malfunction,
-        permission-denied,
-        operation-aborted,
-        database-busy,
-        database-locked,
-        out-of-memory,
-        read-only,
-        operation-interrupted,
-        system-io-failure,
-        database-corrupt,
-        not-found,
-        disk-full,
-        cannot-open,
-        file-locking-protocol-failed,
-        schema-changed,
-        too-big,
-        constraint-violation,
-        type-mismatch,
-        api-misuse,
-        no-large-file-support,
-        authorization-for-statement-denied,
-        parameter-out-of-range,
-        not-a-database,
-        unknown,
-        
-    }
-
-    record sqlite-error {
-        code: sqlite-error-code,
-        extended-code: s32,
-        message: option<string>,
-    }
-
-    /// Structured error from command execution
-    record projection-error {
-        /// Error code for categorization
-        code: projection-error-code,
-        /// Human-readable error message
-        message: string,
-    }
+interface projection-runner {
+    use umari:common/types@0.1.0.{dcb-query, deserialize-event-error, stored-event};
+    use umari:sqlite/types@0.1.0.{sqlite-error};
 
     variant error {
-        projection(projection-error),
+        deserialize-event(deserialize-event-error),
         sqlite(sqlite-error),
+        other(string),
     }
-}
-
-    
-interface projection-runner {
-    use types.{stored-event-data, dcb-query, error};
 
     resource projection-state {
         constructor() -> result<projection-state, error>;
         query: func() -> dcb-query;
-        handler: func(event: stored-event-data) -> result<_, error>;
+        handler: func(event: stored-event) -> result<_, error>;
     }
 }
 
-
 world projection {
-    use types.{json, sql, value, sqlite-error};
+    import umari:sqlite/connection@0.1.0;
+    import umari:sqlite/statement@0.1.0;
 
     export projection-runner;
-
-    import execute: func(sql: sql, params: list<value>) -> result<s64, sqlite-error>;
-    import execute-batch: func(sql: sql) -> result<_, string>;
-    import last-insert-rowid: func() -> result<s64, string>;
-    import query-one: func(sql: sql, params: list<value>) -> result<option<list<tuple<string, value>>>, string>;
-    import query-row: func(sql: sql, params: list<value>) -> result<option<list<tuple<string, value>>>, string>;
 }

@@ -4,13 +4,13 @@ use clap::Parser;
 use kameo::{actor::ActorRef, prelude::Spawn};
 use tokio::signal;
 use tracing::{error, info};
-use tracing_subscriber::{EnvFilter, fmt::format::FmtSpan};
+use tracing_subscriber::EnvFilter;
 use umari_api::{AppState, start_server};
 use umari_runtime::{
     command::actor::CommandActor,
-    store::{
+    module_store::{
         ModuleType,
-        actor::{ActivateModule, SaveModule, StoreActor},
+        actor::{ActivateModule, ModuleStoreActor, SaveModule},
     },
     supervisor::{RuntimeConfig, RuntimeSupervisor},
 };
@@ -20,7 +20,7 @@ use umari_runtime::{
 #[command(about = "Rivo runtime and API server", long_about = None)]
 struct Cli {
     /// Path to the runtime database file
-    #[arg(short, long, default_value = "runtime.db")]
+    #[arg(short, long, default_value = "runtime.sqlite")]
     store_path: String,
 
     /// Event store URL
@@ -69,33 +69,54 @@ async fn main() {
     info!("runtime started");
 
     // Get actor refs from registry
-    let store_ref = ActorRef::<StoreActor>::lookup("store")
+    let module_store_ref = ActorRef::<ModuleStoreActor>::lookup("module_store")
         .expect("failed to lookup store actor")
         .expect("store actor should be registered");
     let command_ref = ActorRef::<CommandActor>::lookup("command")
         .expect("failed to lookup command actor")
         .expect("command actor should be registered");
 
-    // store_ref
-    //     .ask(SaveModule {
-    //         module_type: ModuleType::Projection,
-    //         name: "accounts".into(),
-    //         version: "0.0.4".parse().unwrap(),
-    //         wasm_bytes: Arc::new(*include_bytes!(
-    //             "../../../target/wasm32-wasip2/release/accounts.wasm"
-    //         )),
-    //     })
-    //     .await
-    //     .unwrap();
+    module_store_ref
+        .ask(SaveModule {
+            module_type: ModuleType::Command,
+            name: "open_account".into(),
+            version: "0.0.6".parse().unwrap(),
+            wasm_bytes: Arc::new(*include_bytes!(
+                "../../../target/wasm32-wasip2/release/open_account.wasm"
+            )),
+        })
+        .await
+        .unwrap();
 
-    // store_ref
-    //     .ask(ActivateModule {
-    //         module_type: ModuleType::Projection,
-    //         name: "accounts".into(),
-    //         version: "0.0.4".parse().unwrap(),
-    //     })
-    //     .await
-    //     .unwrap();
+    module_store_ref
+        .ask(ActivateModule {
+            module_type: ModuleType::Command,
+            name: "open_account".into(),
+            version: "0.0.6".parse().unwrap(),
+        })
+        .await
+        .unwrap();
+
+    module_store_ref
+        .ask(SaveModule {
+            module_type: ModuleType::Projection,
+            name: "accounts".into(),
+            version: "0.0.6".parse().unwrap(),
+            wasm_bytes: Arc::new(*include_bytes!(
+                "../../../target/wasm32-wasip2/release/accounts.wasm"
+            )),
+        })
+        .await
+        .unwrap();
+
+    module_store_ref
+        .ask(ActivateModule {
+            module_type: ModuleType::Projection,
+            name: "accounts".into(),
+            version: "0.0.6".parse().unwrap(),
+        })
+        .await
+        .unwrap();
 
     // Start API server
     let api_handle = tokio::spawn({
@@ -103,7 +124,7 @@ async fn main() {
         async move {
             info!("starting API server on {api_addr}");
             let state = AppState {
-                store_ref,
+                module_store_ref,
                 command_ref,
             };
             if let Err(err) = start_server(&api_addr, state).await {

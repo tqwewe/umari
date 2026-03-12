@@ -2,13 +2,11 @@ use std::sync::Arc;
 
 use kameo::error::SendError;
 use thiserror::Error;
-use umari_core::error::SqliteErrorCode;
 
-use crate::store::StoreError;
+use crate::{module_store::ModuleStoreError, wit};
 
 pub mod actor;
 pub mod supervisor;
-pub mod wit;
 
 #[derive(Debug, Error)]
 pub enum ProjectionError {
@@ -21,25 +19,19 @@ pub enum ProjectionError {
     #[error("concurrent modification")]
     ConcurrentModification,
     #[error("projection error: {0}")]
-    Projection(#[from] wit::ProjectionError),
+    Projection(#[from] wit::projection::Error),
     #[error("event store error: {0}")]
     EventStore(#[from] umadb_dcb::DCBError),
-    #[error("sqlite error {code}: {message:?}")]
-    Sqlite {
-        code: SqliteErrorCode,
-        extended_code: i32,
-        message: Option<String>,
-    },
     #[error("database error: {0}")]
     Database(#[from] rusqlite::Error),
-    #[error("store error: {0}")]
-    StoreSendError(SendError<(), StoreError>),
+    #[error("module store error: {0}")]
+    ModuleStore(SendError<(), ModuleStoreError>),
     #[error("wasmtime error: {0}")]
     Wasmtime(#[from] wasmtime::Error),
 }
 
-impl<M> From<SendError<M, StoreError>> for ProjectionError {
-    fn from(err: SendError<M, StoreError>) -> Self {
-        ProjectionError::StoreSendError(err.map_msg(|_| ()))
+impl<M> From<SendError<M, ModuleStoreError>> for ProjectionError {
+    fn from(err: SendError<M, ModuleStoreError>) -> Self {
+        ProjectionError::ModuleStore(err.map_msg(|_| ()))
     }
 }

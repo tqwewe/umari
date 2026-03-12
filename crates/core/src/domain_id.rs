@@ -38,6 +38,13 @@ impl DomainIdValue {
             Self::None => None,
         }
     }
+
+    pub fn into_option(self) -> Option<String> {
+        match self {
+            Self::Value(v) => Some(v),
+            Self::None => None,
+        }
+    }
 }
 
 impl From<String> for DomainIdValue {

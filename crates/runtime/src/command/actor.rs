@@ -11,34 +11,23 @@ use umadb_dcb::{DCBAppendCondition, DCBEvent, DCBEventStoreAsync, DCBQuery};
 use umari_core::{
     emit::encode_with_envelope,
     event::{EventEnvelope, StoredEventData},
-    prelude::{CommandContext, DomainIdValue},
-    runtime::{EventData, ExecuteOutput},
+    prelude::CommandContext,
 };
 use uuid::Uuid;
 use wasmtime::{
     Engine, Store,
-    component::{Component, Linker},
+    component::{Component, HasSelf, Linker},
 };
 use wasmtime_wasi::{ResourceTable, WasiCtx};
-
-// Generate host-side bindings from WIT in a separate module
-mod wit {
-    wasmtime::component::bindgen!({
-        path: "../../wit/command",
-        exports: {
-            default: async,
-        },
-    });
-}
 
 use super::CommandError;
 use crate::{
     events::ModuleEvent,
-    store::{
+    module_store::{
         ModuleType,
-        actor::{GetActiveModule, GetAllActiveModules, StoreActor},
+        actor::{GetActiveModule, GetAllActiveModules, ModuleStoreActor},
     },
-    supervisor::ComponentRunStates,
+    wit::{self, BasicComponentState},
 };
 
 pub struct VersionedModule {
@@ -48,18 +37,17 @@ pub struct VersionedModule {
 
 pub struct CommandActor {
     engine: Engine,
-    linker: Linker<ComponentRunStates>,
+    linker: Linker<BasicComponentState>,
     event_store: Arc<AsyncUmaDBClient>,
-    store_ref: ActorRef<StoreActor>,
+    module_store_ref: ActorRef<ModuleStoreActor>,
     components: HashMap<Arc<str>, VersionedModule>,
 }
 
 #[derive(Clone)]
 pub struct CommandActorArgs {
     pub engine: Engine,
-    pub linker: Linker<ComponentRunStates>,
     pub event_store: Arc<AsyncUmaDBClient>,
-    pub store_ref: ActorRef<StoreActor>,
+    pub module_store_ref: ActorRef<ModuleStoreActor>,
 }
 
 impl Actor for CommandActor {
@@ -71,8 +59,12 @@ impl Actor for CommandActor {
     }
 
     async fn on_start(args: Self::Args, _actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
+        let mut linker = Linker::new(&args.engine);
+        wasmtime_wasi::p2::add_to_linker_async(&mut linker)?;
+        wit::command::Command::add_to_linker::<_, HasSelf<_>>(&mut linker, |s| s)?;
+
         let active_modules = args
-            .store_ref
+            .module_store_ref
             .ask(GetAllActiveModules {
                 module_type: Some(ModuleType::Command),
             })
@@ -110,9 +102,9 @@ impl Actor for CommandActor {
 
         Ok(CommandActor {
             engine: args.engine,
-            linker: args.linker,
+            linker,
             event_store: args.event_store,
-            store_ref: args.store_ref,
+            module_store_ref: args.module_store_ref,
             components: modules,
         })
     }
@@ -169,10 +161,18 @@ impl CommandActor {
                     let stored: StoredEventData<Value> =
                         serde_json::from_slice(&sequenced_event.event.data).ok()?;
 
-                    Some(EventData {
+                    Some(wit::common::StoredEvent {
+                        id: sequenced_event.event.uuid?.to_string(),
+                        position: sequenced_event.position as i64,
                         event_type: sequenced_event.event.event_type,
+                        tags: sequenced_event.event.tags,
+                        timestamp: stored.timestamp.timestamp(),
+                        correlation_id: stored.correlation_id.to_string(),
+                        causation_id: stored.causation_id.to_string(),
+                        triggered_by: stored
+                            .triggered_by
+                            .map(|triggered_by| triggered_by.to_string()),
                         data: serde_json::to_string(&stored.data).ok()?,
-                        timestamp: stored.timestamp.timestamp_millis(),
                     })
                 })
                 .collect();
@@ -198,10 +198,7 @@ impl CommandActor {
                     let tags: Vec<String> = event
                         .domain_ids
                         .into_iter()
-                        .filter_map(|(category, id)| match id {
-                            DomainIdValue::Value(id) => Some(format!("{category}:{id}")),
-                            DomainIdValue::None => None,
-                        })
+                        .filter_map(|(category, id)| id.map(|id| format!("{category}:{id}")))
                         .collect();
 
                     // Store event info for result
@@ -257,15 +254,14 @@ impl CommandActor {
             .ok_or(CommandError::ModuleNotFound { name })?;
 
         let wasi_ctx = WasiCtx::builder().inherit_stdio().inherit_args().build();
-        let state = ComponentRunStates {
+        let state = BasicComponentState {
             wasi_ctx,
             resource_table: ResourceTable::new(),
-            conn: None,
         };
         let mut store = Store::new(&self.engine, state);
 
         // Instantiate the component using generated bindings
-        let command = wit::Command::instantiate_async(
+        let command = wit::command::Command::instantiate_async(
             &mut store,
             &versioned_component.component,
             &self.linker,
@@ -277,8 +273,8 @@ impl CommandActor {
 }
 
 struct InstantiatedModule {
-    store: Store<crate::supervisor::ComponentRunStates>,
-    command: wit::Command,
+    store: Store<BasicComponentState>,
+    command: wit::command::Command,
 }
 
 impl InstantiatedModule {
@@ -302,26 +298,12 @@ impl InstantiatedModule {
 
         // Handle the WIT result
         match wit_result {
-            Ok(dcb_query_json) => {
-                // Parse the DCBQuery JSON string
-                serde_json::from_str(&dcb_query_json).map_err(|err| CommandError::Internal {
-                    message: format!("failed to deserialize DCBQuery: {err}"),
-                })
-            }
-            Err(err) => Err(match err.code {
-                wit::umari::command::types::ErrorCode::ValidationError => {
-                    CommandError::ValidationError {
-                        message: err.message,
-                    }
-                }
-                wit::umari::command::types::ErrorCode::DeserializationError => {
-                    CommandError::QueryInputDeserialization {
-                        message: err.message,
-                    }
-                }
-                wit::umari::command::types::ErrorCode::CommandError => CommandError::Internal {
-                    message: err.message,
-                },
+            Ok(query) => Ok(query.into()),
+            Err(err) => Err(match err {
+                wit::command::Error::Command(err) => CommandError::CommandHandler { message: err },
+                wit::command::Error::DeserializeEvent(err) => todo!(),
+                wit::command::Error::DeserializeInput(_) => todo!(),
+                wit::command::Error::SerializeEvent(_) => todo!(),
             }),
         }
     }
@@ -329,83 +311,24 @@ impl InstantiatedModule {
     async fn execute(
         &mut self,
         input: &Value,
-        events: Vec<EventData>,
-    ) -> Result<ExecuteOutput, CommandError> {
-        // Build ExecuteInput for WIT
-        let wit_input = wit::umari::command::types::ExecuteInput {
-            input: serde_json::to_string(input).map_err(|err| CommandError::Internal {
-                message: format!("failed to serialize input: {err}"),
-            })?,
-            events: events
-                .into_iter()
-                .map(|e| wit::umari::command::types::EventData {
-                    event_type: e.event_type,
-                    data: e.data,
-                    timestamp: e.timestamp,
-                })
-                .collect(),
-        };
+        events: Vec<wit::common::StoredEvent>,
+    ) -> Result<wit::command::ExecuteOutput, CommandError> {
+        let wit_input = serde_json::to_string(input).map_err(|err| CommandError::Internal {
+            message: format!("failed to serialize input: {err}"),
+        })?;
 
         // Call the component's execute function
         let result = self
             .command
-            .call_execute(&mut self.store, &wit_input)
+            .call_execute(&mut self.store, &wit_input, &events)
             .await
             .map_err(|err| CommandError::Internal {
                 message: format!("execute function call failed: {err}"),
             })?;
 
         match result {
-            Ok(output) => {
-                // Convert WIT output to ExecuteOutput
-                Ok(ExecuteOutput {
-                    events: output
-                        .events
-                        .into_iter()
-                        .map(|event| {
-                            // Convert WIT domain_ids to HashMap<String, DomainIdValue>
-                            let domain_ids = event
-                                .domain_ids
-                                .into_iter()
-                                .map(|(k, v)| {
-                                    let value = match v {
-                                        wit::umari::command::types::DomainIdValue::Value(s) => {
-                                            DomainIdValue::Value(s)
-                                        }
-                                        wit::umari::command::types::DomainIdValue::None => {
-                                            DomainIdValue::None
-                                        }
-                                    };
-                                    (k, value)
-                                })
-                                .collect();
-
-                            umari_core::runtime::SerializableEmittedEvent {
-                                event_type: event.event_type,
-                                data: event.data,
-                                domain_ids,
-                            }
-                        })
-                        .collect(),
-                })
-            }
-            Err(err) => Err(match err.code {
-                wit::umari::command::types::ErrorCode::DeserializationError => {
-                    CommandError::EventDeserialization {
-                        message: err.message,
-                    }
-                }
-                wit::umari::command::types::ErrorCode::CommandError => {
-                    CommandError::CommandHandler {
-                        message: err.message,
-                    }
-                }
-                wit::umari::command::types::ErrorCode::ValidationError => {
-                    CommandError::ValidationError {
-                        message: err.message,
-                    }
-                }
-            }),
+            Ok(output) => Ok(output),
+            Err(err) => Err(todo!()),
         }
     }
 }
@@ -426,7 +349,7 @@ impl Message<ModuleEvent> for CommandActor {
             } => {
                 if module_type == ModuleType::Command {
                     let module = self
-                        .store_ref
+                        .module_store_ref
                         .ask(GetActiveModule {
                             module_type: ModuleType::Command,
                             name: name.clone(),

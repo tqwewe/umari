@@ -1,6 +1,9 @@
 use thiserror::Error;
 use umadb_dcb::DCBError;
 
+pub use crate::runtime::common::{DeserializeEventError, DeserializeEventErrorCode};
+pub use crate::runtime::sqlite::{SqliteError, SqliteErrorCode};
+
 /// Error returned when a command is rejected or fails.
 #[derive(Clone, Debug, Error)]
 #[error("{code}: {message}")]
@@ -96,67 +99,4 @@ pub enum ProjectionError {
     Sqlite(#[from] SqliteError),
     #[error("projection error: {message}")]
     Other { message: String },
-}
-
-#[derive(Clone, Debug, Error)]
-#[non_exhaustive]
-#[error("sqlite error: {code}")]
-pub struct SqliteError {
-    pub code: SqliteErrorCode,
-    pub extended_code: i32,
-    pub message: Option<String>,
-}
-
-#[derive(Clone, Copy, Debug, Error)]
-#[non_exhaustive]
-#[repr(i32)]
-pub enum SqliteErrorCode {
-    #[error("internal malfunction")]
-    InternalMalfunction = 2,
-    #[error("permission denied")]
-    PermissionDenied = 3,
-    #[error("operation aborted")]
-    OperationAborted = 4,
-    #[error("database busy")]
-    DatabaseBusy = 5,
-    #[error("database locked")]
-    DatabaseLocked = 6,
-    #[error("out of memory")]
-    OutOfMemory = 7,
-    #[error("read only")]
-    ReadOnly = 8,
-    #[error("operation interrupted")]
-    OperationInterrupted = 9,
-    #[error("system io failure")]
-    SystemIoFailure = 10,
-    #[error("database corrupt")]
-    DatabaseCorrupt = 11,
-    #[error("not found")]
-    NotFound = 12,
-    #[error("disk full")]
-    DiskFull = 13,
-    #[error("cannot open")]
-    CannotOpen = 14,
-    #[error("file locking protocol failed")]
-    FileLockingProtocolFailed = 15,
-    #[error("schema changed")]
-    SchemaChanged = 17,
-    #[error("too big")]
-    TooBig = 18,
-    #[error("constraint violation")]
-    ConstraintViolation = 19,
-    #[error("type mismatch")]
-    TypeMismatch = 20,
-    #[error("api misuse")]
-    ApiMisuse = 21,
-    #[error("no large file support")]
-    NoLargeFileSupport = 22,
-    #[error("authorization for statement denied")]
-    AuthorizationForStatementDenied = 23,
-    #[error("parameter out of range")]
-    ParameterOutOfRange = 25,
-    #[error("not a database")]
-    NotADatabase = 26,
-    #[error("unknown")]
-    Unknown = 0,
 }

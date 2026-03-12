@@ -3,7 +3,7 @@ use std::sync::Arc;
 use kameo::error::SendError;
 use thiserror::Error;
 
-use crate::store::StoreError;
+use crate::module_store::ModuleStoreError;
 
 pub mod actor;
 
@@ -31,14 +31,14 @@ pub enum CommandError {
     Internal { message: String },
     #[error("event store error: {0}")]
     EventStore(#[from] umadb_dcb::DCBError),
-    #[error("store error: {0}")]
-    StoreSendError(SendError<(), StoreError>),
+    #[error("module store error: {0}")]
+    ModuleStore(SendError<(), ModuleStoreError>),
     #[error("wasmtime error: {0}")]
     Wasmtime(#[from] wasmtime::Error),
 }
 
-impl<M> From<SendError<M, StoreError>> for CommandError {
-    fn from(err: SendError<M, StoreError>) -> Self {
-        CommandError::StoreSendError(err.map_msg(|_| ()))
+impl<M> From<SendError<M, ModuleStoreError>> for CommandError {
+    fn from(err: SendError<M, ModuleStoreError>) -> Self {
+        CommandError::ModuleStore(err.map_msg(|_| ()))
     }
 }

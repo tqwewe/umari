@@ -1,46 +1,8 @@
-package umari:command;
+package umari:command@0.1.0;
 
 /// Core types for the command system
 interface types {
-    /// JSON encoded as UTF-8 string
-    /// The host passes JSON through without parsing, guest deserializes as needed
-    type json = string;
-
-    /// Unix timestamp in milliseconds since epoch (1970-01-01T00:00:00Z)
-    type timestamp = s64;
-
-    /// Event type identifier (e.g., "user.created", "order.placed")
-    type event-type = string;
-
-    /// DCB Query as JSON string
-    /// This is the serialized form of umadb_dcb::DCBQuery
-    type dcb-query = json;
-
-    /// Event data as stored/retrieved from the event store
-    record event-data {
-        /// Event type identifier
-        event-type: event-type,
-        /// Event payload as JSON
-        data: json,
-        /// When the event occurred
-        timestamp: timestamp,
-    }
-
-    /// Input for command execution (after query has fetched events)
-    record execute-input {
-        /// Original command input
-        input: json,
-        /// Events fetched from the event store
-        events: list<event-data>,
-    }
-
-    /// Domain ID value - optional identifier for event routing/querying
-    variant domain-id-value {
-        /// Present domain ID value
-        value(string),
-        /// Absent optional domain ID
-        none,
-    }
+    use umari:common/types@0.1.0.{deserialize-event-error, event-type, json};
 
     /// Emitted event from command execution
     record emitted-event {
@@ -49,7 +11,7 @@ interface types {
         /// Event payload as JSON
         data: json,
         /// Domain IDs for event routing (field name -> value)
-        domain-ids: list<tuple<string, domain-id-value>>,
+        domain-ids: list<tuple<string, option<string>>>,
     }
 
     /// Output from command execution
@@ -58,34 +20,24 @@ interface types {
         events: list<emitted-event>,
     }
 
-    /// Error codes for command errors
-    enum error-code {
-        /// Input validation failed
-        validation-error,
-        /// Command handler logic error
-        command-error,
-        /// Failed to deserialize input
-        deserialization-error,
-    }
-
-    /// Structured error from command execution
-    record command-error {
-        /// Error code for categorization
-        code: error-code,
-        /// Human-readable error message
-        message: string,
+    variant error {
+        command(string),
+        deserialize-event(deserialize-event-error),
+        deserialize-input(string),
+        serialize-event(string),
     }
 }
 
 /// The command world - what a command module must implement
 world command {
-    use types.{json, dcb-query, command-error, execute-input, execute-output};
+    use types.{error, execute-output};
+    use umari:common/types@0.1.0.{dcb-query, json, stored-event};
 
     /// Build a query from command input to fetch relevant events
     /// This determines what events need to be loaded from the event store
-    export query: func(input: json) -> result<dcb-query, command-error>;
+    export query: func(input: json) -> result<dcb-query, error>;
 
     /// Execute the command with input and fetched events
     /// Returns events to be emitted/persisted
-    export execute: func(input: execute-input) -> result<execute-output, command-error>;
+    export execute: func(input: json, events: list<stored-event>) -> result<execute-output, error>;
 }

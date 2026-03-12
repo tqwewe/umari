@@ -7,10 +7,10 @@ use semver::Version;
 
 use crate::events::ModuleEvent;
 
-use super::{Module, ModuleType, Store, StoreError, sqlite::SqliteStore};
+use super::{Module, ModuleStore, ModuleStoreError, ModuleType, sqlite::SqliteModuleStore};
 
-pub struct StoreActor {
-    store: SqliteStore,
+pub struct ModuleStoreActor {
+    store: SqliteModuleStore,
     module_pubsub: ActorRef<PubSub<ModuleEvent>>,
 }
 
@@ -20,20 +20,20 @@ pub struct StoreActorArgs {
     pub module_pubsub: ActorRef<PubSub<ModuleEvent>>,
 }
 
-impl Actor for StoreActor {
+impl Actor for ModuleStoreActor {
     type Args = StoreActorArgs;
-    type Error = StoreError;
+    type Error = ModuleStoreError;
 
     fn name() -> &'static str {
-        "StoreActor"
+        "ModuleStoreActor"
     }
 
     async fn on_start(args: Self::Args, _actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         let conn = Connection::open(args.store_path)?;
-        let store = SqliteStore::new(conn);
+        let store = SqliteModuleStore::new(conn);
         store.init()?;
 
-        Ok(StoreActor {
+        Ok(ModuleStoreActor {
             store,
             module_pubsub: args.module_pubsub,
         })
@@ -41,7 +41,7 @@ impl Actor for StoreActor {
 }
 
 #[messages]
-impl StoreActor {
+impl ModuleStoreActor {
     #[message]
     pub fn save_module(
         &self,
@@ -49,7 +49,7 @@ impl StoreActor {
         name: Arc<str>,
         version: Version,
         wasm_bytes: Arc<[u8]>,
-    ) -> Result<(), StoreError> {
+    ) -> Result<(), ModuleStoreError> {
         self.store
             .save_module(module_type, &name, version, &wasm_bytes)
     }
@@ -60,7 +60,7 @@ impl StoreActor {
         module_type: ModuleType,
         name: Arc<str>,
         version: Version,
-    ) -> Result<Option<Vec<u8>>, StoreError> {
+    ) -> Result<Option<Vec<u8>>, ModuleStoreError> {
         self.store.load_module(module_type, &name, version)
     }
 
@@ -70,7 +70,7 @@ impl StoreActor {
         module_type: ModuleType,
         name: Arc<str>,
         version: Version,
-    ) -> Result<(), StoreError> {
+    ) -> Result<(), ModuleStoreError> {
         let activated = self
             .store
             .activate_module(module_type, &name, version.clone())?;
@@ -82,7 +82,7 @@ impl StoreActor {
                     version,
                 }))
                 .await
-                .map_err(|err| StoreError::ModulePubSubSendError(err.map_msg(|_| ())))?;
+                .map_err(|err| ModuleStoreError::ModulePubSubSendError(err.map_msg(|_| ())))?;
         }
         Ok(())
     }
@@ -92,7 +92,7 @@ impl StoreActor {
         &self,
         module_type: ModuleType,
         name: Arc<str>,
-    ) -> Result<Option<(Version, Vec<u8>)>, StoreError> {
+    ) -> Result<Option<(Version, Vec<u8>)>, ModuleStoreError> {
         self.store.get_active_module(module_type, &name)
     }
 
@@ -100,7 +100,7 @@ impl StoreActor {
     pub fn get_all_active_modules(
         &self,
         module_type: Option<ModuleType>,
-    ) -> Result<Vec<Module>, StoreError> {
+    ) -> Result<Vec<Module>, ModuleStoreError> {
         self.store.get_all_active_modules(module_type)
     }
 
@@ -109,7 +109,7 @@ impl StoreActor {
         &self,
         module_type: ModuleType,
         name: Arc<str>,
-    ) -> Result<Vec<Version>, StoreError> {
+    ) -> Result<Vec<Version>, ModuleStoreError> {
         self.store.get_module_versions(module_type, &name)
     }
 }
@@ -119,8 +119,8 @@ pub struct DeactivateModule {
     pub name: Arc<str>,
 }
 
-impl Message<DeactivateModule> for StoreActor {
-    type Reply = Result<(), StoreError>;
+impl Message<DeactivateModule> for ModuleStoreActor {
+    type Reply = Result<(), ModuleStoreError>;
 
     fn handle(
         &mut self,
@@ -133,7 +133,7 @@ impl Message<DeactivateModule> for StoreActor {
                 self.module_pubsub
                     .tell(Publish(ModuleEvent::Deactivated { module_type, name }))
                     .await
-                    .map_err(|err| StoreError::ModulePubSubSendError(err.map_msg(|_| ())))?;
+                    .map_err(|err| ModuleStoreError::ModulePubSubSendError(err.map_msg(|_| ())))?;
             }
             Ok(())
         }

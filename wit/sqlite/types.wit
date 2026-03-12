@@ -1,0 +1,58 @@
+package umari:sqlite@0.1.0;
+
+interface types {
+    type sql = string;
+
+    /// SQLite value types
+    variant value {
+        null,
+        integer(s64),
+        real(f64),
+        text(string),
+        blob(list<u8>),
+    }
+
+    record column {
+        name: string,
+        value: value,
+    }
+
+    record row {
+        columns: list<column>,
+    }
+
+    /// SQLite error codes
+    enum sqlite-error-code {
+        unknown,
+        internal-malfunction,
+        permission-denied,
+        operation-aborted,
+        database-busy,
+        database-locked,
+        out-of-memory,
+        read-only,
+        operation-interrupted,
+        system-io-failure,
+        database-corrupt,
+        not-found,
+        disk-full,
+        cannot-open,
+        file-locking-protocol-failed,
+        schema-changed,
+        too-big,
+        constraint-violation,
+        type-mismatch,
+        api-misuse,
+        no-large-file-support,
+        authorization-for-statement-denied,
+        parameter-out-of-range,
+        not-a-database,
+    }
+
+    /// SQLite error details
+    record sqlite-error {
+        code: sqlite-error-code,
+        extended-code: s32,
+        message: option<string>,
+    }
+}

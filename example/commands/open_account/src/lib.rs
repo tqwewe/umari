@@ -1,10 +1,9 @@
-use umari_core::prelude::*;
-use serde::Deserialize;
-
 use events::OpenedAccount;
+use serde::Deserialize;
+use umari_core::prelude::*;
 
 // Export this command as a WASM component
-export_command!(OpenAccount);
+export_command!(OpenAccountState);
 
 /// Events this command reads
 #[derive(EventSet)]
@@ -14,7 +13,7 @@ enum Query {
 
 /// Command payload with domain ID bindings
 #[derive(CommandInput, Deserialize)]
-struct OpenAccountInput {
+struct Input {
     #[domain_id]
     account_id: String,
     initial_balance: f64,
@@ -22,14 +21,14 @@ struct OpenAccountInput {
 
 /// Handler State
 #[derive(Default)]
-struct OpenAccount {
+struct OpenAccountState {
     is_open: bool,
 }
 
 /// Implementation
-impl Command for OpenAccount {
+impl Command for OpenAccountState {
     type Query = Query;
-    type Input = OpenAccountInput;
+    type Input = Input;
     type Error = CommandError;
 
     fn apply(&mut self, event: Query, _meta: EventMeta) {
@@ -40,7 +39,7 @@ impl Command for OpenAccount {
         }
     }
 
-    fn handle(&self, input: OpenAccountInput) -> Result<Emit, CommandError> {
+    fn handle(&self, input: Input) -> Result<Emit, CommandError> {
         if self.is_open {
             return Err(CommandError::rejected("account already open"));
         }

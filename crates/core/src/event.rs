@@ -27,6 +27,22 @@ pub struct StoredEvent<T> {
     pub data: T,
 }
 
+impl<T> StoredEvent<T> {
+    pub fn with_data<U>(self, data: U) -> StoredEvent<U> {
+        StoredEvent {
+            id: self.id,
+            position: self.position,
+            event_type: self.event_type,
+            tags: self.tags,
+            timestamp: self.timestamp,
+            correlation_id: self.correlation_id,
+            causation_id: self.causation_id,
+            triggered_by: self.triggered_by,
+            data,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StoredEventData<T> {
     pub timestamp: DateTime<Utc>,

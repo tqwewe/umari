@@ -1,0 +1,13 @@
+package umari:sqlite@0.1.0;
+
+interface statement {
+    use types.{row, sql, sqlite-error, value};
+
+    resource stmt {
+        constructor(sql: sql) -> result<stmt, sqlite-error>;
+        execute: func(params: list<value>) -> result<s64, sqlite-error>;
+        query: func(params: list<value>) -> result<list<row>, sqlite-error>;
+        query-one: func(params: list<value>) -> result<option<row>, sqlite-error>;
+        query-row: func(params: list<value>) -> result<option<row>, sqlite-error>;
+    }
+}

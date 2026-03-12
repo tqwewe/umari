@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
 use kameo::prelude::*;
-use rusqlite::{Connection, params};
+use rusqlite::Connection;
 use semver::Version;
 use serde_json::Value;
+use tracing::info;
 use umadb_client::AsyncUmaDBClient;
 use umadb_dcb::{
     DCBError, DCBEventStoreAsync, DCBQuery, DCBQueryItem, DCBReadResponseAsync, DCBSequencedEvent,
@@ -16,9 +17,10 @@ use wasmtime::{
 use wasmtime_wasi::{ResourceTable, WasiCtx};
 
 use super::{ProjectionError, wit};
-use crate::supervisor::ComponentRunStates;
 
 pub struct ProjectionActor {
+    name: Arc<str>,
+    version: Version,
     module: InstantiatedModule,
     stream: Box<dyn DCBReadResponseAsync + Send + 'static>,
     last_position: Option<u64>,
@@ -27,7 +29,7 @@ pub struct ProjectionActor {
 #[derive(Clone)]
 pub struct ProjectionActorArgs {
     pub engine: Engine,
-    pub linker: Linker<ComponentRunStates>,
+    pub linker: Linker<wit::SqliteComponentState>,
     pub event_store: Arc<AsyncUmaDBClient>,
     pub component: Component,
     pub name: Arc<str>,
@@ -38,32 +40,41 @@ impl Actor for ProjectionActor {
     type Args = ProjectionActorArgs;
     type Error = ProjectionError;
 
-    async fn on_start(args: Self::Args, _actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
-        let conn = Connection::open(format!("{}-projection.db", args.name))?;
+    fn name() -> &'static str {
+        "ProjectionActor"
+    }
 
-        conn.execute(
+    async fn on_start(args: Self::Args, _actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
+        let conn = Connection::open(format!("{}-projection.sqlite", args.name))?;
+
+        conn.execute_batch(
             r#"
             CREATE TABLE IF NOT EXISTS projection_meta (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
                 name TEXT NOT NULL,
                 version INTEGER NOT NULL,
                 last_position INTEGER
-            )
+            );
+
+            PRAGMA journal_mode = WAL;
+            PRAGMA synchronous = NORMAL; -- Don't fsync too often
+            PRAGMA temp_store = MEMORY;
+            PRAGMA foreign_keys = ON;
+            PRAGMA wal_autocheckpoint = 1000;
             "#,
-            [],
         )?;
         conn.execute(
             r#"
             INSERT INTO projection_meta (id, name, version) VALUES (?1, ?2, ?3)
             ON CONFLICT(id) DO UPDATE SET version = excluded.version
             "#,
-            params![1, args.name, args.version.to_string()],
+            (1, args.name.clone(), args.version.to_string()),
         )?;
         let last_position: Option<i64> = conn.query_one(
             r#"
             SELECT last_position FROM projection_meta WHERE id = 1
             "#,
-            params![],
+            (),
             |row| row.get(0),
         )?;
 
@@ -71,18 +82,17 @@ impl Actor for ProjectionActor {
             InstantiatedModule::new(&args.engine, &args.linker, &args.component, conn).await?;
 
         let query = module.query().await?;
+        let start = last_position.map(|n| n as u64 + 1);
         let stream = args
             .event_store
-            .read(
-                Some(query),
-                last_position.map(|n| n as u64 + 1),
-                false,
-                None,
-                true,
-            )
+            .read(Some(query), start, false, None, true)
             .await?;
 
+        info!(name = %args.name, version = %args.version, ?start, "projection subscribed to event store");
+
         Ok(ProjectionActor {
+            name: args.name,
+            version: args.version,
             module,
             stream,
             last_position: last_position.map(|n| n as u64),
@@ -103,33 +113,7 @@ impl Actor for ProjectionActor {
                         Err(DCBError::CancelledByUser()) => return Ok(None),
                         Err(err) => return Err(err.into()),
                     };
-                    let mut new_position = None;
-                    for event in batch {
-                        new_position = Some(event.position);
-                        self.handle_event(event).await?;
-                    }
-
-                    if let Some(new_position) = new_position {
-                        let conn = self.module.store.data().conn.as_ref().unwrap();
-
-                        let expected_position = self.last_position.map(|n| n as i64);
-                        let rows = conn.execute(
-                            r#"
-                            UPDATE projection_meta
-                            SET last_position = ?1
-                            WHERE id = 1
-                            AND last_position IS NOT DISTINCT FROM ?2
-                            "#,
-                            params![new_position as i64, expected_position]
-                        )?;
-
-                        if rows == 0 {
-                            return Err(ProjectionError::ConcurrentModification)
-                        }
-
-                        conn.execute_batch("COMMIT; BEGIN")?;
-                        self.last_position = Some(new_position);
-                    }
+                    self.process_batch(batch).await?;
                 }
             }
         }
@@ -137,6 +121,48 @@ impl Actor for ProjectionActor {
 }
 
 impl ProjectionActor {
+    async fn process_batch(
+        &mut self,
+        batch: Vec<DCBSequencedEvent>,
+    ) -> Result<(), ProjectionError> {
+        let mut new_position = None;
+        for event in batch {
+            new_position = Some(event.position);
+            self.handle_event(event).await?;
+        }
+
+        if let Some(new_position) = new_position {
+            let conn = self.module.store.data().conn();
+
+            let expected_position = self.last_position.map(|n| n as i64);
+            let rows = conn.execute(
+                r#"
+                UPDATE projection_meta
+                SET last_position = ?1
+                WHERE id = 1
+                AND last_position IS NOT DISTINCT FROM ?2
+                "#,
+                (new_position as i64, expected_position),
+            )?;
+
+            if rows == 0 {
+                return Err(ProjectionError::ConcurrentModification);
+            }
+
+            conn.execute_batch("COMMIT; BEGIN")?;
+            self.last_position = Some(new_position);
+            info!(
+                name = %self.name,
+                version = %self.version,
+                last_position = ?expected_position,
+                new_position,
+                "projection committed batch"
+            );
+        }
+
+        Ok(())
+    }
+
     async fn handle_event(&mut self, event: DCBSequencedEvent) -> Result<(), ProjectionError> {
         let data: StoredEventData<Value> = serde_json::from_slice(&event.event.data)
             .map_err(ProjectionError::EventDeserialization)?;
@@ -158,29 +184,26 @@ impl ProjectionActor {
 }
 
 struct InstantiatedModule {
-    store: Store<ComponentRunStates>,
-    projection: wit::Projection,
+    store: Store<wit::SqliteComponentState>,
+    projection: wit::projection::Projection,
     handler: ResourceAny,
 }
 
 impl InstantiatedModule {
     async fn new(
         engine: &Engine,
-        linker: &Linker<ComponentRunStates>,
+        linker: &Linker<wit::SqliteComponentState>,
         component: &Component,
         conn: Connection,
     ) -> Result<Self, ProjectionError> {
         let wasi_ctx = WasiCtx::builder().inherit_stdio().inherit_args().build();
-        let state = ComponentRunStates {
-            wasi_ctx,
-            resource_table: ResourceTable::new(),
-            conn: Some(conn),
-        };
+        let state = wit::SqliteComponentState::new(wasi_ctx, ResourceTable::new(), conn);
         let mut store = Store::new(engine, state);
 
-        let projection = wit::Projection::instantiate_async(&mut store, component, linker).await?;
+        let projection =
+            wit::projection::Projection::instantiate_async(&mut store, component, linker).await?;
 
-        store.data().conn.as_ref().unwrap().execute("BEGIN", [])?;
+        store.data().conn().execute("BEGIN", [])?;
 
         let handler = projection
             .umari_projection_projection_runner()
@@ -188,12 +211,7 @@ impl InstantiatedModule {
             .call_constructor(&mut store)
             .await??;
 
-        store
-            .data()
-            .conn
-            .as_ref()
-            .unwrap()
-            .execute_batch("COMMIT; BEGIN")?;
+        store.data().conn().execute_batch("COMMIT; BEGIN")?;
 
         Ok(InstantiatedModule {
             store,
@@ -229,7 +247,7 @@ impl InstantiatedModule {
             .call_handler(
                 &mut self.store,
                 self.handler,
-                &wit::umari::projection::types::StoredEventData {
+                &wit::common::StoredEvent {
                     id: event.id.to_string(),
                     position: event.position as i64,
                     event_type: event.event_type,
@@ -243,48 +261,8 @@ impl InstantiatedModule {
                     data: serde_json::to_string(&event.data).unwrap(),
                 },
             )
-            .await?;
+            .await??;
 
-        Ok(())
-    }
-
-    fn begin_transaction(&self) -> Result<(), ProjectionError> {
-        self.store
-            .data()
-            .conn
-            .as_ref()
-            .unwrap()
-            .execute("BEGIN", [])?;
-        Ok(())
-    }
-
-    fn commit(&self) -> Result<(), ProjectionError> {
-        self.store
-            .data()
-            .conn
-            .as_ref()
-            .unwrap()
-            .execute("COMMIT", [])?;
-        Ok(())
-    }
-
-    fn rollback(&self) -> Result<(), ProjectionError> {
-        self.store
-            .data()
-            .conn
-            .as_ref()
-            .unwrap()
-            .execute("ROLLBACK", [])?;
-        Ok(())
-    }
-
-    fn rollover(&self) -> Result<(), ProjectionError> {
-        self.store
-            .data()
-            .conn
-            .as_ref()
-            .unwrap()
-            .execute_batch("COMMIT; BEGIN")?;
         Ok(())
     }
 }
