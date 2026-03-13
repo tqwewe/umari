@@ -22,7 +22,6 @@ umari-types = { path = "crates/types" }
 
 # Example
 events = { path = "example/events" }
-wit-bindgen = "0.53"
 
 axum = { version = "0.8", features = ["multipart"] }
 chrono = { version = "0.4", features = ["serde"] }
@@ -54,6 +53,7 @@ utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
 uuid = { version = "1.22", features = ["serde", "v4"] }
 wasmtime = "42.0"
 wasmtime-wasi = "42.0"
+wit-bindgen = { path = "/home/ari/dev/bytecodealliance/wit-bindgen/crates/guest-rust" } # "0.53"
 
 # CLI dependencies
 anyhow = "1.0"

@@ -42,12 +42,13 @@ pub fn print_module_details(details: &ModuleDetailsResponse) {
     if !details.versions.is_empty() {
         println!();
         let mut table = Table::new();
-        table.set_header(vec!["VERSION", "ACTIVE"]);
+        table.set_header(vec!["VERSION", "ACTIVE", "SHA256"]);
 
         for version in &details.versions {
             table.add_row(vec![
                 Cell::new(&version.version),
                 Cell::new(if version.active { "Yes" } else { "No" }),
+                Cell::new(&version.sha256),
             ]);
         }
 

@@ -85,6 +85,7 @@ pub mod error;
 pub mod event;
 #[macro_use]
 mod macros;
+pub mod effect;
 pub mod params;
 pub mod projection;
 pub mod runtime;

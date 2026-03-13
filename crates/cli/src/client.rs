@@ -2,7 +2,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use umari_types::{ErrorResponse, UploadResponse};
 
 pub struct ApiClient {
@@ -124,14 +124,14 @@ impl ApiClient {
         match err {
             ureq::Error::Status(_code, response) => {
                 // Try to parse error response
-                if let Ok(body) = response.into_string() {
-                    if let Ok(err_response) = serde_json::from_str::<ErrorResponse>(&body) {
-                        let msg = err_response
-                            .error
-                            .message
-                            .unwrap_or_else(|| format!("{:?}", err_response.error.code));
-                        return anyhow::anyhow!("{msg}");
-                    }
+                if let Ok(body) = response.into_string()
+                    && let Ok(err_response) = serde_json::from_str::<ErrorResponse>(&body)
+                {
+                    let msg = err_response
+                        .error
+                        .message
+                        .unwrap_or_else(|| format!("{:?}", err_response.error.code));
+                    return anyhow::anyhow!("{msg}");
                 }
                 anyhow::anyhow!("request failed")
             }

@@ -1,5 +1,6 @@
 pub mod command;
 pub mod common;
+pub mod effect;
 pub mod projection;
 pub mod sqlite;
 

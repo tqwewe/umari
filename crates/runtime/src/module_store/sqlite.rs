@@ -5,7 +5,7 @@ use rusqlite::{
 use semver::Version;
 use sha2::{Digest, Sha256};
 
-use super::{Module, ModuleStore, ModuleStoreError, ModuleType};
+use super::{Module, ModuleStore, ModuleStoreError, ModuleType, ModuleVersionInfo};
 
 pub struct SqliteModuleStore {
     conn: Connection,
@@ -85,7 +85,7 @@ impl ModuleStore for SqliteModuleStore {
         module_type: ModuleType,
         name: &str,
         version: Version,
-    ) -> Result<Option<Vec<u8>>, ModuleStoreError> {
+    ) -> Result<Option<(Vec<u8>, String)>, ModuleStoreError> {
         let Some((wasm_bytes, sha256)) = self.conn.query_row(
             r#"
             SELECT wasm_bytes, sha256 FROM modules WHERE module_type = ?1 AND name = ?2 AND version = ?3
@@ -107,7 +107,7 @@ impl ModuleStore for SqliteModuleStore {
             )));
         }
 
-        Ok(Some(wasm_bytes))
+        Ok(Some((wasm_bytes, sha256)))
     }
 
     fn activate_module(
@@ -199,11 +199,13 @@ impl ModuleStore for SqliteModuleStore {
             let version = version_str.parse::<Version>().map_err(|err| {
                 rusqlite::Error::FromSqlConversionFailure(2, Type::Text, Box::new(err))
             })?;
-            let wasm_bytes: Vec<u8> = row.get(3)?;
+            let sha256: String = row.get(3)?;
+            let wasm_bytes: Vec<u8> = row.get(4)?;
             Ok(Module {
                 module_type,
                 name,
                 version,
+                sha256,
                 wasm_bytes,
             })
         };
@@ -213,7 +215,7 @@ impl ModuleStore for SqliteModuleStore {
                 .conn
                 .prepare(
                     r#"
-                    SELECT a.module_type, a.name, m.version, m.wasm_bytes
+                    SELECT a.module_type, a.name, m.version, m.sha256, m.wasm_bytes
                     FROM active_modules a
                     JOIN modules m ON a.module_id = m.id
                     WHERE a.module_type = ?1
@@ -225,7 +227,7 @@ impl ModuleStore for SqliteModuleStore {
                 .conn
                 .prepare(
                     r#"
-                    SELECT a.module_type, a.name, m.version, m.wasm_bytes
+                    SELECT a.module_type, a.name, m.version, m.sha256, m.wasm_bytes
                     FROM active_modules a
                     JOIN modules m ON a.module_id = m.id
                     "#,
@@ -240,18 +242,35 @@ impl ModuleStore for SqliteModuleStore {
         &self,
         module_type: ModuleType,
         name: &str,
-    ) -> Result<Vec<Version>, ModuleStoreError> {
+    ) -> Result<Vec<ModuleVersionInfo>, ModuleStoreError> {
         let mut stmt = self.conn.prepare(
-            "SELECT version FROM modules WHERE module_type = ?1 AND name = ?2 ORDER BY id ASC",
+            "SELECT version, sha256 FROM modules WHERE module_type = ?1 AND name = ?2 ORDER BY id ASC",
         )?;
 
         let rows = stmt
             .query_map(params![module_type, name], |row| {
                 let version_str: String = row.get(0)?;
-                version_str.parse::<Version>().map_err(|err| {
-                    rusqlite::Error::FromSqlConversionFailure(2, Type::Text, Box::new(err))
-                })
+                let version = version_str.parse::<Version>().map_err(|err| {
+                    rusqlite::Error::FromSqlConversionFailure(0, Type::Text, Box::new(err))
+                })?;
+                let sha256: String = row.get(1)?;
+                Ok(ModuleVersionInfo { version, sha256 })
             })?
+            .collect::<Result<Vec<_>, _>>();
+
+        rows.map_err(ModuleStoreError::Database)
+    }
+
+    fn get_all_module_names(
+        &self,
+        module_type: ModuleType,
+    ) -> Result<Vec<String>, ModuleStoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT DISTINCT name FROM modules WHERE module_type = ?1 ORDER BY name ASC",
+        )?;
+
+        let rows = stmt
+            .query_map(params![module_type], |row| row.get(0))?
             .collect::<Result<Vec<_>, _>>();
 
         rows.map_err(ModuleStoreError::Database)
@@ -263,7 +282,7 @@ impl ToSql for ModuleType {
         Ok(ToSqlOutput::Borrowed(ValueRef::Text(match self {
             ModuleType::Command => b"command",
             ModuleType::Projection => b"projection",
-            ModuleType::SideEffect => b"side_effect",
+            ModuleType::Effect => b"effect",
         })))
     }
 }
@@ -273,7 +292,7 @@ impl FromSql for ModuleType {
         match value.as_str()? {
             "command" => Ok(ModuleType::Command),
             "projection" => Ok(ModuleType::Projection),
-            "side_effect" => Ok(ModuleType::SideEffect),
+            "effect" => Ok(ModuleType::Effect),
             _ => Err(FromSqlError::InvalidType),
         }
     }
@@ -296,10 +315,11 @@ mod save_load_tests {
                 &[1, 2, 69, 255],
             )
             .unwrap();
-        let bytes = store
+        let (bytes, _sha256) = store
             .load_module(ModuleType::Command, "hello", "0.1.2".parse().unwrap())
+            .unwrap()
             .unwrap();
-        assert_eq!(bytes, Some(vec![1, 2, 69, 255]));
+        assert_eq!(bytes, vec![1, 2, 69, 255]);
     }
 
     #[test]
@@ -685,8 +705,8 @@ mod all_active_tests {
             .unwrap();
         store
             .save_module(
-                ModuleType::SideEffect,
-                "side1",
+                ModuleType::Effect,
+                "effect1",
                 "0.1.0".parse().unwrap(),
                 &[10, 11, 12],
             )
@@ -702,7 +722,7 @@ mod all_active_tests {
             .activate_module(ModuleType::Projection, "proj1", "0.1.0".parse().unwrap())
             .unwrap();
         store
-            .activate_module(ModuleType::SideEffect, "side1", "0.1.0".parse().unwrap())
+            .activate_module(ModuleType::Effect, "effect1", "0.1.0".parse().unwrap())
             .unwrap();
 
         // Filter by Command type
@@ -724,13 +744,13 @@ mod all_active_tests {
         assert_eq!(projections[0].module_type, ModuleType::Projection);
         assert_eq!(projections[0].name, "proj1");
 
-        // Filter by SideEffect type
-        let side_effects = store
-            .get_all_active_modules(Some(ModuleType::SideEffect))
+        // Filter by Effect type
+        let effects = store
+            .get_all_active_modules(Some(ModuleType::Effect))
             .unwrap();
-        assert_eq!(side_effects.len(), 1);
-        assert_eq!(side_effects[0].module_type, ModuleType::SideEffect);
-        assert_eq!(side_effects[0].name, "side1");
+        assert_eq!(effects.len(), 1);
+        assert_eq!(effects[0].module_type, ModuleType::Effect);
+        assert_eq!(effects[0].name, "effect1");
     }
 
     #[test]
@@ -758,11 +778,11 @@ mod all_active_tests {
             .unwrap();
         assert!(projections.is_empty());
 
-        // Filter by SideEffect type (should return empty)
-        let side_effects = store
-            .get_all_active_modules(Some(ModuleType::SideEffect))
+        // Filter by Effect type (should return empty)
+        let effects = store
+            .get_all_active_modules(Some(ModuleType::Effect))
             .unwrap();
-        assert!(side_effects.is_empty());
+        assert!(effects.is_empty());
     }
 }
 
@@ -790,8 +810,8 @@ mod module_versions_tests {
             .get_module_versions(ModuleType::Command, "hello")
             .unwrap();
         assert_eq!(versions.len(), 3);
-        assert_eq!(versions[0].to_string(), "0.1.0");
-        assert_eq!(versions[1].to_string(), "0.2.0");
-        assert_eq!(versions[2].to_string(), "0.3.0");
+        assert_eq!(versions[0].version.to_string(), "0.1.0");
+        assert_eq!(versions[1].version.to_string(), "0.2.0");
+        assert_eq!(versions[2].version.to_string(), "0.3.0");
     }
 }

@@ -7,7 +7,7 @@ use semver::Version;
 
 use crate::events::ModuleEvent;
 
-use super::{Module, ModuleStore, ModuleStoreError, ModuleType, sqlite::SqliteModuleStore};
+use super::{Module, ModuleStore, ModuleStoreError, ModuleType, ModuleVersionInfo, sqlite::SqliteModuleStore};
 
 pub struct ModuleStoreActor {
     store: SqliteModuleStore,
@@ -60,7 +60,7 @@ impl ModuleStoreActor {
         module_type: ModuleType,
         name: Arc<str>,
         version: Version,
-    ) -> Result<Option<Vec<u8>>, ModuleStoreError> {
+    ) -> Result<Option<(Vec<u8>, String)>, ModuleStoreError> {
         self.store.load_module(module_type, &name, version)
     }
 
@@ -109,8 +109,16 @@ impl ModuleStoreActor {
         &self,
         module_type: ModuleType,
         name: Arc<str>,
-    ) -> Result<Vec<Version>, ModuleStoreError> {
+    ) -> Result<Vec<ModuleVersionInfo>, ModuleStoreError> {
         self.store.get_module_versions(module_type, &name)
+    }
+
+    #[message]
+    pub fn get_all_module_names(
+        &self,
+        module_type: ModuleType,
+    ) -> Result<Vec<String>, ModuleStoreError> {
+        self.store.get_all_module_names(module_type)
     }
 }
 

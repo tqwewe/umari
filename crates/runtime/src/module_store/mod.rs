@@ -14,7 +14,14 @@ pub struct Module {
     pub module_type: ModuleType,
     pub name: String,
     pub version: Version,
+    pub sha256: String,
     pub wasm_bytes: Vec<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ModuleVersionInfo {
+    pub version: Version,
+    pub sha256: String,
 }
 
 #[derive(Clone, Copy, Debug, Display, Hash, PartialEq, Eq, Serialize, Deserialize)]
@@ -22,7 +29,7 @@ pub struct Module {
 pub enum ModuleType {
     Command,
     Projection,
-    SideEffect,
+    Effect,
 }
 
 #[derive(Debug, Error)]
@@ -70,7 +77,7 @@ pub trait ModuleStore {
         module_type: ModuleType,
         name: &str,
         version: Version,
-    ) -> Result<Option<Vec<u8>>, ModuleStoreError>;
+    ) -> Result<Option<(Vec<u8>, String)>, ModuleStoreError>;
 
     /// Activates a specific version of a module.
     ///
@@ -109,5 +116,11 @@ pub trait ModuleStore {
         &self,
         module_type: ModuleType,
         name: &str,
-    ) -> Result<Vec<Version>, ModuleStoreError>;
+    ) -> Result<Vec<ModuleVersionInfo>, ModuleStoreError>;
+
+    /// Gets all distinct module names for a given type.
+    fn get_all_module_names(
+        &self,
+        module_type: ModuleType,
+    ) -> Result<Vec<String>, ModuleStoreError>;
 }

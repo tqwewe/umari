@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use axum::{
     Json,
@@ -7,8 +7,11 @@ use axum::{
 use serde::Deserialize;
 use umari_runtime::module_store::{
     ModuleType,
-    actor::{GetAllActiveModules, GetActiveModule, GetModuleVersions, LoadModule},
+    actor::{
+        GetActiveModule, GetAllActiveModules, GetAllModuleNames, GetModuleVersions, LoadModule,
+    },
 };
+use umari_types::{ErrorCode, ErrorResponse};
 
 use crate::{AppState, error::Error};
 
@@ -33,7 +36,7 @@ pub struct ListQuery {
     ),
     responses(
         (status = 200, description = "List of command modules", body = ListModulesResponse),
-        (status = 500, description = "Internal server error", body = crate::error::ErrorResponse)
+        (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     tag = "commands"
 )]
@@ -53,7 +56,7 @@ pub async fn list_commands(
     ),
     responses(
         (status = 200, description = "List of projection modules", body = ListModulesResponse),
-        (status = 500, description = "Internal server error", body = crate::error::ErrorResponse)
+        (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     tag = "projections"
 )]
@@ -78,27 +81,25 @@ async fn list_modules(
         .await?;
 
     // Build a map of module names to active versions
-    let mut active_versions = std::collections::HashMap::new();
-    let mut all_module_names = std::collections::HashSet::new();
-
+    let mut active_versions = HashMap::new();
     for module in &active_modules {
         active_versions.insert(module.name.clone(), module.version.to_string());
-        all_module_names.insert(module.name.clone());
     }
 
-    // If we need all modules (not just active), we need to get all module names
-    // For now, we only have active modules. To get all modules, we'd need to query
-    // the database differently. Let's implement active_only filtering later.
+    // Determine which module names to include
+    let mut module_names: Vec<String> = if query.active_only {
+        active_versions.keys().cloned().collect()
+    } else {
+        state
+            .module_store_ref
+            .ask(GetAllModuleNames { module_type })
+            .await?
+    };
 
     // Filter by name if specified
-    let module_names: Vec<String> = if let Some(name_filter) = query.name {
-        all_module_names
-            .into_iter()
-            .filter(|n| n == &name_filter)
-            .collect()
-    } else {
-        all_module_names.into_iter().collect()
-    };
+    if let Some(name_filter) = query.name {
+        module_names.retain(|n| n == &name_filter);
+    }
 
     let mut modules = Vec::new();
 
@@ -120,11 +121,11 @@ async fn list_modules(
         let version_infos: Vec<VersionInfo> = versions
             .iter()
             .map(|v| {
-                let version_str = v.to_string();
+                let version_str = v.version.to_string();
                 VersionInfo {
                     active: active_version.as_ref() == Some(&version_str),
                     version: version_str,
-                    sha256: String::new(), // TODO: Would need to load module to get sha256
+                    sha256: v.sha256.clone(),
                 }
             })
             .collect();
@@ -147,8 +148,8 @@ async fn list_modules(
     ),
     responses(
         (status = 200, description = "Command module details", body = ModuleDetailsResponse),
-        (status = 404, description = "Module not found", body = crate::error::ErrorResponse),
-        (status = 500, description = "Internal server error", body = crate::error::ErrorResponse)
+        (status = 404, description = "Module not found", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     tag = "commands"
 )]
@@ -167,8 +168,8 @@ pub async fn get_command_details(
     ),
     responses(
         (status = 200, description = "Projection module details", body = ModuleDetailsResponse),
-        (status = 404, description = "Module not found", body = crate::error::ErrorResponse),
-        (status = 500, description = "Internal server error", body = crate::error::ErrorResponse)
+        (status = 404, description = "Module not found", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     tag = "projections"
 )]
@@ -210,11 +211,11 @@ async fn get_module_details(
     let version_infos: Vec<VersionInfo> = versions
         .iter()
         .map(|v| {
-            let version_str = v.to_string();
+            let version_str = v.version.to_string();
             VersionInfo {
                 active: active_version.as_ref() == Some(&version_str),
                 version: version_str,
-                sha256: String::new(), // TODO: Would need to load module to get sha256
+                sha256: v.sha256.clone(),
             }
         })
         .collect();
@@ -236,9 +237,9 @@ async fn get_module_details(
     ),
     responses(
         (status = 200, description = "Command version details", body = VersionDetailsResponse),
-        (status = 400, description = "Invalid version format", body = crate::error::ErrorResponse),
-        (status = 404, description = "Version not found", body = crate::error::ErrorResponse),
-        (status = 500, description = "Internal server error", body = crate::error::ErrorResponse)
+        (status = 400, description = "Invalid version format", body = ErrorResponse),
+        (status = 404, description = "Version not found", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     tag = "commands"
 )]
@@ -258,9 +259,9 @@ pub async fn get_command_version_details(
     ),
     responses(
         (status = 200, description = "Projection version details", body = VersionDetailsResponse),
-        (status = 400, description = "Invalid version format", body = crate::error::ErrorResponse),
-        (status = 404, description = "Version not found", body = crate::error::ErrorResponse),
-        (status = 500, description = "Internal server error", body = crate::error::ErrorResponse)
+        (status = 400, description = "Invalid version format", body = ErrorResponse),
+        (status = 404, description = "Version not found", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     tag = "projections"
 )]
@@ -281,25 +282,25 @@ async fn get_version_details(
 
     let version = version_str
         .parse::<Version>()
-        .map_err(|_| crate::error::Error::new(crate::error::ErrorCode::InvalidInput)
-            .with_message("invalid semver version"))?;
+        .map_err(|_| Error::new(ErrorCode::InvalidInput).with_message("invalid semver version"))?;
 
     let name_arc: Arc<str> = name.clone().into();
 
     // Check if module exists
-    let module_bytes = state
+    let Some((_wasm_bytes, sha256)) = state
         .module_store_ref
         .ask(LoadModule {
             module_type,
             name: name_arc.clone(),
             version: version.clone(),
         })
-        .await?;
-
-    if module_bytes.is_none() {
-        return Err(crate::error::Error::new(crate::error::ErrorCode::NotFound)
-            .with_message(format!("module not found: {}/{}/{}", module_type, name, version)));
-    }
+        .await?
+    else {
+        return Err(Error::new(ErrorCode::NotFound).with_message(format!(
+            "module not found: {}/{}/{}",
+            module_type, name, version
+        )));
+    };
 
     // Check if this version is active
     let active_module = state
@@ -320,7 +321,7 @@ async fn get_version_details(
         name,
         version: version.to_string(),
         active: is_active,
-        sha256: String::new(), // TODO: Would need to compute sha256 from loaded bytes
+        sha256,
     }))
 }
 
@@ -328,11 +329,11 @@ async fn get_version_details(
     get,
     path = "/modules/active",
     params(
-        ("module_type" = Option<String>, Query, description = "Filter by module type (command, projection, side_effect)")
+        ("module_type" = Option<String>, Query, description = "Filter by module type (command, projection, effect)")
     ),
     responses(
         (status = 200, description = "List of active modules", body = ActiveModulesResponse),
-        (status = 500, description = "Internal server error", body = crate::error::ErrorResponse)
+        (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     tag = "modules"
 )]
@@ -343,15 +344,13 @@ pub async fn list_active_modules(
     let module_type = query.module_type.map(|s| match s.as_str() {
         "command" => ModuleType::Command,
         "projection" => ModuleType::Projection,
-        "side_effect" => ModuleType::SideEffect,
+        "effect" => ModuleType::Effect,
         _ => ModuleType::Command, // Default, though validation should catch this
     });
 
     let modules = state
         .module_store_ref
-        .ask(GetAllActiveModules {
-            module_type,
-        })
+        .ask(GetAllActiveModules { module_type })
         .await?;
 
     let module_infos = modules

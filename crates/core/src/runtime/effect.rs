@@ -1,50 +1,54 @@
-use std::{cell::RefCell, marker::PhantomData};
+use std::{cell::RefCell, fmt, marker::PhantomData};
 
-pub use self::exports::umari::projection::projection_runner::{Error, Guest, GuestProjectionState};
+pub use self::exports::umari::effect::effect_runner::{Error, Guest, GuestEffectState};
 use crate::{
+    effect::Effect,
     event::EventSet,
-    projection::Projection,
     runtime::common::{DcbQuery, DeserializeEventError, DeserializeEventErrorCode, StoredEvent},
 };
 
 wit_bindgen::generate!({
-    world: "projection",
-    path: "../../wit/projection",
+    world: "effect",
+    path: "../../wit/effect",
     additional_derives: [PartialEq, Clone, serde::Serialize, serde::Deserialize],
     pub_export_macro: true,
     with: {
         "umari:common/types@0.1.0": crate::runtime::common,
-        "umari:sqlite/types@0.1.0": crate::runtime::sqlite,
-        "umari:sqlite/connection@0.1.0": crate::runtime::sqlite,
-        "umari:sqlite/statement@0.1.0": crate::runtime::sqlite,
     },
 });
 
 #[macro_export]
-macro_rules! export_projection {
+macro_rules! export_effect {
     ($ty:path) => {
-        $crate::runtime::projection::export!($crate::runtime::projection::ProjectionExport<$ty>, with_types_in $crate::runtime::projection);
+        $crate::runtime::effect::export!($crate::runtime::effect::EffectExport<$ty>, with_types_in $crate::runtime::effect);
     };
 }
 
-pub struct ProjectionExport<T>(PhantomData<T>);
+pub struct EffectExport<T>(PhantomData<T>);
 
-pub struct ProjectionState<T> {
+pub struct EffectState<T> {
     inner: RefCell<T>,
 }
 
-impl<T: Projection + 'static> Guest for ProjectionExport<T> {
-    type ProjectionState = ProjectionState<T>;
+impl<T> Guest for EffectExport<T>
+where
+    T: Effect + 'static,
+    T::Error: fmt::Display,
+{
+    type EffectState = EffectState<T>;
 }
 
-impl<T: Projection + 'static> GuestProjectionState for ProjectionState<T> {
+impl<T> GuestEffectState for EffectState<T>
+where
+    T: Effect + 'static,
+    T::Error: fmt::Display,
+{
     fn new() -> Result<Self, Error>
     where
         Self: Sized,
     {
-        let state = T::init()?;
-        Ok(ProjectionState {
-            inner: RefCell::new(state),
+        Ok(EffectState {
+            inner: RefCell::new(T::default()),
         })
     }
 
@@ -79,18 +83,12 @@ impl<T: Projection + 'static> GuestProjectionState for ProjectionState<T> {
             data,
         };
 
-        self.inner.borrow_mut().handle(event)?;
+        self.inner
+            .borrow_mut()
+            .handle(event)
+            .map_err(|err| Error::Other(err.to_string()))?;
 
         Ok(())
-    }
-}
-
-impl From<crate::error::ProjectionError> for Error {
-    fn from(err: crate::error::ProjectionError) -> Self {
-        match err {
-            crate::error::ProjectionError::Sqlite(err) => Error::Sqlite(err),
-            crate::error::ProjectionError::Other { message } => Error::Other(message),
-        }
     }
 }
 

@@ -5,7 +5,7 @@ use crate::{
     event::{EventSet, StoredEvent},
 };
 
-pub trait EventHandler: Sized {
+pub trait Projection: Sized {
     type Query: EventSet;
 
     /// Idempotently initialise the database.

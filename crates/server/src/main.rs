@@ -1,4 +1,4 @@
-use std::{process, sync::Arc, time::Duration};
+use std::{process, time::Duration};
 
 use clap::Parser;
 use kameo::{actor::ActorRef, prelude::Spawn};
@@ -8,10 +8,7 @@ use tracing_subscriber::EnvFilter;
 use umari_api::{AppState, start_server};
 use umari_runtime::{
     command::actor::CommandActor,
-    module_store::{
-        ModuleType,
-        actor::{ActivateModule, ModuleStoreActor, SaveModule},
-    },
+    module_store::actor::ModuleStoreActor,
     supervisor::{RuntimeConfig, RuntimeSupervisor},
 };
 
@@ -20,7 +17,7 @@ use umari_runtime::{
 #[command(about = "Rivo runtime and API server", long_about = None)]
 struct Cli {
     /// Path to the runtime database file
-    #[arg(short, long, default_value = "runtime.sqlite")]
+    #[arg(short, long, default_value = "umari.sqlite")]
     store_path: String,
 
     /// Event store URL

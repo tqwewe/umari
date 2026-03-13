@@ -565,7 +565,7 @@ Get a list of all currently active modules across all types.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `module_type` | string | No | Filter by module type: "command", "projection", or "side_effect" |
+| `module_type` | string | No | Filter by module type: "command", "projection", or "effect" |
 
 **Response (200 OK):**
 

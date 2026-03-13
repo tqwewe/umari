@@ -35,7 +35,7 @@ enum Query {
     OpenedAccount(OpenedAccount),
 }
 
-impl EventHandler for AccountsProjection {
+impl Projection for AccountsProjection {
     type Query = Query;
 
     fn init() -> Result<Self, ProjectionError> {

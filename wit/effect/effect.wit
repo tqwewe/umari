@@ -1,0 +1,24 @@
+package umari:effect@0.1.0;
+
+interface effect-runner {
+    use umari:common/types@0.1.0.{dcb-query, deserialize-event-error, stored-event};
+
+    variant error {
+        deserialize-event(deserialize-event-error),
+        other(string),
+    }
+
+    resource effect-state {
+        constructor() -> result<effect-state, error>;
+
+        /// Query describing what events this effect should receive
+        query: func() -> dcb-query;
+
+        /// Handle a single event and perform external actions
+        handler: func(event: stored-event) -> result<_, error>;
+    }
+}
+
+world effect {
+    export effect-runner;
+}
