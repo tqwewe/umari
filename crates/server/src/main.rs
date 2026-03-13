@@ -46,8 +46,6 @@ async fn main() {
 
     let cli = Cli::parse();
 
-    info!("starting runtime");
-
     let runtime_ref = RuntimeSupervisor::spawn(RuntimeConfig {
         store_path: cli.store_path.into(),
         event_store_url: cli.event_store_url,

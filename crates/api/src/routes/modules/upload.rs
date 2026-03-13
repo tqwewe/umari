@@ -145,7 +145,7 @@ async fn upload_module(
     Ok((
         StatusCode::CREATED,
         Json(UploadResponse {
-            module_type,
+            module_type: module_type.to_string(),
             name,
             version: version.to_string(),
             sha256,

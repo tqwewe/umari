@@ -1,0 +1,11 @@
+[package]
+name = "umari-types"
+edition = "2024"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+utoipa = { workspace = true, optional = true }
+
+[features]
+openapi = ["utoipa"]

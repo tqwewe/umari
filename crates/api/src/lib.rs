@@ -17,9 +17,10 @@ use crate::routes::{
         activate_command, activate_projection, deactivate_command, deactivate_projection,
         get_command_details, get_command_version_details, get_projection_details,
         get_projection_version_details, list_active_modules, list_commands, list_projections,
-        types::*, upload_command, upload_projection,
+        upload_command, upload_projection,
     },
 };
+use umari_types::*;
 
 #[derive(OpenApi)]
 #[openapi(
@@ -52,13 +53,13 @@ use crate::routes::{
             DeactivateResponse,
             ActiveModulesResponse,
             ActiveModuleInfo,
-            routes::execute::ExecuteResponse,
+            umari_types::ExecuteResponse,
+            umari_types::EmittedEventInfo,
             umari_runtime::command::actor::CommandPayload,
-            umari_runtime::command::actor::EmittedEvent,
             umari_core::prelude::CommandContext,
-            error::ErrorResponse,
-            error::ErrorBody,
-            error::ErrorCode,
+            umari_types::ErrorResponse,
+            umari_types::ErrorBody,
+            umari_types::ErrorCode,
         )
     ),
     tags(

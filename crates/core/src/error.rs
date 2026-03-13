@@ -48,7 +48,7 @@ pub enum ErrorCode {
 
 impl CommandError {
     /// Create a rejection error for business rule violations.
-    pub fn rejected(message: impl Into<String>) -> Self {
+    pub fn reject(message: impl Into<String>) -> Self {
         Self {
             code: ErrorCode::Rejected,
             message: message.into(),

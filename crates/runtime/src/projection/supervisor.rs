@@ -48,16 +48,8 @@ impl Actor for ProjectionSupervisor {
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         let mut linker = Linker::new(&args.engine);
         wasmtime_wasi::p2::add_to_linker_async(&mut linker)?;
-        println!("adding common");
         wit::common::Common::add_to_linker::<_, HasSelf<_>>(&mut linker, |s| s)?;
-        println!("adding sqlite");
         wit::sqlite::Sqlite::add_to_linker::<_, HasSelf<_>>(&mut linker, |s| s)?;
-        // println!("adding projection");
-        // wit::projection::umari::projection::types::add_to_linker::<_, HasSelf<_>>(
-        //     &mut linker,
-        //     |s| s,
-        // )?;
-        // wit::projection::Projection::add_to_linker::<_, HasSelf<_>>(&mut linker, |s| s)?;
 
         let active_modules = args
             .module_store_ref

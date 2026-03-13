@@ -2,9 +2,8 @@ use axum::{
     Json,
     extract::{Path, State},
 };
-use umari_runtime::command::actor::{CommandPayload, EmittedEvent, Execute};
-use serde::Serialize;
-use utoipa::ToSchema;
+use umari_runtime::command::actor::{CommandPayload, Execute};
+use umari_types::{EmittedEventInfo, ExecuteResponse};
 
 use crate::{AppState, error::Error};
 
@@ -38,14 +37,9 @@ pub async fn execute(
 
     Ok(Json(ExecuteResponse {
         position: result.position,
-        events: result.events,
+        events: result.events.into_iter().map(|ev| EmittedEventInfo {
+            event_type: ev.event_type,
+            tags: ev.tags,
+        }).collect(),
     }))
-}
-
-#[derive(Serialize, ToSchema)]
-pub struct ExecuteResponse {
-    /// Event store position after command execution
-    position: Option<u64>,
-    /// Events emitted by the command
-    events: Vec<EmittedEvent>,
 }

@@ -5,6 +5,7 @@ edition = "2024"
 [dependencies]
 umari-core = { workspace = true, features = ["openapi"] }
 umari-runtime = { workspace = true, features = ["openapi"] }
+umari-types = { workspace = true, features = ["openapi"] }
 
 axum.workspace = true
 hex.workspace = true

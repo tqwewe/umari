@@ -6,23 +6,13 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use kameo::error::SendError;
-use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
+
+// Re-export error types from umari-types
+pub use umari_types::{ErrorBody, ErrorCode, ErrorResponse};
 
 pub struct Error {
     pub code: ErrorCode,
     pub message: Option<Cow<'static, str>>,
-}
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum ErrorCode {
-    InvalidInput,
-    Duplicate,
-    NotFound,
-    Database,
-    Integrity,
-    Internal,
 }
 
 impl Error {
@@ -37,18 +27,6 @@ impl Error {
         self.message = Some(message.into());
         self
     }
-}
-
-#[derive(Serialize, ToSchema)]
-pub struct ErrorResponse {
-    pub error: ErrorBody,
-}
-
-#[derive(Serialize, ToSchema)]
-pub struct ErrorBody {
-    pub code: ErrorCode,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub message: Option<String>,
 }
 
 impl IntoResponse for Error {

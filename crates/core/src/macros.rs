@@ -36,3 +36,10 @@ macro_rules! emit {
             $(.event($event))+
     };
 }
+
+#[macro_export]
+macro_rules! reject {
+    ($($t:tt)*) => {
+        $crate::error::CommandError::reject(format!($($t)*))
+    };
+}

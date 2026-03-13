@@ -220,7 +220,7 @@ async fn get_module_details(
         .collect();
 
     Ok(Json(ModuleDetailsResponse {
-        module_type,
+        module_type: module_type.to_string(),
         name,
         active_version,
         versions: version_infos,
@@ -316,7 +316,7 @@ async fn get_version_details(
         .unwrap_or(false);
 
     Ok(Json(VersionDetailsResponse {
-        module_type,
+        module_type: module_type.to_string(),
         name,
         version: version.to_string(),
         active: is_active,
@@ -357,7 +357,7 @@ pub async fn list_active_modules(
     let module_infos = modules
         .into_iter()
         .map(|m| ActiveModuleInfo {
-            module_type: m.module_type,
+            module_type: m.module_type.to_string(),
             name: m.name,
             version: m.version.to_string(),
         })

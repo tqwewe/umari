@@ -2,10 +2,12 @@
 resolver = "3"
 members = [
   "crates/api",
+  "crates/cli",
   "crates/core",
   "crates/macros",
   "crates/runtime",
   "crates/server",
+  "crates/types",
   "example/events",
   # "example/commands/open_account",
   # "example/projections/accounts",
@@ -16,6 +18,7 @@ umari-api = { path = "crates/api" }
 umari-core = { path = "crates/core" }
 umari-macros = { path = "crates/macros" }
 umari-runtime = { path = "crates/runtime" }
+umari-types = { path = "crates/types" }
 
 # Example
 events = { path = "example/events" }
@@ -23,7 +26,7 @@ wit-bindgen = "0.53"
 
 axum = { version = "0.8", features = ["multipart"] }
 chrono = { version = "0.4", features = ["serde"] }
-clap = { version = "4.5", features = ["derive"] }
+clap = { version = "4.5", features = ["derive", "env"] }
 futures-util = "0.3"
 hex = "0.4"
 indexmap = { version = "2.13", features = ["serde"] }
@@ -51,3 +54,10 @@ utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
 uuid = { version = "1.22", features = ["serde", "v4"] }
 wasmtime = "42.0"
 wasmtime-wasi = "42.0"
+
+# CLI dependencies
+anyhow = "1.0"
+comfy-table = "7.1"
+colored = "2.1"
+indicatif = "0.17"
+ureq = "2.10"

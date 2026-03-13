@@ -94,7 +94,7 @@ async fn activate_module(
         .await?;
 
     Ok(Json(ActivateResponse {
-        module_type,
+        module_type: module_type.to_string(),
         name,
         version: version.to_string(),
         activated: true,
@@ -169,7 +169,7 @@ async fn deactivate_module(
         .await?;
 
     Ok(Json(DeactivateResponse {
-        module_type,
+        module_type: module_type.to_string(),
         name,
         deactivated: true,
         previous_version,

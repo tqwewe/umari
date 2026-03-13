@@ -93,13 +93,12 @@ pub mod sqlite;
 pub mod prelude {
     pub use crate::command::*;
     pub use crate::domain_id::*;
-    pub use crate::emit;
     pub use crate::emit::*;
     pub use crate::error::*;
     pub use crate::event::*;
     pub use crate::projection::*;
     pub use crate::sqlite::*;
-    pub use crate::{export_command, export_projection};
+    pub use crate::{emit, export_command, export_projection, reject};
     pub use umari_macros::{CommandInput, Event, EventSet};
 }
 
