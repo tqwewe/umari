@@ -1,6 +1,9 @@
 /target
 /example/target
 
+# Wit
+/wit/**/deps/
+
 # Devenv
 .devenv*
 devenv.local.nix

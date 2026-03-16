@@ -39,7 +39,7 @@ macro_rules! emit {
 
 #[macro_export]
 macro_rules! reject {
-    ($($t:tt)*) => {
-        $crate::error::CommandError::reject(format!($($t)*))
-    };
+    ($($t:tt)*) => {{
+        return Err($crate::error::CommandError::reject(format!($($t)*)))
+    }};
 }

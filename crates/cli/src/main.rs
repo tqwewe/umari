@@ -13,7 +13,13 @@ use client::ApiClient;
 #[command(name = "umari", version, about = "umari event-sourcing CLI")]
 struct Cli {
     /// server URL (overrides UMARI_URL env var)
-    #[arg(long, short, global = true, env, default_value = "http://localhost:3000")]
+    #[arg(
+        long,
+        short,
+        global = true,
+        env,
+        default_value = "http://localhost:3000"
+    )]
     url: String,
 
     #[command(subcommand)]
@@ -23,14 +29,15 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// manage command modules
+    #[allow(clippy::enum_variant_names)]
     Commands {
         #[command(subcommand)]
         command: CommandsSubcommand,
     },
-    /// manage projection modules
-    Projections {
+    /// manage projector modules
+    Projectors {
         #[command(subcommand)]
-        command: ProjectionsSubcommand,
+        command: ProjectorsSubcommand,
     },
     /// view active modules
     Modules {
@@ -92,8 +99,8 @@ enum CommandsSubcommand {
 }
 
 #[derive(Subcommand)]
-enum ProjectionsSubcommand {
-    /// upload a projection module
+enum ProjectorsSubcommand {
+    /// upload a projector module
     Upload {
         /// module name
         name: String,
@@ -105,7 +112,7 @@ enum ProjectionsSubcommand {
         #[arg(long)]
         activate: bool,
     },
-    /// list projection modules
+    /// list projector modules
     List {
         /// show only active modules
         #[arg(long)]
@@ -114,21 +121,21 @@ enum ProjectionsSubcommand {
         #[arg(long)]
         name: Option<String>,
     },
-    /// show projection module details
+    /// show projector module details
     Show {
         /// module name
         name: String,
         /// specific version (optional)
         version: Option<String>,
     },
-    /// activate a projection version
+    /// activate a projector version
     Activate {
         /// module name
         name: String,
         /// version to activate
         version: String,
     },
-    /// deactivate a projection module
+    /// deactivate a projector module
     Deactivate {
         /// module name
         name: String,
@@ -151,9 +158,12 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::Commands { command } => match command {
-            CommandsSubcommand::Upload { name, version, file, activate } => {
-                commands::commands::upload(&client, name, version, file, activate)
-            }
+            CommandsSubcommand::Upload {
+                name,
+                version,
+                file,
+                activate,
+            } => commands::commands::upload(&client, name, version, file, activate),
             CommandsSubcommand::List { active_only, name } => {
                 commands::commands::list(&client, active_only, name)
             }
@@ -167,30 +177,29 @@ fn main() -> Result<()> {
                 commands::commands::deactivate(&client, name)
             }
         },
-        Commands::Projections { command } => match command {
-            ProjectionsSubcommand::Upload { name, version, file, activate } => {
-                commands::projections::upload(&client, name, version, file, activate)
+        Commands::Projectors { command } => match command {
+            ProjectorsSubcommand::Upload {
+                name,
+                version,
+                file,
+                activate,
+            } => commands::projectors::upload(&client, name, version, file, activate),
+            ProjectorsSubcommand::List { active_only, name } => {
+                commands::projectors::list(&client, active_only, name)
             }
-            ProjectionsSubcommand::List { active_only, name } => {
-                commands::projections::list(&client, active_only, name)
+            ProjectorsSubcommand::Show { name, version } => {
+                commands::projectors::show(&client, name, version)
             }
-            ProjectionsSubcommand::Show { name, version } => {
-                commands::projections::show(&client, name, version)
+            ProjectorsSubcommand::Activate { name, version } => {
+                commands::projectors::activate(&client, name, version)
             }
-            ProjectionsSubcommand::Activate { name, version } => {
-                commands::projections::activate(&client, name, version)
-            }
-            ProjectionsSubcommand::Deactivate { name } => {
-                commands::projections::deactivate(&client, name)
+            ProjectorsSubcommand::Deactivate { name } => {
+                commands::projectors::deactivate(&client, name)
             }
         },
         Commands::Modules { command } => match command {
-            ModulesSubcommand::Active { r#type } => {
-                commands::modules::active(&client, r#type)
-            }
+            ModulesSubcommand::Active { r#type } => commands::modules::active(&client, r#type),
         },
-        Commands::Execute { name, input } => {
-            commands::execute::execute(&client, name, input)
-        }
+        Commands::Execute { name, input } => commands::execute::execute(&client, name, input),
     }
 }

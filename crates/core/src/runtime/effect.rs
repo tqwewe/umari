@@ -10,10 +10,18 @@ use crate::{
 wit_bindgen::generate!({
     world: "effect",
     path: "../../wit/effect",
-    additional_derives: [PartialEq, Clone, serde::Serialize, serde::Deserialize],
     pub_export_macro: true,
     with: {
         "umari:common/types@0.1.0": crate::runtime::common,
+        "umari:sqlite/types@0.1.0": crate::runtime::sqlite,
+        "umari:sqlite/connection@0.1.0": crate::runtime::sqlite,
+        "umari:sqlite/statement@0.1.0": crate::runtime::sqlite,
+        "wasi:clocks/monotonic-clock@0.2.8": wasip2::clocks::monotonic_clock,
+        "wasi:io/error@0.2.8": wasip2::io,
+        "wasi:io/poll@0.2.8": wasip2::io::poll,
+        "wasi:io/streams@0.2.8": wasip2::io::streams,
+        "wasi:http/types@0.2.8": wasip2::http::types,
+        "wasi:http/outgoing-handler@0.2.8": wasip2::http::outgoing_handler,
     },
 });
 
@@ -56,31 +64,17 @@ where
         self.inner.borrow().query().into()
     }
 
-    fn handler(&self, stored_event: StoredEvent) -> Result<(), Error> {
-        let event: crate::event::StoredEvent<serde_json::Value> = stored_event.try_into()?;
-
-        let data = match T::Query::from_event(&event.event_type, event.data) {
-            Some(Ok(event)) => event,
-            Some(Err(err)) => {
-                return Err(DeserializeEventError {
-                    code: DeserializeEventErrorCode::InvalidData,
-                    message: Some(err.to_string()),
-                }
-                .into());
-            }
-            None => return Ok(()), // Event type not in query set, skip
+    fn partition_key(&self, stored_event: StoredEvent) -> Result<Option<String>, Error> {
+        let Some(event) = transform_stored_event::<T>(stored_event)? else {
+            return Ok(None);
         };
 
-        let event = crate::event::StoredEvent {
-            id: event.id,
-            position: event.position,
-            event_type: event.event_type,
-            tags: event.tags,
-            timestamp: event.timestamp,
-            correlation_id: event.correlation_id,
-            causation_id: event.causation_id,
-            triggered_by: event.triggered_by,
-            data,
+        Ok(self.inner.borrow().partition_key(event))
+    }
+
+    fn handle(&self, stored_event: StoredEvent) -> Result<(), Error> {
+        let Some(event) = transform_stored_event::<T>(stored_event)? else {
+            return Ok(());
         };
 
         self.inner
@@ -90,6 +84,36 @@ where
 
         Ok(())
     }
+}
+
+fn transform_stored_event<T: Effect>(
+    stored_event: StoredEvent,
+) -> Result<Option<crate::event::StoredEvent<T::Query>>, Error> {
+    let event: crate::event::StoredEvent<serde_json::Value> = stored_event.try_into()?;
+
+    let data = match T::Query::from_event(&event.event_type, event.data) {
+        Some(Ok(event)) => event,
+        Some(Err(err)) => {
+            return Err(DeserializeEventError {
+                code: DeserializeEventErrorCode::InvalidData,
+                message: Some(err.to_string()),
+            }
+            .into());
+        }
+        None => return Ok(None), // Event type not in query set, skip
+    };
+
+    Ok(Some(crate::event::StoredEvent {
+        id: event.id,
+        position: event.position,
+        event_type: event.event_type,
+        tags: event.tags,
+        timestamp: event.timestamp,
+        correlation_id: event.correlation_id,
+        causation_id: event.causation_id,
+        triggered_by: event.triggered_by,
+        data,
+    }))
 }
 
 impl From<DeserializeEventError> for Error {

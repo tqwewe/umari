@@ -1,0 +1,17 @@
+[package]
+name = "umari-ui"
+edition = "2024"
+
+[dependencies]
+umari-runtime = { workspace = true }
+umari-types = { workspace = true }
+axum.workspace = true
+hex.workspace = true
+kameo.workspace = true
+maud = { workspace = true, features = ["axum"] }
+semver.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tokio.workspace = true
+tracing.workspace = true

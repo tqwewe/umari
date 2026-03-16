@@ -8,6 +8,7 @@ use axum::{
 use kameo::actor::ActorRef;
 use tokio::{io, net::ToSocketAddrs};
 use umari_runtime::{command::actor::CommandActor, module_store::actor::ModuleStoreActor};
+use umari_ui::{UiState, ui_router};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
@@ -90,6 +91,12 @@ pub async fn start_server(addr: impl ToSocketAddrs, state: AppState) -> io::Resu
     let swagger_router =
         SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi());
 
+    // Create UI router
+    let ui_state = UiState {
+        module_store_ref: state.module_store_ref.clone(),
+        command_ref: state.command_ref.clone(),
+    };
+
     // Create API routes with state
     let api_router = Router::new()
         // Legacy command execution endpoint
@@ -124,7 +131,7 @@ pub async fn start_server(addr: impl ToSocketAddrs, state: AppState) -> io::Resu
         .with_state(state);
 
     // Merge routers
-    let app = api_router.merge(swagger_router);
+    let app = ui_router(ui_state).merge(api_router).merge(swagger_router);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await

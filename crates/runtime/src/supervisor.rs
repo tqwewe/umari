@@ -15,6 +15,7 @@ use wasmtime::Engine;
 use crate::{
     command::actor::{CommandActor, CommandActorArgs},
     module_store::actor::{ModuleStoreActor, StoreActorArgs},
+    policy::supervisor::{PolicySupervisor, PolicySupervisorArgs},
     projection::supervisor::{ProjectionSupervisor, ProjectionSupervisorArgs},
 };
 
@@ -95,7 +96,7 @@ impl Actor for RuntimeSupervisor {
         command_ref.register("command")?;
 
         module_pubsub
-            .ask(Subscribe(command_ref))
+            .ask(Subscribe(command_ref.clone()))
             .await
             .map_err(|_| RuntimeError::ModulePubSubSendError)?;
 
@@ -103,9 +104,9 @@ impl Actor for RuntimeSupervisor {
         let projection_ref = ProjectionSupervisor::supervise(
             &supervisor_ref,
             ProjectionSupervisorArgs {
-                engine,
-                event_store,
-                module_store_ref,
+                engine: engine.clone(),
+                event_store: event_store.clone(),
+                module_store_ref: module_store_ref.clone(),
             },
         )
         .restart_policy(RestartPolicy::Permanent)
@@ -114,8 +115,24 @@ impl Actor for RuntimeSupervisor {
         .await;
         projection_ref.register("projection")?;
 
+        // Setup policy system
+        let policy_ref = PolicySupervisor::supervise(
+            &supervisor_ref,
+            PolicySupervisorArgs {
+                engine: engine.clone(),
+                event_store: event_store.clone(),
+                module_store_ref: module_store_ref.clone(),
+                command_ref: command_ref.clone(),
+            },
+        )
+        .restart_policy(RestartPolicy::Permanent)
+        .restart_limit(5, Duration::from_secs(10))
+        .spawn()
+        .await;
+        policy_ref.register("policy")?;
+
         module_pubsub
-            .ask(Subscribe(projection_ref))
+            .ask(Subscribe(policy_ref))
             .await
             .map_err(|_| RuntimeError::ModulePubSubSendError)?;
 

@@ -142,11 +142,11 @@ curl -X POST http://localhost:3000/commands/create-account/execute \
 
 ## Module Management
 
-Manage WASM modules for commands and projections, including upload, versioning, activation, and querying.
+Manage WASM modules for commands and projectors, including upload, versioning, activation, and querying.
 
 ### Upload Module
 
-Upload a new version of a command or projection module.
+Upload a new version of a command or projector module.
 
 #### Upload Command Module
 
@@ -187,7 +187,7 @@ Upload a new version of a command or projection module.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `module_type` | string | Type of module ("Command" or "Projection") |
+| `module_type` | string | Type of module ("Command" or "Projector") |
 | `name` | string | Module name |
 | `version` | string | Module version |
 | `sha256` | string | SHA-256 hash of the WASM binary for integrity verification |
@@ -211,16 +211,16 @@ curl -X POST http://localhost:3000/commands/create-account/versions/1.1.0 \
   -F "wasm=@target/wasm32-wasip2/release/create_account.wasm"
 ```
 
-#### Upload Projection Module
+#### Upload Projector Module
 
-**Endpoint:** `POST /projections/{name}/versions/{version}`
+**Endpoint:** `POST /projectors/{name}/versions/{version}`
 
 Same parameters and response format as command upload.
 
 **Example:**
 
 ```bash
-curl -X POST "http://localhost:3000/projections/accounts/versions/2.0.0?activate=true" \
+curl -X POST "http://localhost:3000/projectors/accounts/versions/2.0.0?activate=true" \
   -F "wasm=@target/wasm32-wasip2/release/accounts.wasm"
 ```
 
@@ -288,16 +288,16 @@ curl http://localhost:3000/commands
 curl "http://localhost:3000/commands?name=create-account"
 ```
 
-#### List Projections
+#### List Projectors
 
-**Endpoint:** `GET /projections`
+**Endpoint:** `GET /projectors`
 
 Same parameters and response format as list commands.
 
 **Example:**
 
 ```bash
-curl http://localhost:3000/projections
+curl http://localhost:3000/projectors
 ```
 
 ---
@@ -348,16 +348,16 @@ Get detailed information about a specific module, including all versions.
 curl http://localhost:3000/commands/create-account
 ```
 
-#### Get Projection Details
+#### Get Projector Details
 
-**Endpoint:** `GET /projections/{name}`
+**Endpoint:** `GET /projectors/{name}`
 
 Same parameters and response format as get command details.
 
 **Example:**
 
 ```bash
-curl http://localhost:3000/projections/accounts
+curl http://localhost:3000/projectors/accounts
 ```
 
 ---
@@ -410,16 +410,16 @@ Get information about a specific version of a module.
 curl http://localhost:3000/commands/create-account/versions/1.0.0
 ```
 
-#### Get Projection Version Details
+#### Get Projector Version Details
 
-**Endpoint:** `GET /projections/{name}/versions/{version}`
+**Endpoint:** `GET /projectors/{name}/versions/{version}`
 
 Same parameters and response format as get command version details.
 
 **Example:**
 
 ```bash
-curl http://localhost:3000/projections/accounts/versions/2.0.0
+curl http://localhost:3000/projectors/accounts/versions/2.0.0
 ```
 
 ---
@@ -481,16 +481,16 @@ curl -X PUT http://localhost:3000/commands/create-account/active \
   -d '{"version": "1.1.0"}'
 ```
 
-#### Activate Projection Version
+#### Activate Projector Version
 
-**Endpoint:** `PUT /projections/{name}/active`
+**Endpoint:** `PUT /projectors/{name}/active`
 
 Same parameters and response format as activate command version.
 
 **Example:**
 
 ```bash
-curl -X PUT http://localhost:3000/projections/accounts/active \
+curl -X PUT http://localhost:3000/projectors/accounts/active \
   -H "Content-Type: application/json" \
   -d '{"version": "2.0.0"}'
 ```
@@ -537,16 +537,16 @@ Deactivate the currently active version of a module. This is an idempotent opera
 curl -X DELETE http://localhost:3000/commands/create-account/active
 ```
 
-#### Deactivate Projection
+#### Deactivate Projector
 
-**Endpoint:** `DELETE /projections/{name}/active`
+**Endpoint:** `DELETE /projectors/{name}/active`
 
 Same parameters and response format as deactivate command.
 
 **Example:**
 
 ```bash
-curl -X DELETE http://localhost:3000/projections/accounts/active
+curl -X DELETE http://localhost:3000/projectors/accounts/active
 ```
 
 ---
@@ -565,7 +565,7 @@ Get a list of all currently active modules across all types.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `module_type` | string | No | Filter by module type: "command", "projection", or "effect" |
+| `module_type` | string | No | Filter by module type: "command", "projector", or "effect" |
 
 **Response (200 OK):**
 
@@ -578,7 +578,7 @@ Get a list of all currently active modules across all types.
       "version": "1.0.0"
     },
     {
-      "module_type": "Projection",
+      "module_type": "Projector",
       "name": "accounts",
       "version": "2.0.1"
     }
@@ -716,8 +716,8 @@ curl -X POST "http://localhost:3000/commands/deposit/versions/1.0.0?activate=tru
 curl -X POST "http://localhost:3000/commands/withdraw/versions/1.0.0?activate=true" \
   -F "wasm=@target/wasm32-wasip2/release/withdraw.wasm"
 
-# Upload and activate projection
-curl -X POST "http://localhost:3000/projections/accounts/versions/1.0.0?activate=true" \
+# Upload and activate projector
+curl -X POST "http://localhost:3000/projectors/accounts/versions/1.0.0?activate=true" \
   -F "wasm=@target/wasm32-wasip2/release/accounts.wasm"
 
 # Verify all modules are active
@@ -742,7 +742,7 @@ curl http://localhost:3000/modules/active
 #       "version": "1.0.0"
 #     },
 #     {
-#       "module_type": "Projection",
+#       "module_type": "Projector",
 #       "name": "accounts",
 #       "version": "1.0.0"
 #     }
@@ -823,7 +823,7 @@ All uploaded WASM binaries are hashed with SHA-256 for integrity verification:
 
 ### Version 1.0.0
 - Initial API specification
-- Command and projection module management
+- Command and projector module management
 - Module upload with multipart/form-data
 - Version activation and deactivation
 - Command execution

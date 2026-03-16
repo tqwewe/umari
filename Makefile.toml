@@ -1,0 +1,96 @@
+[tasks.format]
+install_crate = "rustfmt"
+command = "cargo"
+args = ["fmt", "--", "--emit=files"]
+
+[tasks.clean]
+command = "cargo"
+args = ["clean"]
+
+[tasks.build]
+command = "cargo"
+args = ["build"]
+dependencies = ["clean"]
+
+[tasks.test]
+command = "cargo"
+args = ["test"]
+dependencies = ["clean"]
+
+[tasks.update-wit]
+command = "wit-deps"
+args = [
+  "-d", "./wit/${WIT}/deps",
+  "-m", "./wit/${WIT}/deps.toml",
+  "-l", "./wit/${WIT}/deps.lock",
+]
+
+[tasks.update-wit-command]
+extend = "update-wit"
+env = { WIT = "command" }
+
+[tasks.update-wit-common]
+extend = "update-wit"
+env = { WIT = "common" }
+
+[tasks.update-wit-effect]
+extend = "update-wit"
+env = { WIT = "effect" }
+
+[tasks.update-wit-policy]
+extend = "update-wit"
+env = { WIT = "policy" }
+
+[tasks.update-wit-projection]
+extend = "update-wit"
+env = { WIT = "projection" }
+
+[tasks.update-wit-sqlite]
+extend = "update-wit"
+env = { WIT = "sqlite" }
+
+[tasks.update-wit-all]
+workspace = false
+dependencies = [
+  "update-wit-command",
+  "update-wit-common",
+  "update-wit-effect",
+  "update-wit-policy",
+  "update-wit-projection",
+  "update-wit-sqlite",
+]
+
+[tasks.clean-wit-deps]
+command = "rm"
+args = ["-rf", "./wit/${WIT}/deps"]
+
+[tasks.clean-wit-deps-command]
+extend = "clean-wit-deps"
+env = { WIT = "command" }
+
+[tasks.clean-wit-deps-common]
+extend = "clean-wit-deps"
+env = { WIT = "common" }
+
+[tasks.clean-wit-deps-effect]
+extend = "clean-wit-deps"
+env = { WIT = "effect" }
+
+[tasks.clean-wit-deps-projection]
+extend = "clean-wit-deps"
+env = { WIT = "projection" }
+
+[tasks.clean-wit-deps-sqlite]
+extend = "update-wit"
+env = { WIT = "sqlite" }
+
+[tasks.clean-wit-deps-all]
+workspace = false
+dependencies = [
+  "clean-wit-deps-command",
+  "clean-wit-deps-common",
+  "clean-wit-deps-effect",
+  "clean-wit-deps-policy",
+  "clean-wit-deps-projection",
+  "clean-wit-deps-sqlite",
+]

@@ -26,8 +26,10 @@ pub struct ModuleVersionInfo {
 
 #[derive(Clone, Copy, Debug, Display, Hash, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[strum(serialize_all = "snake_case")]
 pub enum ModuleType {
     Command,
+    Policy,
     Projection,
     Effect,
 }

@@ -6,6 +6,7 @@ edition = "2024"
 umari-core = { workspace = true, features = ["openapi"] }
 umari-runtime = { workspace = true, features = ["openapi"] }
 umari-types = { workspace = true, features = ["openapi"] }
+umari-ui.workspace = true
 
 axum.workspace = true
 hex.workspace = true

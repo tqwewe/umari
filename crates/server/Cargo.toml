@@ -3,7 +3,7 @@ name = "umari-server"
 edition = "2024"
 
 [[bin]]
-name = "umari"
+name = "umari-server"
 path = "src/main.rs"
 
 [dependencies]

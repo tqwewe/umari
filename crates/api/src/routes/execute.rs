@@ -37,9 +37,13 @@ pub async fn execute(
 
     Ok(Json(ExecuteResponse {
         position: result.position,
-        events: result.events.into_iter().map(|ev| EmittedEventInfo {
-            event_type: ev.event_type,
-            tags: ev.tags,
-        }).collect(),
+        events: result
+            .events
+            .into_iter()
+            .map(|ev| EmittedEventInfo {
+                event_type: ev.event_type,
+                tags: ev.tags,
+            })
+            .collect(),
     }))
 }

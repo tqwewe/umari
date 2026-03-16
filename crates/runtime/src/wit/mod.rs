@@ -7,6 +7,7 @@ use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxView, WasiView};
 
 pub mod command;
 pub mod common;
+pub mod policy;
 pub mod projection;
 pub mod sqlite;
 
@@ -28,6 +29,7 @@ pub struct SqliteComponentState {
     wasi_ctx: WasiCtx,
     resource_table: ResourceTable,
     conn: Connection,
+    last_position: Option<u64>,
     statements: SlotMap<DefaultKey, Box<Statement<'static>>>,
     #[cfg(debug_assertions)]
     thread_id: thread::ThreadId,
@@ -36,11 +38,17 @@ pub struct SqliteComponentState {
 impl SqliteComponentState {
     /// Creates a new SqliteComponentState.
     /// In debug builds, captures the current thread ID for verification.
-    pub fn new(wasi_ctx: WasiCtx, resource_table: ResourceTable, conn: Connection) -> Self {
+    pub fn new(
+        wasi_ctx: WasiCtx,
+        resource_table: ResourceTable,
+        conn: Connection,
+        last_position: Option<u64>,
+    ) -> Self {
         Self {
             wasi_ctx,
             resource_table,
             conn,
+            last_position,
             statements: SlotMap::new(),
             #[cfg(debug_assertions)]
             thread_id: std::thread::current().id(),
@@ -49,6 +57,14 @@ impl SqliteComponentState {
 
     pub fn conn(&self) -> &Connection {
         &self.conn
+    }
+
+    pub fn last_position(&self) -> Option<u64> {
+        self.last_position
+    }
+
+    pub fn update_last_position(&mut self, last_position: Option<u64>) {
+        self.last_position = last_position;
     }
 
     /// Checks that we're on the correct thread (debug builds only).

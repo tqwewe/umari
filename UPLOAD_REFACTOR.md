@@ -44,9 +44,9 @@ curl -X POST http://localhost:3000/commands/create-account/versions/1.1.0 \
   -F "wasm=@target/wasm32-wasip2/release/create_account.wasm"
 ```
 
-### Upload Projection
+### Upload Projector
 ```bash
-curl -X POST "http://localhost:3000/projections/accounts/versions/2.0.0?activate=true" \
+curl -X POST "http://localhost:3000/projectors/accounts/versions/2.0.0?activate=true" \
   -F "wasm=@target/wasm32-wasip2/release/accounts.wasm"
 ```
 
@@ -61,7 +61,7 @@ Special characters in version strings are automatically URL-encoded by curl:
 
 **New Endpoints:**
 - `POST /commands/{name}/versions/{version}?activate={bool}` (was `POST /commands`)
-- `POST /projections/{name}/versions/{version}?activate={bool}` (was `POST /projections`)
+- `POST /projectors/{name}/versions/{version}?activate={bool}` (was `POST /projectors`)
 
 **Request Format:**
 - Only `wasm` field in multipart form data

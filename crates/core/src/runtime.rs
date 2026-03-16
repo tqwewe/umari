@@ -1,6 +1,7 @@
 pub mod command;
 pub mod common;
 pub mod effect;
+pub mod policy;
 pub mod projection;
 pub mod sqlite;
 

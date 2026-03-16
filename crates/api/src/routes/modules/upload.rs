@@ -1,16 +1,22 @@
 use std::sync::Arc;
 
 use axum::{
+    Json,
     extract::{Multipart, Path, Query, State},
     http::StatusCode,
-    Json,
 };
-use serde::Deserialize;
 use semver::Version;
+use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use umari_runtime::module_store::{ModuleType, actor::{SaveModule, ActivateModule}};
+use umari_runtime::module_store::{
+    ModuleType,
+    actor::{ActivateModule, SaveModule},
+};
 
-use crate::{AppState, error::{Error, ErrorCode}};
+use crate::{
+    AppState,
+    error::{Error, ErrorCode},
+};
 
 use super::types::UploadResponse;
 
@@ -42,7 +48,15 @@ pub async fn upload_command(
     Query(query): Query<UploadQuery>,
     multipart: Multipart,
 ) -> Result<(StatusCode, Json<UploadResponse>), Error> {
-    upload_module(state, ModuleType::Command, name, version, query.activate, multipart).await
+    upload_module(
+        state,
+        ModuleType::Command,
+        name,
+        version,
+        query.activate,
+        multipart,
+    )
+    .await
 }
 
 #[utoipa::path(
@@ -67,7 +81,15 @@ pub async fn upload_projection(
     Query(query): Query<UploadQuery>,
     multipart: Multipart,
 ) -> Result<(StatusCode, Json<UploadResponse>), Error> {
-    upload_module(state, ModuleType::Projection, name, version, query.activate, multipart).await
+    upload_module(
+        state,
+        ModuleType::Projection,
+        name,
+        version,
+        query.activate,
+        multipart,
+    )
+    .await
 }
 
 async fn upload_module(
@@ -86,11 +108,9 @@ async fn upload_module(
     let mut wasm_bytes: Option<Vec<u8>> = None;
 
     // Parse multipart form data (only looking for wasm field now)
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|_| Error::new(ErrorCode::InvalidInput).with_message("failed to read multipart field"))?
-    {
+    while let Some(field) = multipart.next_field().await.map_err(|_| {
+        Error::new(ErrorCode::InvalidInput).with_message("failed to read multipart field")
+    })? {
         let field_name = field
             .name()
             .ok_or_else(|| Error::new(ErrorCode::InvalidInput).with_message("missing field name"))?
@@ -98,10 +118,9 @@ async fn upload_module(
 
         match field_name.as_str() {
             "wasm" => {
-                let bytes = field
-                    .bytes()
-                    .await
-                    .map_err(|_| Error::new(ErrorCode::InvalidInput).with_message("failed to read wasm bytes"))?;
+                let bytes = field.bytes().await.map_err(|_| {
+                    Error::new(ErrorCode::InvalidInput).with_message("failed to read wasm bytes")
+                })?;
                 wasm_bytes = Some(bytes.to_vec());
             }
             _ => {
@@ -111,7 +130,8 @@ async fn upload_module(
     }
 
     // Validate required field
-    let wasm_bytes = wasm_bytes.ok_or_else(|| Error::new(ErrorCode::InvalidInput).with_message("missing wasm field"))?;
+    let wasm_bytes = wasm_bytes
+        .ok_or_else(|| Error::new(ErrorCode::InvalidInput).with_message("missing wasm field"))?;
 
     // Compute SHA256
     let sha256 = hex::encode(Sha256::digest(&wasm_bytes));

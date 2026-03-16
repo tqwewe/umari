@@ -3,7 +3,7 @@ use std::sync::Arc;
 use kameo::error::SendError;
 use thiserror::Error;
 
-use crate::{module_store::ModuleStoreError, wit};
+use crate::{module::ModuleError, module_store::ModuleStoreError, wit};
 
 pub mod actor;
 pub mod supervisor;
@@ -24,6 +24,8 @@ pub enum ProjectionError {
     EventStore(#[from] umadb_dcb::DCBError),
     #[error("database error: {0}")]
     Database(#[from] umari_core::error::SqliteError),
+    #[error(transparent)]
+    Module(#[from] ModuleError<wit::projection::Error>),
     #[error("module store error: {0}")]
     ModuleStore(SendError<(), ModuleStoreError>),
     #[error("wasmtime error: {0}")]

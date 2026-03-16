@@ -115,10 +115,10 @@ impl Actor for CommandActor {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CommandPayload {
     /// Command input as JSON
-    input: Value,
+    pub input: Value,
     /// Optional command context for correlation and causation tracking
     #[serde(default)]
-    context: Option<CommandContext>,
+    pub context: Option<CommandContext>,
 }
 
 #[derive(Serialize)]
@@ -164,42 +164,51 @@ impl CommandActor {
                 .collect_with_head()
                 .await?;
 
-            let events = events
-                .into_iter()
-                .map(|sequenced_event| {
-                    let id = sequenced_event
-                        .event
-                        .uuid
-                        .ok_or(CommandError::MissingEventId)?;
+            let triggered_by = command.context.and_then(|ctx| ctx.triggered_by);
+            let mut mapped_events = Vec::with_capacity(events.len());
 
-                    let stored: StoredEventData<Value> =
-                        serde_json::from_slice(&sequenced_event.event.data).map_err(|err| {
-                            DeserializeEventError {
-                                code: DeserializeEventErrorCode::InvalidData,
-                                message: Some(err.to_string()),
-                            }
-                        })?;
+            for sequenced_event in events {
+                let id = sequenced_event
+                    .event
+                    .uuid
+                    .ok_or(CommandError::MissingEventId)?;
 
-                    let data = serde_json::to_string(&stored.data)
-                        .map_err(|err| CommandError::SerializeEvent(err.to_string()))?;
+                let stored: StoredEventData<Value> =
+                    serde_json::from_slice(&sequenced_event.event.data).map_err(|err| {
+                        DeserializeEventError {
+                            code: DeserializeEventErrorCode::InvalidData,
+                            message: Some(err.to_string()),
+                        }
+                    })?;
 
-                    Ok(wit::common::StoredEvent {
-                        id: id.to_string(),
-                        position: sequenced_event.position as i64,
-                        event_type: sequenced_event.event.event_type,
-                        tags: sequenced_event.event.tags,
-                        timestamp: stored.timestamp.timestamp(),
-                        correlation_id: stored.correlation_id.to_string(),
-                        causation_id: stored.causation_id.to_string(),
-                        triggered_by: stored
-                            .triggered_by
-                            .map(|triggered_by| triggered_by.to_string()),
-                        data,
-                    })
+                let data = serde_json::to_string(&stored.data)
+                    .map_err(|err| CommandError::SerializeEvent(err.to_string()))?;
+
+                if let Some(triggered_by) = triggered_by
+                    && Some(triggered_by) == stored.triggered_by
+                {
+                    return Ok(ExecuteResult {
+                        position: head,
+                        events: vec![],
+                    });
+                }
+
+                mapped_events.push(wit::common::StoredEvent {
+                    id: id.to_string(),
+                    position: sequenced_event.position as i64,
+                    event_type: sequenced_event.event.event_type,
+                    tags: sequenced_event.event.tags,
+                    timestamp: stored.timestamp.timestamp(),
+                    correlation_id: stored.correlation_id.to_string(),
+                    causation_id: stored.causation_id.to_string(),
+                    triggered_by: stored
+                        .triggered_by
+                        .map(|triggered_by| triggered_by.to_string()),
+                    data,
                 })
-                .collect::<Result<Vec<_>, CommandError>>()?;
+            }
 
-            let execute_output = module.execute(&command.input, events).await?;
+            let execute_output = module.execute(&command.input, mapped_events).await?;
 
             // Convert emitted events to DCBEvents and persist to event store
             let timestamp = Utc::now();

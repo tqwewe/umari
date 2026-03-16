@@ -15,7 +15,7 @@ pub fn upload(
     file: PathBuf,
     activate: bool,
 ) -> Result<()> {
-    let response = client.upload_wasm("projections", &name, &version, &file, activate)?;
+    let response = client.upload_wasm("projectors", &name, &version, &file, activate)?;
 
     println!(
         "{} uploaded {} v{}",
@@ -33,7 +33,7 @@ pub fn upload(
 }
 
 pub fn list(client: &ApiClient, active_only: bool, name_filter: Option<String>) -> Result<()> {
-    let mut path = String::from("/projections");
+    let mut path = String::from("/projectors");
     let mut query_parts = Vec::new();
 
     if active_only {
@@ -57,12 +57,12 @@ pub fn list(client: &ApiClient, active_only: bool, name_filter: Option<String>) 
 pub fn show(client: &ApiClient, name: String, version: Option<String>) -> Result<()> {
     if let Some(ver) = version {
         // Show specific version
-        let path = format!("/projections/{name}/versions/{ver}");
+        let path = format!("/projectors/{name}/versions/{ver}");
         let response: VersionDetailsResponse = client.get(&path)?;
         output::print_version_details(&response);
     } else {
         // Show all versions
-        let path = format!("/projections/{name}");
+        let path = format!("/projectors/{name}");
         let response: ModuleDetailsResponse = client.get(&path)?;
         output::print_module_details(&response);
     }
@@ -71,7 +71,7 @@ pub fn show(client: &ApiClient, name: String, version: Option<String>) -> Result
 }
 
 pub fn activate(client: &ApiClient, name: String, version: String) -> Result<()> {
-    let path = format!("/projections/{name}/active");
+    let path = format!("/projectors/{name}/active");
     let body = ActivateRequest {
         version: version.clone(),
     };
@@ -86,7 +86,7 @@ pub fn activate(client: &ApiClient, name: String, version: String) -> Result<()>
 }
 
 pub fn deactivate(client: &ApiClient, name: String) -> Result<()> {
-    let path = format!("/projections/{name}/active");
+    let path = format!("/projectors/{name}/active");
     let response: umari_types::DeactivateResponse = client.delete(&path)?;
 
     println!("{} deactivated {name}", "✓".green());

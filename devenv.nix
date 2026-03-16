@@ -5,6 +5,7 @@
 
 {
   packages = with pkgs; [
+    cargo-make
     git
     protobuf # UmaDB
     sqlite

@@ -10,7 +10,10 @@ use umari_runtime::module_store::{
     actor::{ActivateModule, DeactivateModule, GetActiveModule},
 };
 
-use crate::{AppState, error::{Error, ErrorCode}};
+use crate::{
+    AppState,
+    error::{Error, ErrorCode},
+};
 
 use super::types::{ActivateRequest, ActivateResponse, DeactivateResponse};
 

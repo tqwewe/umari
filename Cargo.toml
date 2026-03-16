@@ -8,9 +8,10 @@ members = [
   "crates/runtime",
   "crates/server",
   "crates/types",
+  "crates/ui",
   "example/events",
   # "example/commands/open_account",
-  # "example/projections/accounts",
+  # "example/projectors/accounts",
 ]
 
 [workspace.dependencies]
@@ -19,6 +20,8 @@ umari-core = { path = "crates/core" }
 umari-macros = { path = "crates/macros" }
 umari-runtime = { path = "crates/runtime" }
 umari-types = { path = "crates/types" }
+umari-ui = { path = "crates/ui" }
+
 
 # Example
 events = { path = "example/events" }
@@ -32,6 +35,7 @@ indexmap = { version = "2.13", features = ["serde"] }
 kameo = { path = "/home/ari/dev/tqwewe/kameo" } # { git = "https://github.com/tqwewe/kameo", branch = "main" }
 kameo_actors = { path = "/home/ari/dev/tqwewe/kameo/actors" } # { git = "https://github.com/tqwewe/kameo", branch = "main", package = "kameo_actors" }
 libc = "0.2"
+maud = { version = "0.27", features = ["axum"] }
 proc-macro2 = "1.0"
 quote = "1.0"
 rusqlite = "0.38"
@@ -51,6 +55,7 @@ umadb-dcb = { git = "https://github.com/tqwewe/umadb", branch = "feat/serde", fe
 utoipa = { version = "5.3", features = ["axum_extras", "uuid"] }
 utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
 uuid = { version = "1.22", features = ["serde", "v4"] }
+wasip2 = "1.0.2"
 wasmtime = "42.0"
 wasmtime-wasi = "42.0"
 wit-bindgen = { path = "/home/ari/dev/bytecodealliance/wit-bindgen/crates/guest-rust" } # "0.53"

@@ -51,7 +51,7 @@ All API types are annotated with `ToSchema` for automatic documentation:
 ```rust
 #[derive(Serialize, ToSchema)]
 pub struct UploadResponse {
-    /// Type of module (Command or Projection)
+    /// Type of module (Command or Projector)
     pub module_type: ModuleType,
     /// Module name
     pub name: String,
@@ -83,14 +83,14 @@ The OpenAPI spec is defined in `/home/ari/dev/tqwewe/umari/crates/api/src/lib.rs
     ),
     tags(
         (name = "commands", description = "Command module management"),
-        (name = "projections", description = "Projection module management"),
+        (name = "projectors", description = "Projector module management"),
         (name = "modules", description = "Cross-module operations"),
         (name = "execution", description = "Command execution")
     ),
     info(
         title = "Umari Event-Sourcing API",
         version = "1.0.0",
-        description = "REST API for managing and executing WASM-based commands and projections",
+        description = "REST API for managing and executing WASM-based commands and projectors",
         license(name = "MIT OR Apache-2.0")
     )
 )]
@@ -132,7 +132,7 @@ struct ApiDoc;
 ### Tags & Organization
 - Endpoints grouped by functionality:
   - **commands** - Command module operations
-  - **projections** - Projection module operations
+  - **projectors** - Projector module operations
   - **modules** - Cross-module operations
   - **execution** - Command execution
 
