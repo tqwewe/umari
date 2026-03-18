@@ -67,7 +67,7 @@ pub async fn deactivate(
 fn parse_module_type(s: &str) -> Result<ModuleType, HtmlError> {
     match s {
         "commands" => Ok(ModuleType::Command),
-        "projections" => Ok(ModuleType::Projection),
+        "projectors" => Ok(ModuleType::Projector),
         other => Err(HtmlError::bad_request(format!(
             "unknown module type: {other}"
         ))),

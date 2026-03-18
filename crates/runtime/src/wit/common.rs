@@ -2,12 +2,13 @@ use wasmtime::component::bindgen;
 
 use crate::wit::BasicComponentState;
 
+pub use self::umari::common::{types::*, *};
 use super::SqliteComponentState;
-pub use umari::common::types::*;
 
 bindgen!({
     path: "../../wit/common",
     world: "common",
+    imports: { default: tracing | trappable },
     exports: { default: async },
 });
 
@@ -64,6 +65,24 @@ impl From<DeserializeEventErrorCode> for umari_core::error::DeserializeEventErro
             DeserializeEventErrorCode::InvalidData => {
                 umari_core::error::DeserializeEventErrorCode::InvalidData
             }
+        }
+    }
+}
+
+impl From<umari_core::event::StoredEvent<serde_json::Value>> for StoredEvent {
+    fn from(event: umari_core::event::StoredEvent<serde_json::Value>) -> Self {
+        StoredEvent {
+            id: event.id.to_string(),
+            position: event.position as i64,
+            event_type: event.event_type,
+            tags: event.tags,
+            timestamp: event.timestamp.timestamp_millis(),
+            correlation_id: event.correlation_id.to_string(),
+            causation_id: event.causation_id.to_string(),
+            triggered_by: event
+                .triggered_by
+                .map(|triggered_by| triggered_by.to_string()),
+            data: serde_json::to_string(&event.data).unwrap(),
         }
     }
 }

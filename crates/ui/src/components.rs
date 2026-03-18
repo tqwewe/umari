@@ -11,7 +11,7 @@ pub fn versions_table(
     let module_type_str = match module_type {
         ModuleType::Command => "commands",
         ModuleType::Policy => "policies",
-        ModuleType::Projection => "projections",
+        ModuleType::Projector => "projectors",
         ModuleType::Effect => "effects",
     };
     let table_id = format!("versions-table-{name}");
@@ -73,7 +73,7 @@ pub fn upload_form(module_type: ModuleType, name: Option<&str>) -> Markup {
     let module_type_str = match module_type {
         ModuleType::Command => "commands",
         ModuleType::Policy => "policies",
-        ModuleType::Projection => "projections",
+        ModuleType::Projector => "projectors",
         ModuleType::Effect => "effects",
     };
 

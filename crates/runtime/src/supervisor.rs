@@ -10,13 +10,20 @@ use kameo_actors::{
     pubsub::{PubSub, Subscribe},
 };
 use thiserror::Error;
+use umadb_client::AsyncUmaDBClient;
 use wasmtime::Engine;
 
 use crate::{
     command::actor::{CommandActor, CommandActorArgs},
+    events::ModuleEvent,
+    module::{
+        EventHandlerModule,
+        supervisor::{ModuleSupervisor, ModuleSupervisorArgs},
+    },
     module_store::actor::{ModuleStoreActor, StoreActorArgs},
     policy::supervisor::{PolicySupervisor, PolicySupervisorArgs},
-    projection::supervisor::{ProjectionSupervisor, ProjectionSupervisorArgs},
+    projector::supervisor::{ProjectorSupervisor, ProjectorSupervisorArgs},
+    wit,
 };
 
 pub struct RuntimeSupervisor;
@@ -100,10 +107,20 @@ impl Actor for RuntimeSupervisor {
             .await
             .map_err(|_| RuntimeError::ModulePubSubSendError)?;
 
-        // Setup projection system
-        let projection_ref = ProjectionSupervisor::supervise(
+        spawn_event_handler_supervisor::<wit::projector::Projector>(
             &supervisor_ref,
-            ProjectionSupervisorArgs {
+            engine.clone(),
+            event_store.clone(),
+            module_store_ref.clone(),
+            &module_pubsub,
+            "projector",
+        )
+        .await?;
+
+        // Setup projector system
+        let projector_ref = ProjectorSupervisor::supervise(
+            &supervisor_ref,
+            ProjectorSupervisorArgs {
                 engine: engine.clone(),
                 event_store: event_store.clone(),
                 module_store_ref: module_store_ref.clone(),
@@ -113,7 +130,7 @@ impl Actor for RuntimeSupervisor {
         .restart_limit(5, Duration::from_secs(10))
         .spawn()
         .await;
-        projection_ref.register("projection")?;
+        projector_ref.register("projector")?;
 
         // Setup policy system
         let policy_ref = PolicySupervisor::supervise(
@@ -138,4 +155,34 @@ impl Actor for RuntimeSupervisor {
 
         Ok(RuntimeSupervisor)
     }
+}
+
+async fn spawn_event_handler_supervisor<A: EventHandlerModule>(
+    supervisor_ref: &ActorRef<RuntimeSupervisor>,
+    engine: Engine,
+    event_store: Arc<AsyncUmaDBClient>,
+    module_store_ref: ActorRef<ModuleStoreActor>,
+    module_pubsub: &ActorRef<PubSub<ModuleEvent>>,
+    name: &'static str,
+) -> Result<ActorRef<ModuleSupervisor<A>>, RuntimeError> {
+    let actor_ref = ModuleSupervisor::<A>::supervise(
+        supervisor_ref,
+        ModuleSupervisorArgs {
+            engine,
+            event_store,
+            module_store_ref,
+        },
+    )
+    .restart_policy(RestartPolicy::Permanent)
+    .restart_limit(5, Duration::from_secs(10))
+    .spawn()
+    .await;
+    actor_ref.register(name)?;
+
+    module_pubsub
+        .ask(Subscribe(actor_ref.clone()))
+        .await
+        .map_err(|_| RuntimeError::ModulePubSubSendError)?;
+
+    Ok(actor_ref)
 }

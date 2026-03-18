@@ -23,7 +23,7 @@ pub async fn upload_module(
 ) -> Result<Response, HtmlError> {
     let module_type = match module_type_str.as_str() {
         "commands" => ModuleType::Command,
-        "projections" => ModuleType::Projection,
+        "projectors" => ModuleType::Projector,
         other => {
             return Err(HtmlError::bad_request(format!(
                 "unknown module type: {other}"
@@ -119,7 +119,7 @@ pub async fn upload_module(
     let detail_path = match module_type {
         ModuleType::Command => format!("/ui/commands/{name}"),
         ModuleType::Policy => format!("/ui/policies/{name}"),
-        ModuleType::Projection => format!("/ui/projections/{name}"),
+        ModuleType::Projector => format!("/ui/projectors/{name}"),
         ModuleType::Effect => format!("/ui/effects/{name}"),
     };
 

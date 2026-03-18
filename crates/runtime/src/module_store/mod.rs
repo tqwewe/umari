@@ -30,7 +30,7 @@ pub struct ModuleVersionInfo {
 pub enum ModuleType {
     Command,
     Policy,
-    Projection,
+    Projector,
     Effect,
 }
 

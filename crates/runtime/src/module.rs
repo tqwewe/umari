@@ -1,5 +1,9 @@
-use std::sync::Arc;
+pub mod actor;
+pub mod supervisor;
 
+use std::{fmt, sync::Arc};
+
+use kameo::error::SendError;
 use rusqlite::Connection;
 use semver::Version;
 use thiserror::Error;
@@ -11,7 +15,10 @@ use wasmtime::{
 };
 use wasmtime_wasi::{ResourceTable, WasiCtx};
 
-use crate::{module_store::ModuleType, wit};
+use crate::{
+    module_store::{ModuleStoreError, ModuleType},
+    wit,
+};
 
 #[derive(Debug, Error)]
 pub enum ModuleError<E> {
@@ -19,10 +26,26 @@ pub enum ModuleError<E> {
     ConcurrentModification,
     #[error("database error: {0}")]
     Database(#[from] umari_core::error::SqliteError),
+    #[error("failed to deserialize event: {0}")]
+    DeserializeEvent(#[from] umari_core::error::DeserializeEventError),
+    #[error("duplicate active projector module '{name}'")]
+    DuplicateActiveModule { name: Arc<str> },
+    #[error("event store error: {0}")]
+    EventStore(#[from] umadb_dcb::DCBError),
+    #[error("missing event id")]
+    MissingEventId,
+    #[error("module store error: {0}")]
+    ModuleStore(SendError<(), ModuleStoreError>),
     #[error("wasmtime error: {0}")]
     Wasmtime(#[from] wasmtime::Error),
     #[error(transparent)]
     Wit(E),
+}
+
+impl<M, E> From<SendError<M, ModuleStoreError>> for ModuleError<E> {
+    fn from(err: SendError<M, ModuleStoreError>) -> Self {
+        ModuleError::ModuleStore(err.map_msg(|_| ()))
+    }
 }
 
 impl<E> From<rusqlite::Error> for ModuleError<E> {
@@ -30,6 +53,38 @@ impl<E> From<rusqlite::Error> for ModuleError<E> {
         let wit_err = wit::sqlite::SqliteError::from(err);
         ModuleError::Database(wit_err.into())
     }
+}
+
+pub trait EventHandlerModule: Send + Sized + 'static {
+    type Error: fmt::Debug + Send;
+
+    const MODULE_TYPE: ModuleType;
+
+    fn add_to_linker(linker: &mut Linker<wit::SqliteComponentState>) -> wasmtime::Result<()>;
+
+    fn instantiate_async(
+        store: &mut Store<wit::SqliteComponentState>,
+        component: &Component,
+        linker: &Linker<wit::SqliteComponentState>,
+    ) -> impl Future<Output = wasmtime::Result<Self>> + Send;
+
+    fn construct(
+        &self,
+        store: &mut Store<wit::SqliteComponentState>,
+    ) -> impl Future<Output = wasmtime::Result<Result<ResourceAny, Self::Error>>> + Send;
+
+    fn query(
+        &self,
+        store: &mut Store<wit::SqliteComponentState>,
+        handler: ResourceAny,
+    ) -> impl Future<Output = wasmtime::Result<wit::common::DcbQuery>> + Send;
+
+    fn handle_event(
+        &self,
+        store: &mut Store<wit::SqliteComponentState>,
+        handler: ResourceAny,
+        event: wit::common::StoredEvent,
+    ) -> impl Future<Output = wasmtime::Result<Result<(), Self::Error>>> + Send;
 }
 
 pub trait Module: Sized {
@@ -40,20 +95,20 @@ pub trait Module: Sized {
         store: &mut Store<Self::State>,
         component: &Component,
         linker: &Linker<Self::State>,
-    ) -> impl Future<Output = wasmtime::Result<Self>>;
+    ) -> impl Future<Output = wasmtime::Result<Self>> + Send;
 }
 
 pub trait SqliteModule: Module<State = wit::SqliteComponentState> {
     fn construct(
         &self,
         store: &mut Store<wit::SqliteComponentState>,
-    ) -> impl Future<Output = wasmtime::Result<Result<ResourceAny, Self::Error>>>;
+    ) -> impl Future<Output = wasmtime::Result<Result<ResourceAny, Self::Error>>> + Send;
 
     fn query(
         &self,
         store: &mut Store<wit::SqliteComponentState>,
         handler: ResourceAny,
-    ) -> impl Future<Output = wasmtime::Result<wit::common::DcbQuery>>;
+    ) -> impl Future<Output = wasmtime::Result<wit::common::DcbQuery>> + Send;
 }
 
 pub struct InstantiatedModule<M: Module> {
@@ -94,7 +149,7 @@ impl<M: SqliteModule> InstantiatedModule<M> {
         ))?;
         conn.execute(
             r#"
-            INSERT INTO projection_meta (id, name, version) VALUES (?1, ?2, ?3)
+            INSERT INTO projector_meta (id, name, version) VALUES (?1, ?2, ?3)
             ON CONFLICT(id) DO UPDATE SET version = excluded.version
             "#,
             (1, &name, version.to_string()),
@@ -102,7 +157,7 @@ impl<M: SqliteModule> InstantiatedModule<M> {
         let last_position = conn
             .query_one(
                 r#"
-                SELECT last_position FROM projection_meta WHERE id = 1
+                SELECT last_position FROM projector_meta WHERE id = 1
                 "#,
                 (),
                 |row| row.get::<_, Option<i64>>(0),
@@ -158,7 +213,7 @@ impl<M: SqliteModule> InstantiatedModule<M> {
         let expected_position = data.last_position().map(|n| n as i64);
         let rows = data.conn().execute(
             "
-            UPDATE projection_meta
+            UPDATE projector_meta
             SET last_position = ?1
             WHERE id = 1
             AND last_position IS NOT DISTINCT FROM ?2
@@ -177,7 +232,7 @@ impl<M: SqliteModule> InstantiatedModule<M> {
             version = %self.version,
             last_position = ?expected_position,
             new_position,
-            "projection committed batch"
+            "projector committed batch"
         );
 
         Ok(())

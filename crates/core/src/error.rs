@@ -94,9 +94,9 @@ impl From<serde_json::Error> for SerializationError {
 }
 
 #[derive(Clone, Debug, Error)]
-pub enum ProjectionError {
+pub enum ProjectorError {
     #[error(transparent)]
     Sqlite(#[from] SqliteError),
-    #[error("projection error: {message}")]
+    #[error("projector error: {message}")]
     Other { message: String },
 }

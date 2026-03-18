@@ -58,6 +58,7 @@ uuid = { version = "1.22", features = ["serde", "v4"] }
 wasip2 = "1.0.2"
 wasmtime = "42.0"
 wasmtime-wasi = "42.0"
+wasmtime-wasi-http = "42.0"
 wit-bindgen = { path = "/home/ari/dev/bytecodealliance/wit-bindgen/crates/guest-rust" } # "0.53"
 
 # CLI dependencies

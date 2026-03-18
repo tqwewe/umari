@@ -42,7 +42,7 @@ pub async fn activate_command(
 
 #[utoipa::path(
     put,
-    path = "/projections/{name}/active",
+    path = "/projectors/{name}/active",
     params(
         ("name" = String, Path, description = "Module name")
     ),
@@ -53,14 +53,14 @@ pub async fn activate_command(
         (status = 404, description = "Module or version not found", body = crate::error::ErrorResponse),
         (status = 500, description = "Internal server error", body = crate::error::ErrorResponse)
     ),
-    tag = "projections"
+    tag = "projectors"
 )]
-pub async fn activate_projection(
+pub async fn activate_projector(
     State(state): State<AppState>,
     Path(name): Path<String>,
     Json(req): Json<ActivateRequest>,
 ) -> Result<Json<ActivateResponse>, Error> {
-    activate_module(state, ModuleType::Projection, name, req).await
+    activate_module(state, ModuleType::Projector, name, req).await
 }
 
 async fn activate_module(
@@ -127,7 +127,7 @@ pub async fn deactivate_command(
 
 #[utoipa::path(
     delete,
-    path = "/projections/{name}/active",
+    path = "/projectors/{name}/active",
     params(
         ("name" = String, Path, description = "Module name")
     ),
@@ -136,13 +136,13 @@ pub async fn deactivate_command(
         (status = 404, description = "Module not found", body = crate::error::ErrorResponse),
         (status = 500, description = "Internal server error", body = crate::error::ErrorResponse)
     ),
-    tag = "projections"
+    tag = "projectors"
 )]
-pub async fn deactivate_projection(
+pub async fn deactivate_projector(
     State(state): State<AppState>,
     Path(name): Path<String>,
 ) -> Result<Json<DeactivateResponse>, Error> {
-    deactivate_module(state, ModuleType::Projection, name).await
+    deactivate_module(state, ModuleType::Projector, name).await
 }
 
 async fn deactivate_module(

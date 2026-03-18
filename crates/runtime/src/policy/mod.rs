@@ -19,7 +19,7 @@ pub enum PolicyError {
     Command(#[from] SendError<Execute, CommandError>),
     #[error("failed to deserialize event: {0}")]
     DeserializeEvent(#[from] umari_core::error::DeserializeEventError),
-    #[error("duplicate active projection module '{name}'")]
+    #[error("duplicate active projector module '{name}'")]
     DuplicateActiveModule { name: Arc<str> },
     #[error("event store error: {0}")]
     EventStore(#[from] umadb_dcb::DCBError),

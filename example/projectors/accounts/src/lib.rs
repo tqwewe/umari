@@ -1,13 +1,13 @@
 use events::OpenedAccount;
 use umari_core::prelude::*;
 
-export_projection!(AccountsProjection);
+export_projector!(AccountsProjector);
 
-struct AccountsProjection {
+struct AccountsProjector {
     insert_account: Statement,
 }
 
-impl AccountsProjection {
+impl AccountsProjector {
     fn dump_accounts(&self) -> Result<(), SqliteError> {
         let stmt = prepare("SELECT account_id, balance FROM accounts")?;
         let rows = stmt.query(())?;
@@ -35,10 +35,10 @@ enum Query {
     OpenedAccount(OpenedAccount),
 }
 
-impl Projection for AccountsProjection {
+impl Projector for AccountsProjector {
     type Query = Query;
 
-    fn init() -> Result<Self, ProjectionError> {
+    fn init() -> Result<Self, ProjectorError> {
         execute(
             r#"
             CREATE TABLE IF NOT EXISTS accounts (
@@ -49,16 +49,16 @@ impl Projection for AccountsProjection {
             (),
         )?;
 
-        let projection = AccountsProjection {
+        let projector = AccountsProjector {
             insert_account: prepare("INSERT INTO accounts (account_id, balance) VALUES (?1, ?2)")?,
         };
 
-        projection.dump_accounts()?;
+        projector.dump_accounts()?;
 
-        Ok(projection)
+        Ok(projector)
     }
 
-    fn handle(&mut self, event: StoredEvent<Self::Query>) -> Result<(), ProjectionError> {
+    fn handle(&mut self, event: StoredEvent<Self::Query>) -> Result<(), ProjectorError> {
         match event.data {
             Query::OpenedAccount(OpenedAccount {
                 account_id,

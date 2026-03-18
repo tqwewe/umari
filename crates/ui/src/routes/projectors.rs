@@ -17,44 +17,44 @@ use crate::{
     htmx::respond,
 };
 
-pub async fn list_projections(
+pub async fn list_projectors(
     State(state): State<UiState>,
     headers: HeaderMap,
 ) -> Result<Markup, HtmlError> {
     let names = state
         .module_store_ref
         .ask(GetAllModuleNames {
-            module_type: ModuleType::Projection,
+            module_type: ModuleType::Projector,
         })
         .await
         .map_err(HtmlError::from)?;
 
     let content = html! {
         section {
-            h2 { "Projections" }
+            h2 { "Projectors" }
             @if names.is_empty() {
-                p { "No projections uploaded yet." }
+                p { "No projectors uploaded yet." }
             } @else {
                 ul {
                     @for name in &names {
                         li {
-                            a href={"/ui/projections/" (name)}
-                                hx-get={"/ui/projections/" (name)}
+                            a href={"/ui/projectors/" (name)}
+                                hx-get={"/ui/projectors/" (name)}
                                 hx-target="#content"
-                                hx-push-url={"/ui/projections/" (name)}
+                                hx-push-url={"/ui/projectors/" (name)}
                                 { (name) }
                         }
                     }
                 }
             }
-            (upload_form(ModuleType::Projection, None))
+            (upload_form(ModuleType::Projector, None))
         }
     };
 
-    Ok(respond(&headers, "Projections", content))
+    Ok(respond(&headers, "Projectors", content))
 }
 
-pub async fn get_projection(
+pub async fn get_projector(
     State(state): State<UiState>,
     Path(name): Path<String>,
     headers: HeaderMap,
@@ -64,7 +64,7 @@ pub async fn get_projection(
     let versions = state
         .module_store_ref
         .ask(GetModuleVersions {
-            module_type: ModuleType::Projection,
+            module_type: ModuleType::Projector,
             name: name_arc.clone(),
         })
         .await
@@ -73,7 +73,7 @@ pub async fn get_projection(
     let active = state
         .module_store_ref
         .ask(GetActiveModule {
-            module_type: ModuleType::Projection,
+            module_type: ModuleType::Projector,
             name: name_arc,
         })
         .await
@@ -82,15 +82,15 @@ pub async fn get_projection(
 
     let content = html! {
         section {
-            h2 { "Projection: " (name) }
-            a href="/ui/projections"
-                hx-get="/ui/projections"
+            h2 { "Projector: " (name) }
+            a href="/ui/projectors"
+                hx-get="/ui/projectors"
                 hx-target="#content"
-                hx-push-url="/ui/projections"
-                { "← Back to Projections" }
+                hx-push-url="/ui/projectors"
+                { "← Back to Projectors" }
             h3 { "Versions" }
-            (versions_table(ModuleType::Projection, &name, &versions, active_version.as_ref()))
-            (upload_form(ModuleType::Projection, Some(&name)))
+            (versions_table(ModuleType::Projector, &name, &versions, active_version.as_ref()))
+            (upload_form(ModuleType::Projector, Some(&name)))
         }
     };
 

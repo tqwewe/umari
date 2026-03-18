@@ -9,45 +9,37 @@ use umadb_dcb::{DCBError, DCBEventStoreAsync, DCBReadResponseAsync, DCBSequenced
 use umari_core::{
     error::DeserializeEventError,
     event::{StoredEvent, StoredEventData},
-    prelude::CommandContext,
 };
 use wasmtime::{
     Engine,
     component::{Component, Linker},
 };
 
-use crate::{
-    command::actor::{CommandActor, CommandPayload, Execute},
-    module::InstantiatedModule,
-    module_store::ModuleType,
-    wit,
-};
+use crate::{module::InstantiatedModule, module_store::ModuleType};
 
-use super::PolicyError;
+use super::{EffectError, wit};
 
-pub struct PolicyActor {
-    command_ref: ActorRef<CommandActor>,
-    module: InstantiatedModule<wit::policy::Policy>,
+pub struct EffectActor {
+    module: InstantiatedModule<wit::effect::Effect>,
     stream: Box<dyn DCBReadResponseAsync + Send + 'static>,
 }
 
 #[derive(Clone)]
-pub struct PolicyActorArgs {
+pub struct EffectActorArgs {
     pub engine: Engine,
     pub linker: Linker<wit::SqliteComponentState>,
     pub event_store: Arc<AsyncUmaDBClient>,
-    pub command_ref: ActorRef<CommandActor>,
     pub component: Component,
     pub name: Arc<str>,
     pub version: Version,
 }
 
-impl Actor for PolicyActor {
-    type Args = PolicyActorArgs;
-    type Error = PolicyError;
+impl Actor for EffectActor {
+    type Args = EffectActorArgs;
+    type Error = EffectError;
 
     fn name() -> &'static str {
-        "PolicyActor"
+        "EffectActor"
     }
 
     async fn on_start(args: Self::Args, _actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
@@ -55,7 +47,7 @@ impl Actor for PolicyActor {
             &args.engine,
             &args.linker,
             &args.component,
-            ModuleType::Projector,
+            ModuleType::Effect,
             args.name,
             args.version,
         )
@@ -68,13 +60,9 @@ impl Actor for PolicyActor {
             .read(Some(query), start, false, None, true)
             .await?;
 
-        info!(name = %module.name, version = %module.version, ?start, "projector subscribed to event store");
+        info!(name = %module.name, version = %module.version, ?start, "effect subscribed to event store");
 
-        Ok(PolicyActor {
-            command_ref: args.command_ref,
-            module,
-            stream,
-        })
+        Ok(EffectActor { module, stream })
     }
 
     async fn next(
@@ -98,8 +86,8 @@ impl Actor for PolicyActor {
     }
 }
 
-impl PolicyActor {
-    async fn process_batch(&mut self, batch: Vec<DCBSequencedEvent>) -> Result<(), PolicyError> {
+impl EffectActor {
+    async fn process_batch(&mut self, batch: Vec<DCBSequencedEvent>) -> Result<(), EffectError> {
         let mut new_position = None;
         for event in batch {
             new_position = Some(event.position);
@@ -113,7 +101,7 @@ impl PolicyActor {
         Ok(())
     }
 
-    async fn handle_event(&mut self, event: DCBSequencedEvent) -> Result<(), PolicyError> {
+    async fn handle_event(&mut self, event: DCBSequencedEvent) -> Result<(), EffectError> {
         let data: StoredEventData<Value> =
             serde_json::from_slice(&event.event.data).map_err(|err| DeserializeEventError {
                 code: umari_core::error::DeserializeEventErrorCode::InvalidData,
@@ -121,7 +109,7 @@ impl PolicyActor {
             })?;
 
         let event = StoredEvent {
-            id: event.event.uuid.ok_or(PolicyError::MissingEventId)?,
+            id: event.event.uuid.ok_or(EffectError::MissingEventId)?,
             position: event.position,
             event_type: event.event.event_type,
             tags: event.event.tags,
@@ -135,12 +123,11 @@ impl PolicyActor {
         self.handle(event).await
     }
 
-    async fn handle(&mut self, event: StoredEvent<Value>) -> Result<(), PolicyError> {
-        let cmds = self
-            .module
+    async fn handle(&mut self, event: StoredEvent<Value>) -> Result<(), EffectError> {
+        self.module
             .instance
-            .umari_policy_policy_runner()
-            .policy_state()
+            .umari_effect_effect_runner()
+            .effect_state()
             .call_handle(
                 &mut self.module.store,
                 self.module.handler,
@@ -159,26 +146,6 @@ impl PolicyActor {
                 },
             )
             .await??;
-
-        for cmd in cmds {
-            self.command_ref
-                .ask(Execute {
-                    name: cmd.command_type.into(),
-                    command: CommandPayload {
-                        input: serde_json::from_str(&cmd.input).map_err(|err| {
-                            DeserializeEventError {
-                                code: umari_core::error::DeserializeEventErrorCode::InvalidData,
-                                message: Some(err.to_string()),
-                            }
-                        })?,
-                        context: Some(CommandContext::triggered_by_event(
-                            event.id,
-                            event.correlation_id,
-                        )),
-                    },
-                })
-                .await?;
-        }
 
         Ok(())
     }

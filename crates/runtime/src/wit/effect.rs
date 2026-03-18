@@ -6,20 +6,21 @@ use wasmtime::{
 use super::{SqliteComponentState, common::DcbQuery};
 use crate::module::{Module, SqliteModule};
 
-pub use self::exports::umari::projector::projector_runner::Error;
+pub use self::exports::umari::effect::effect_runner::Error;
 
 bindgen!({
-    path: "../../wit/projector",
-    world: "projector",
+    path: "../../wit/effect",
+    world: "effect",
     imports: { default: tracing | trappable },
     exports: { default: async },
     with: {
         "umari:common": crate::wit::common,
         "umari:sqlite": crate::wit::sqlite,
+        "wasi": wasmtime_wasi_http::bindings,
     }
 });
 
-impl Module for Projector {
+impl Module for Effect {
     type State = SqliteComponentState;
     type Error = Error;
 
@@ -32,13 +33,13 @@ impl Module for Projector {
     }
 }
 
-impl SqliteModule for Projector {
+impl SqliteModule for Effect {
     async fn construct(
         &self,
         store: &mut Store<SqliteComponentState>,
     ) -> wasmtime::Result<Result<ResourceAny, Self::Error>> {
-        self.umari_projector_projector_runner()
-            .projector_state()
+        self.umari_effect_effect_runner()
+            .effect_state()
             .call_constructor(store)
             .await
     }
@@ -48,8 +49,8 @@ impl SqliteModule for Projector {
         store: &mut Store<SqliteComponentState>,
         handler: ResourceAny,
     ) -> wasmtime::Result<DcbQuery> {
-        self.umari_projector_projector_runner()
-            .projector_state()
+        self.umari_effect_effect_runner()
+            .effect_state()
             .call_query(store, handler)
             .await
     }

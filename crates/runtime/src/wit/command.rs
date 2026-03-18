@@ -7,9 +7,10 @@ use crate::wit::BasicComponentState;
 bindgen!({
     path: "../../wit/command",
     world: "command",
+    imports: { default: tracing | trappable },
     exports: { default: async },
     with: {
-        "umari:common/types@0.1.0": crate::wit::common,
+        "umari:common": crate::wit::common,
     }
 });
 

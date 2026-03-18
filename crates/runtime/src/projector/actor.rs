@@ -17,15 +17,15 @@ use wasmtime::{
 
 use crate::{module::InstantiatedModule, module_store::ModuleType};
 
-use super::{ProjectionError, wit};
+use super::{ProjectorError, wit};
 
-pub struct ProjectionActor {
-    module: InstantiatedModule<wit::projection::Projection>,
+pub struct ProjectorActor {
+    module: InstantiatedModule<wit::projector::Projector>,
     stream: Box<dyn DCBReadResponseAsync + Send + 'static>,
 }
 
 #[derive(Clone)]
-pub struct ProjectionActorArgs {
+pub struct ProjectorActorArgs {
     pub engine: Engine,
     pub linker: Linker<wit::SqliteComponentState>,
     pub event_store: Arc<AsyncUmaDBClient>,
@@ -34,12 +34,12 @@ pub struct ProjectionActorArgs {
     pub version: Version,
 }
 
-impl Actor for ProjectionActor {
-    type Args = ProjectionActorArgs;
-    type Error = ProjectionError;
+impl Actor for ProjectorActor {
+    type Args = ProjectorActorArgs;
+    type Error = ProjectorError;
 
     fn name() -> &'static str {
-        "ProjectionActor"
+        "ProjectorActor"
     }
 
     async fn on_start(args: Self::Args, _actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
@@ -47,7 +47,7 @@ impl Actor for ProjectionActor {
             &args.engine,
             &args.linker,
             &args.component,
-            ModuleType::Projection,
+            ModuleType::Projector,
             args.name,
             args.version,
         )
@@ -60,9 +60,9 @@ impl Actor for ProjectionActor {
             .read(Some(query), start, false, None, true)
             .await?;
 
-        info!(name = %module.name, version = %module.version, ?start, "projection subscribed to event store");
+        info!(name = %module.name, version = %module.version, ?start, "projector subscribed to event store");
 
-        Ok(ProjectionActor { module, stream })
+        Ok(ProjectorActor { module, stream })
     }
 
     async fn next(
@@ -86,11 +86,8 @@ impl Actor for ProjectionActor {
     }
 }
 
-impl ProjectionActor {
-    async fn process_batch(
-        &mut self,
-        batch: Vec<DCBSequencedEvent>,
-    ) -> Result<(), ProjectionError> {
+impl ProjectorActor {
+    async fn process_batch(&mut self, batch: Vec<DCBSequencedEvent>) -> Result<(), ProjectorError> {
         let mut new_position = None;
         for event in batch {
             new_position = Some(event.position);
@@ -104,7 +101,7 @@ impl ProjectionActor {
         Ok(())
     }
 
-    async fn handle_event(&mut self, event: DCBSequencedEvent) -> Result<(), ProjectionError> {
+    async fn handle_event(&mut self, event: DCBSequencedEvent) -> Result<(), ProjectorError> {
         let data: StoredEventData<Value> =
             serde_json::from_slice(&event.event.data).map_err(|err| DeserializeEventError {
                 code: umari_core::error::DeserializeEventErrorCode::InvalidData,
@@ -112,7 +109,7 @@ impl ProjectionActor {
             })?;
 
         let event = StoredEvent {
-            id: event.event.uuid.ok_or(ProjectionError::MissingEventId)?,
+            id: event.event.uuid.ok_or(ProjectorError::MissingEventId)?,
             position: event.position,
             event_type: event.event.event_type,
             tags: event.event.tags,
@@ -126,12 +123,12 @@ impl ProjectionActor {
         self.handle(event).await
     }
 
-    async fn handle(&mut self, event: StoredEvent<Value>) -> Result<(), ProjectionError> {
+    async fn handle(&mut self, event: StoredEvent<Value>) -> Result<(), ProjectorError> {
         self.module
             .instance
-            .umari_projection_projection_runner()
-            .projection_state()
-            .call_handler(
+            .umari_projector_projector_runner()
+            .projector_state()
+            .call_handle(
                 &mut self.module.store,
                 self.module.handler,
                 &wit::common::StoredEvent {

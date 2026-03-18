@@ -2,7 +2,7 @@ pub mod command;
 pub mod common;
 pub mod effect;
 pub mod policy;
-pub mod projection;
+pub mod projector;
 pub mod sqlite;
 
 use std::{collections::HashMap, fmt};

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct UploadResponse {
-    /// Type of module (Command or Projection)
+    /// Type of module (Command or Projector)
     #[serde(rename = "module_type")]
     pub module_type: String,
     /// Module name

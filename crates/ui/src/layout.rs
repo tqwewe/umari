@@ -21,11 +21,11 @@ pub fn page(title: &str, content: Markup) -> Markup {
                             hx-push-url="/"
                             { "Commands" }
                         " · "
-                        a href="/ui/projections"
-                            hx-get="/ui/projections"
+                        a href="/ui/projectors"
+                            hx-get="/ui/projectors"
                             hx-target="#content"
-                            hx-push-url="/ui/projections"
-                            { "Projections" }
+                            hx-push-url="/ui/projectors"
+                            { "Projectors" }
                         " · "
                         a href="/ui/active"
                             hx-get="/ui/active"

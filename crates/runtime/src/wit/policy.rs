@@ -13,12 +13,11 @@ pub use self::exports::umari::policy::policy_runner::Error;
 bindgen!({
     path: "../../wit/policy",
     world: "policy",
+    imports: { default: tracing | trappable },
     exports: { default: async },
     with: {
-        "umari:common/types@0.1.0": crate::wit::common,
-        "umari:sqlite/types@0.1.0": crate::wit::sqlite,
-        "umari:sqlite/connection@0.1.0": crate::wit::sqlite,
-        "umari:sqlite/statement@0.1.0": crate::wit::sqlite,
+        "umari:common": crate::wit::common,
+        "umari:sqlite": crate::wit::sqlite,
     }
 });
 

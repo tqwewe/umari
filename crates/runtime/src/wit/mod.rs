@@ -7,8 +7,9 @@ use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxView, WasiView};
 
 pub mod command;
 pub mod common;
+pub mod effect;
 pub mod policy;
-pub mod projection;
+pub mod projector;
 pub mod sqlite;
 
 pub struct BasicComponentState {
@@ -97,7 +98,7 @@ impl SqliteComponentState {
 /// - No usage with `tokio::spawn()` or other multi-threaded executors
 ///
 /// The current usage is sound because:
-/// 1. ProjectionActor is spawned with `.spawn_in_thread()` which creates a
+/// 1. ProjectorActor is spawned with `.spawn_in_thread()` which creates a
 ///    dedicated OS thread
 /// 2. The actor runs via `Handle::block_on()` which executes all async code
 ///    (including wasmtime operations) on that specific thread without migrating
@@ -107,7 +108,7 @@ impl SqliteComponentState {
 /// DO NOT use this type with `tokio::spawn` or change from `.spawn_in_thread()`
 /// to `.spawn()`. Doing so will cause undefined behavior, data corruption, or crashes.
 ///
-/// See: crates/runtime/src/projection/supervisor.rs lines 126 and 214
+/// See: crates/runtime/src/projector/supervisor.rs lines 126 and 214
 unsafe impl Send for SqliteComponentState {}
 
 impl WasiView for SqliteComponentState {

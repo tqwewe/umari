@@ -61,7 +61,7 @@ pub async fn upload_command(
 
 #[utoipa::path(
     post,
-    path = "/projections/{name}/versions/{version}",
+    path = "/projectors/{name}/versions/{version}",
     params(
         ("name" = String, Path, description = "Module name"),
         ("version" = String, Path, description = "Semantic version (e.g., 1.0.0)"),
@@ -73,9 +73,9 @@ pub async fn upload_command(
         (status = 400, description = "Invalid input", body = crate::error::ErrorResponse),
         (status = 409, description = "Module version already exists", body = crate::error::ErrorResponse)
     ),
-    tag = "projections"
+    tag = "projectors"
 )]
-pub async fn upload_projection(
+pub async fn upload_projector(
     State(state): State<AppState>,
     Path((name, version)): Path<(String, String)>,
     Query(query): Query<UploadQuery>,
@@ -83,7 +83,7 @@ pub async fn upload_projection(
 ) -> Result<(StatusCode, Json<UploadResponse>), Error> {
     upload_module(
         state,
-        ModuleType::Projection,
+        ModuleType::Projector,
         name,
         version,
         query.activate,

@@ -282,7 +282,7 @@ impl ToSql for ModuleType {
         Ok(ToSqlOutput::Borrowed(ValueRef::Text(match self {
             ModuleType::Command => b"command",
             ModuleType::Policy => b"policy",
-            ModuleType::Projection => b"projection",
+            ModuleType::Projector => b"projector",
             ModuleType::Effect => b"effect",
         })))
     }
@@ -293,7 +293,7 @@ impl FromSql for ModuleType {
         match value.as_str()? {
             "command" => Ok(ModuleType::Command),
             "policy" => Ok(ModuleType::Policy),
-            "projection" => Ok(ModuleType::Projection),
+            "projector" => Ok(ModuleType::Projector),
             "effect" => Ok(ModuleType::Effect),
             _ => Err(FromSqlError::InvalidType),
         }
@@ -699,7 +699,7 @@ mod all_active_tests {
             .unwrap();
         store
             .save_module(
-                ModuleType::Projection,
+                ModuleType::Projector,
                 "proj1",
                 "0.1.0".parse().unwrap(),
                 &[7, 8, 9],
@@ -721,7 +721,7 @@ mod all_active_tests {
             .activate_module(ModuleType::Command, "cmd2", "0.2.0".parse().unwrap())
             .unwrap();
         store
-            .activate_module(ModuleType::Projection, "proj1", "0.1.0".parse().unwrap())
+            .activate_module(ModuleType::Projector, "proj1", "0.1.0".parse().unwrap())
             .unwrap();
         store
             .activate_module(ModuleType::Effect, "effect1", "0.1.0".parse().unwrap())
@@ -738,13 +738,13 @@ mod all_active_tests {
                 .all(|m| m.module_type == ModuleType::Command)
         );
 
-        // Filter by Projection type
-        let projections = store
-            .get_all_active_modules(Some(ModuleType::Projection))
+        // Filter by Projector type
+        let projectors = store
+            .get_all_active_modules(Some(ModuleType::Projector))
             .unwrap();
-        assert_eq!(projections.len(), 1);
-        assert_eq!(projections[0].module_type, ModuleType::Projection);
-        assert_eq!(projections[0].name, "proj1");
+        assert_eq!(projectors.len(), 1);
+        assert_eq!(projectors[0].module_type, ModuleType::Projector);
+        assert_eq!(projectors[0].name, "proj1");
 
         // Filter by Effect type
         let effects = store
@@ -774,11 +774,11 @@ mod all_active_tests {
             .activate_module(ModuleType::Command, "cmd1", "0.1.0".parse().unwrap())
             .unwrap();
 
-        // Filter by Projection type (should return empty)
-        let projections = store
-            .get_all_active_modules(Some(ModuleType::Projection))
+        // Filter by Projector type (should return empty)
+        let projectors = store
+            .get_all_active_modules(Some(ModuleType::Projector))
             .unwrap();
-        assert!(projections.is_empty());
+        assert!(projectors.is_empty());
 
         // Filter by Effect type (should return empty)
         let effects = store

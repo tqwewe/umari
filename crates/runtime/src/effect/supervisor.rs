@@ -10,8 +10,8 @@ use wasmtime::{
 };
 
 use super::{
-    ProjectorError,
-    actor::{ProjectorActor, ProjectorActorArgs},
+    EffectError,
+    actor::{EffectActor, EffectActorArgs},
     wit,
 };
 use crate::{
@@ -22,27 +22,27 @@ use crate::{
     },
 };
 
-pub struct ProjectorSupervisor {
+pub struct EffectSupervisor {
     engine: Engine,
     linker: Linker<wit::SqliteComponentState>,
     event_store: Arc<AsyncUmaDBClient>,
     module_store_ref: ActorRef<ModuleStoreActor>,
-    projectors: HashMap<Arc<str>, VersionedProjector>,
+    effects: HashMap<Arc<str>, VersionedEffect>,
 }
 
 #[derive(Clone)]
-pub struct ProjectorSupervisorArgs {
+pub struct EffectSupervisorArgs {
     pub engine: Engine,
     pub event_store: Arc<AsyncUmaDBClient>,
     pub module_store_ref: ActorRef<ModuleStoreActor>,
 }
 
-impl Actor for ProjectorSupervisor {
-    type Args = ProjectorSupervisorArgs;
-    type Error = ProjectorError;
+impl Actor for EffectSupervisor {
+    type Args = EffectSupervisorArgs;
+    type Error = EffectError;
 
     fn name() -> &'static str {
-        "ProjectorSupervisor"
+        "EffectSupervisor"
     }
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
@@ -54,30 +54,30 @@ impl Actor for ProjectorSupervisor {
         let active_modules = args
             .module_store_ref
             .ask(GetAllActiveModules {
-                module_type: Some(ModuleType::Projector),
+                module_type: Some(ModuleType::Effect),
             })
             .reply_timeout(Duration::from_secs(2))
             .send()
             .await?;
 
-        let mut projectors: HashMap<Arc<str>, VersionedProjector> =
+        let mut effects: HashMap<Arc<str>, VersionedEffect> =
             HashMap::with_capacity(active_modules.len());
 
         for module in active_modules {
-            assert_eq!(module.module_type, ModuleType::Projector);
+            assert_eq!(module.module_type, ModuleType::Effect);
 
             let component = match Component::new(&args.engine, module.wasm_bytes) {
                 Ok(wasm_module) => wasm_module,
                 Err(err) => {
-                    error!(module_type = %ModuleType::Projector, name = %module.name, version = %module.version, "failed to compile projector module: {err}");
+                    error!(module_type = %ModuleType::Effect, name = %module.name, version = %module.version, "failed to compile effect module: {err}");
                     continue;
                 }
             };
             let name: Arc<str> = module.name.into();
 
-            let projector_ref = ProjectorActor::supervise(
+            let effect_ref = EffectActor::supervise(
                 &actor_ref,
-                ProjectorActorArgs {
+                EffectActorArgs {
                     engine: args.engine.clone(),
                     linker: linker.clone(),
                     event_store: args.event_store.clone(),
@@ -89,25 +89,25 @@ impl Actor for ProjectorSupervisor {
             .spawn_in_thread()
             .await;
 
-            let prev = projectors.insert(
+            let prev = effects.insert(
                 name.clone(),
-                VersionedProjector {
+                VersionedEffect {
                     version: module.version.clone(),
-                    projector_ref,
+                    effect_ref,
                 },
             );
             if prev.is_some() {
-                return Err(ProjectorError::DuplicateActiveModule { name });
+                return Err(EffectError::DuplicateActiveModule { name });
             }
-            info!(%name, version = %module.version, "projector module loaded");
+            info!(%name, version = %module.version, "effect module loaded");
         }
 
-        Ok(ProjectorSupervisor {
+        Ok(EffectSupervisor {
             engine: args.engine,
             linker,
             event_store: args.event_store,
             module_store_ref: args.module_store_ref,
-            projectors,
+            effects,
         })
     }
 
@@ -117,20 +117,20 @@ impl Actor for ProjectorSupervisor {
         id: ActorId,
         _reason: ActorStopReason,
     ) -> Result<ControlFlow<ActorStopReason>, Self::Error> {
-        self.projectors
-            .retain(|_, module| module.projector_ref.id() != id);
+        self.effects
+            .retain(|_, module| module.effect_ref.id() != id);
         Ok(ControlFlow::Continue(()))
     }
 }
 
 #[derive(Debug)]
-struct VersionedProjector {
+struct VersionedEffect {
     version: Version,
-    projector_ref: ActorRef<ProjectorActor>,
+    effect_ref: ActorRef<EffectActor>,
 }
 
-impl Message<ModuleEvent> for ProjectorSupervisor {
-    type Reply = Result<(), ProjectorError>;
+impl Message<ModuleEvent> for EffectSupervisor {
+    type Reply = Result<(), EffectError>;
 
     async fn handle(
         &mut self,
@@ -143,11 +143,11 @@ impl Message<ModuleEvent> for ProjectorSupervisor {
                 name,
                 version,
             } => {
-                if module_type == ModuleType::Projector {
+                if module_type == ModuleType::Effect {
                     let module = self
                         .module_store_ref
                         .ask(GetActiveModule {
-                            module_type: ModuleType::Projector,
+                            module_type: ModuleType::Effect,
                             name: name.clone(),
                         })
                         .reply_timeout(Duration::from_secs(2))
@@ -158,14 +158,14 @@ impl Message<ModuleEvent> for ProjectorSupervisor {
                             let component = match Component::new(&self.engine, wasm_bytes) {
                                 Ok(component) => component,
                                 Err(err) => {
-                                    error!(module_type = %ModuleType::Projector, %name, %version, "failed to compile projector component: {err}");
+                                    error!(module_type = %ModuleType::Effect, %name, %version, "failed to compile effect component: {err}");
                                     return Ok(());
                                 }
                             };
 
-                            let projector_ref = ProjectorActor::supervise(
+                            let effect_ref = EffectActor::supervise(
                                 ctx.actor_ref(),
-                                ProjectorActorArgs {
+                                EffectActorArgs {
                                     engine: self.engine.clone(),
                                     linker: self.linker.clone(),
                                     event_store: self.event_store.clone(),
@@ -177,14 +177,14 @@ impl Message<ModuleEvent> for ProjectorSupervisor {
                             .spawn_in_thread()
                             .await;
 
-                            self.projectors.insert(
+                            self.effects.insert(
                                 name.clone(),
-                                VersionedProjector {
+                                VersionedEffect {
                                     version: version.clone(),
-                                    projector_ref,
+                                    effect_ref,
                                 },
                             );
-                            info!(%name, %version, "projector module loaded");
+                            info!(%name, %version, "effect module loaded");
                         }
                         None => {
                             warn!(%name, %version, "active module not found");
@@ -193,10 +193,10 @@ impl Message<ModuleEvent> for ProjectorSupervisor {
                 }
             }
             ModuleEvent::Deactivated { module_type, name } => {
-                if module_type == ModuleType::Projector
-                    && let Some(module) = self.projectors.remove(&name)
+                if module_type == ModuleType::Effect
+                    && let Some(module) = self.effects.remove(&name)
                 {
-                    info!(%name, version = %module.version, "projector module unloaded");
+                    info!(%name, version = %module.version, "effect module unloaded");
                 }
             }
         }

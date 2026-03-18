@@ -5,7 +5,7 @@ use slotmap::DefaultKey;
 use wasmtime::component::{Resource, bindgen};
 use wasmtime_wasi::ResourceTableError;
 
-pub use self::umari::sqlite::types::*;
+pub use self::umari::sqlite::{types::*, *};
 use super::SqliteComponentState;
 
 bindgen!({

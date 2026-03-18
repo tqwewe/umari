@@ -88,7 +88,7 @@ mod macros;
 pub mod effect;
 pub mod params;
 pub mod policy;
-pub mod projection;
+pub mod projector;
 pub mod runtime;
 pub mod sqlite;
 
@@ -100,9 +100,9 @@ pub mod prelude {
     pub use crate::error::*;
     pub use crate::event::*;
     pub use crate::policy::*;
-    pub use crate::projection::*;
+    pub use crate::projector::*;
     pub use crate::sqlite::*;
-    pub use crate::{emit, export_command, export_projection, reject};
+    pub use crate::{emit, export_command, export_projector, reject};
     pub use umari_macros::{CommandInput, Event, EventSet};
 }
 

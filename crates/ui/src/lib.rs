@@ -17,7 +17,7 @@ use crate::routes::{
     commands::{get_command, list_commands},
     execute::execute_command,
     index::index,
-    projections::{get_projection, list_projections},
+    projectors::{get_projector, list_projectors},
     upload::upload_module,
 };
 
@@ -32,8 +32,8 @@ pub fn ui_router(state: UiState) -> Router {
         .route("/", get(index))
         .route("/ui/commands", get(list_commands))
         .route("/ui/commands/{name}", get(get_command))
-        .route("/ui/projections", get(list_projections))
-        .route("/ui/projections/{name}", get(get_projection))
+        .route("/ui/projectors", get(list_projectors))
+        .route("/ui/projectors/{name}", get(get_projector))
         .route("/ui/active", get(list_active))
         .route("/ui/upload/{module_type}", post(upload_module))
         .route("/ui/{module_type}/{name}/active", put(activate))

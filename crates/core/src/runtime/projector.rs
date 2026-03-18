@@ -1,15 +1,15 @@
 use std::{cell::RefCell, marker::PhantomData};
 
-pub use self::exports::umari::projection::projection_runner::{Error, Guest, GuestProjectionState};
+pub use self::exports::umari::projector::projector_runner::{Error, Guest, GuestProjectorState};
 use crate::{
     event::EventSet,
-    projection::Projection,
+    projector::Projector,
     runtime::common::{DcbQuery, DeserializeEventError, DeserializeEventErrorCode, StoredEvent},
 };
 
 wit_bindgen::generate!({
-    world: "projection",
-    path: "../../wit/projection",
+    world: "projector",
+    path: "../../wit/projector",
     additional_derives: [PartialEq, Clone, serde::Serialize, serde::Deserialize],
     pub_export_macro: true,
     with: {
@@ -21,29 +21,29 @@ wit_bindgen::generate!({
 });
 
 #[macro_export]
-macro_rules! export_projection {
+macro_rules! export_projector {
     ($ty:path) => {
-        $crate::runtime::projection::export!($crate::runtime::projection::ProjectionExport<$ty>, with_types_in $crate::runtime::projection);
+        $crate::runtime::projector::export!($crate::runtime::projector::ProjectorExport<$ty>, with_types_in $crate::runtime::projector);
     };
 }
 
-pub struct ProjectionExport<T>(PhantomData<T>);
+pub struct ProjectorExport<T>(PhantomData<T>);
 
-pub struct ProjectionState<T> {
+pub struct ProjectorState<T> {
     inner: RefCell<T>,
 }
 
-impl<T: Projection + 'static> Guest for ProjectionExport<T> {
-    type ProjectionState = ProjectionState<T>;
+impl<T: Projector + 'static> Guest for ProjectorExport<T> {
+    type ProjectorState = ProjectorState<T>;
 }
 
-impl<T: Projection + 'static> GuestProjectionState for ProjectionState<T> {
+impl<T: Projector + 'static> GuestProjectorState for ProjectorState<T> {
     fn new() -> Result<Self, Error>
     where
         Self: Sized,
     {
         let state = T::init()?;
-        Ok(ProjectionState {
+        Ok(ProjectorState {
             inner: RefCell::new(state),
         })
     }
@@ -52,7 +52,7 @@ impl<T: Projection + 'static> GuestProjectionState for ProjectionState<T> {
         self.inner.borrow().query().into()
     }
 
-    fn handler(&self, stored_event: StoredEvent) -> Result<(), Error> {
+    fn handle(&self, stored_event: StoredEvent) -> Result<(), Error> {
         let event: crate::event::StoredEvent<serde_json::Value> = stored_event.try_into()?;
 
         let data = match T::Query::from_event(&event.event_type, event.data) {
@@ -85,11 +85,11 @@ impl<T: Projection + 'static> GuestProjectionState for ProjectionState<T> {
     }
 }
 
-impl From<crate::error::ProjectionError> for Error {
-    fn from(err: crate::error::ProjectionError) -> Self {
+impl From<crate::error::ProjectorError> for Error {
+    fn from(err: crate::error::ProjectorError) -> Self {
         match err {
-            crate::error::ProjectionError::Sqlite(err) => Error::Sqlite(err),
-            crate::error::ProjectionError::Other { message } => Error::Other(message),
+            crate::error::ProjectorError::Sqlite(err) => Error::Sqlite(err),
+            crate::error::ProjectorError::Other { message } => Error::Other(message),
         }
     }
 }

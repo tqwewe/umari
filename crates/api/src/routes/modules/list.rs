@@ -49,22 +49,22 @@ pub async fn list_commands(
 
 #[utoipa::path(
     get,
-    path = "/projections",
+    path = "/projectors",
     params(
         ("active_only" = Option<bool>, Query, description = "Filter to only active modules"),
         ("name" = Option<String>, Query, description = "Filter by module name")
     ),
     responses(
-        (status = 200, description = "List of projection modules", body = ListModulesResponse),
+        (status = 200, description = "List of projector modules", body = ListModulesResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "projections"
+    tag = "projectors"
 )]
-pub async fn list_projections(
+pub async fn list_projectors(
     State(state): State<AppState>,
     Query(query): Query<ListQuery>,
 ) -> Result<Json<ListModulesResponse>, Error> {
-    list_modules(state, ModuleType::Projection, query).await
+    list_modules(state, ModuleType::Projector, query).await
 }
 
 async fn list_modules(
@@ -162,22 +162,22 @@ pub async fn get_command_details(
 
 #[utoipa::path(
     get,
-    path = "/projections/{name}",
+    path = "/projectors/{name}",
     params(
         ("name" = String, Path, description = "Module name")
     ),
     responses(
-        (status = 200, description = "Projection module details", body = ModuleDetailsResponse),
+        (status = 200, description = "Projector module details", body = ModuleDetailsResponse),
         (status = 404, description = "Module not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "projections"
+    tag = "projectors"
 )]
-pub async fn get_projection_details(
+pub async fn get_projector_details(
     State(state): State<AppState>,
     Path(name): Path<String>,
 ) -> Result<Json<ModuleDetailsResponse>, Error> {
-    get_module_details(state, ModuleType::Projection, name).await
+    get_module_details(state, ModuleType::Projector, name).await
 }
 
 async fn get_module_details(
@@ -252,24 +252,24 @@ pub async fn get_command_version_details(
 
 #[utoipa::path(
     get,
-    path = "/projections/{name}/versions/{version}",
+    path = "/projectors/{name}/versions/{version}",
     params(
         ("name" = String, Path, description = "Module name"),
         ("version" = String, Path, description = "Semantic version (e.g., 1.0.0)")
     ),
     responses(
-        (status = 200, description = "Projection version details", body = VersionDetailsResponse),
+        (status = 200, description = "Projector version details", body = VersionDetailsResponse),
         (status = 400, description = "Invalid version format", body = ErrorResponse),
         (status = 404, description = "Version not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "projections"
+    tag = "projectors"
 )]
-pub async fn get_projection_version_details(
+pub async fn get_projector_version_details(
     State(state): State<AppState>,
     Path((name, version)): Path<(String, String)>,
 ) -> Result<Json<VersionDetailsResponse>, Error> {
-    get_version_details(state, ModuleType::Projection, name, version).await
+    get_version_details(state, ModuleType::Projector, name, version).await
 }
 
 async fn get_version_details(
@@ -329,7 +329,7 @@ async fn get_version_details(
     get,
     path = "/modules/active",
     params(
-        ("module_type" = Option<String>, Query, description = "Filter by module type (command, projection, effect)")
+        ("module_type" = Option<String>, Query, description = "Filter by module type (command, projector, effect)")
     ),
     responses(
         (status = 200, description = "List of active modules", body = ActiveModulesResponse),
@@ -343,7 +343,7 @@ pub async fn list_active_modules(
 ) -> Result<Json<ActiveModulesResponse>, Error> {
     let module_type = query.module_type.map(|s| match s.as_str() {
         "command" => ModuleType::Command,
-        "projection" => ModuleType::Projection,
+        "projector" => ModuleType::Projector,
         "effect" => ModuleType::Effect,
         _ => ModuleType::Command, // Default, though validation should catch this
     });
