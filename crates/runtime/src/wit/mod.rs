@@ -1,9 +1,16 @@
 #[cfg(debug_assertions)]
 use std::thread;
 
+use kameo::actor::ActorRef;
 use rusqlite::{Connection, Statement};
 use slotmap::{DefaultKey, SlotMap};
 use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxView, WasiView};
+use wasmtime_wasi_http::{
+    WasiHttpCtx,
+    p2::{WasiHttpCtxView, WasiHttpView},
+};
+
+use crate::command::actor::CommandActor;
 
 pub mod command;
 pub mod common;
@@ -26,9 +33,11 @@ impl WasiView for BasicComponentState {
     }
 }
 
-pub struct SqliteComponentState {
+pub struct EventHandlerComponentState {
     wasi_ctx: WasiCtx,
+    wasi_http_ctx: WasiHttpCtx,
     resource_table: ResourceTable,
+    command_ref: ActorRef<CommandActor>,
     conn: Connection,
     last_position: Option<u64>,
     statements: SlotMap<DefaultKey, Box<Statement<'static>>>,
@@ -36,18 +45,21 @@ pub struct SqliteComponentState {
     thread_id: thread::ThreadId,
 }
 
-impl SqliteComponentState {
+impl EventHandlerComponentState {
     /// Creates a new SqliteComponentState.
     /// In debug builds, captures the current thread ID for verification.
     pub fn new(
         wasi_ctx: WasiCtx,
         resource_table: ResourceTable,
+        command_ref: ActorRef<CommandActor>,
         conn: Connection,
         last_position: Option<u64>,
     ) -> Self {
         Self {
             wasi_ctx,
+            wasi_http_ctx: WasiHttpCtx::new(),
             resource_table,
+            command_ref,
             conn,
             last_position,
             statements: SlotMap::new(),
@@ -109,13 +121,23 @@ impl SqliteComponentState {
 /// to `.spawn()`. Doing so will cause undefined behavior, data corruption, or crashes.
 ///
 /// See: crates/runtime/src/projector/supervisor.rs lines 126 and 214
-unsafe impl Send for SqliteComponentState {}
+unsafe impl Send for EventHandlerComponentState {}
 
-impl WasiView for SqliteComponentState {
+impl WasiView for EventHandlerComponentState {
     fn ctx(&mut self) -> WasiCtxView<'_> {
         WasiCtxView {
             ctx: &mut self.wasi_ctx,
             table: &mut self.resource_table,
+        }
+    }
+}
+
+impl WasiHttpView for EventHandlerComponentState {
+    fn http(&mut self) -> WasiHttpCtxView<'_> {
+        WasiHttpCtxView {
+            ctx: &mut self.wasi_http_ctx,
+            table: &mut self.resource_table,
+            hooks: Default::default(),
         }
     }
 }

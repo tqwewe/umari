@@ -15,10 +15,13 @@ use utoipa_swagger_ui::SwaggerUi;
 use crate::routes::{
     execute::execute,
     modules::{
-        activate_command, activate_projector, deactivate_command, deactivate_projector,
-        get_command_details, get_command_version_details, get_projector_details,
-        get_projector_version_details, list_active_modules, list_commands, list_projectors,
-        upload_command, upload_projector,
+        activate_command, activate_effect, activate_policy, activate_projector, deactivate_command,
+        deactivate_effect, deactivate_policy, deactivate_projector, get_command_details,
+        get_command_version_details, get_effect_details, get_effect_version_details,
+        get_policy_details, get_policy_version_details, get_projector_details,
+        get_projector_version_details, list_active_modules, list_commands, list_effects,
+        list_policies, list_projectors, upload_command, upload_effect, upload_policy,
+        upload_projector,
     },
 };
 use umari_types::*;
@@ -28,16 +31,28 @@ use umari_types::*;
     paths(
         routes::modules::upload_command,
         routes::modules::upload_projector,
+        routes::modules::upload_policy,
+        routes::modules::upload_effect,
         routes::modules::list_commands,
         routes::modules::list_projectors,
+        routes::modules::list_policies,
+        routes::modules::list_effects,
         routes::modules::get_command_details,
         routes::modules::get_command_version_details,
         routes::modules::get_projector_details,
         routes::modules::get_projector_version_details,
+        routes::modules::get_policy_details,
+        routes::modules::get_policy_version_details,
+        routes::modules::get_effect_details,
+        routes::modules::get_effect_version_details,
         routes::modules::activate_command,
         routes::modules::activate_projector,
+        routes::modules::activate_policy,
+        routes::modules::activate_effect,
         routes::modules::deactivate_command,
         routes::modules::deactivate_projector,
+        routes::modules::deactivate_policy,
+        routes::modules::deactivate_effect,
         routes::modules::list_active_modules,
         routes::execute::execute,
     ),
@@ -66,6 +81,8 @@ use umari_types::*;
     tags(
         (name = "commands", description = "Command module management"),
         (name = "projectors", description = "Projector module management"),
+        (name = "policies", description = "Policy module management"),
+        (name = "effects", description = "Effect module management"),
         (name = "modules", description = "Cross-module operations"),
         (name = "execution", description = "Command execution")
     ),
@@ -126,6 +143,32 @@ pub async fn start_server(addr: impl ToSocketAddrs, state: AppState) -> io::Resu
         )
         .route("/projectors/{name}/active", put(activate_projector))
         .route("/projectors/{name}/active", delete(deactivate_projector))
+        // Policy module management
+        .route(
+            "/policies/{name}/versions/{version}",
+            post(upload_policy),
+        )
+        .route("/policies", get(list_policies))
+        .route("/policies/{name}", get(get_policy_details))
+        .route(
+            "/policies/{name}/versions/{version}",
+            get(get_policy_version_details),
+        )
+        .route("/policies/{name}/active", put(activate_policy))
+        .route("/policies/{name}/active", delete(deactivate_policy))
+        // Effect module management
+        .route(
+            "/effects/{name}/versions/{version}",
+            post(upload_effect),
+        )
+        .route("/effects", get(list_effects))
+        .route("/effects/{name}", get(get_effect_details))
+        .route(
+            "/effects/{name}/versions/{version}",
+            get(get_effect_version_details),
+        )
+        .route("/effects/{name}/active", put(activate_effect))
+        .route("/effects/{name}/active", delete(deactivate_effect))
         // Cross-module operations
         .route("/modules/active", get(list_active_modules))
         .with_state(state);

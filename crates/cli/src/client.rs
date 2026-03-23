@@ -1,9 +1,9 @@
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Serialize, de::DeserializeOwned};
-use umari_types::{ErrorResponse, UploadResponse};
+use umari_types::UploadResponse;
 
 pub struct ApiClient {
     base_url: String,
@@ -23,7 +23,10 @@ impl ApiClient {
             .call()
             .map_err(|err| self.handle_error(err))?;
 
-        let body = response.into_string().context("failed to read response")?;
+        let body = response
+            .into_body()
+            .read_to_string()
+            .context("failed to read response")?;
         serde_json::from_str(&body).context("failed to parse response")
     }
 
@@ -31,11 +34,14 @@ impl ApiClient {
         let json_body = serde_json::to_string(body).context("failed to serialize request body")?;
 
         let response = ureq::post(&self.url(path))
-            .set("Content-Type", "application/json")
-            .send_string(&json_body)
+            .header("Content-Type", "application/json")
+            .send(&json_body)
             .map_err(|err| self.handle_error(err))?;
 
-        let body = response.into_string().context("failed to read response")?;
+        let body = response
+            .into_body()
+            .read_to_string()
+            .context("failed to read response")?;
         serde_json::from_str(&body).context("failed to parse response")
     }
 
@@ -43,11 +49,14 @@ impl ApiClient {
         let json_body = serde_json::to_string(body).context("failed to serialize request body")?;
 
         let response = ureq::put(&self.url(path))
-            .set("Content-Type", "application/json")
-            .send_string(&json_body)
+            .header("Content-Type", "application/json")
+            .send(&json_body)
             .map_err(|err| self.handle_error(err))?;
 
-        let body = response.into_string().context("failed to read response")?;
+        let body = response
+            .into_body()
+            .read_to_string()
+            .context("failed to read response")?;
         serde_json::from_str(&body).context("failed to parse response")
     }
 
@@ -56,7 +65,10 @@ impl ApiClient {
             .call()
             .map_err(|err| self.handle_error(err))?;
 
-        let body = response.into_string().context("failed to read response")?;
+        let body = response
+            .into_body()
+            .read_to_string()
+            .context("failed to read response")?;
         serde_json::from_str(&body).context("failed to parse response")
     }
 
@@ -107,37 +119,26 @@ impl ApiClient {
         ));
 
         let response = ureq::post(&url)
-            .set(
+            .header(
                 "Content-Type",
                 &format!("multipart/form-data; boundary={boundary}"),
             )
-            .send_bytes(&body)
+            .send(&body)
             .map_err(|err| self.handle_error(err))?;
 
         pb.finish_and_clear();
 
-        let body = response.into_string().context("failed to read response")?;
+        let body = response
+            .into_body()
+            .read_to_string()
+            .context("failed to read response")?;
         serde_json::from_str(&body).context("failed to parse upload response")
     }
 
     fn handle_error(&self, err: ureq::Error) -> anyhow::Error {
         match err {
-            ureq::Error::Status(_code, response) => {
-                // Try to parse error response
-                if let Ok(body) = response.into_string()
-                    && let Ok(err_response) = serde_json::from_str::<ErrorResponse>(&body)
-                {
-                    let msg = err_response
-                        .error
-                        .message
-                        .unwrap_or_else(|| format!("{:?}", err_response.error.code));
-                    return anyhow::anyhow!("{msg}");
-                }
-                anyhow::anyhow!("request failed")
-            }
-            ureq::Error::Transport(transport) => {
-                anyhow::anyhow!("connection error: {transport}")
-            }
+            ureq::Error::StatusCode(code) => anyhow!("request failed with status {code}"),
+            _ => anyhow!("connection error: {err}"),
         }
     }
 }

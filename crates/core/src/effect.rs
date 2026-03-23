@@ -12,7 +12,9 @@ pub trait Effect: Default {
     }
 
     /// TODO Docs
-    fn partition_key(&self, event: StoredEvent<Self::Query>) -> Option<String>;
+    fn partition_key(&self, event: StoredEvent<Self::Query>) -> Option<String> {
+        None
+    }
 
     /// Handle a single event and perform external actions
     fn handle(&mut self, event: StoredEvent<Self::Query>) -> Result<(), Self::Error>;

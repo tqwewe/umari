@@ -12,6 +12,8 @@ wit_bindgen::generate!({
     path: "../../wit/effect",
     pub_export_macro: true,
     with: {
+        "umari:command/types@0.1.0": crate::runtime::command,
+        "umari:command/execute@0.1.0": crate::runtime::command,
         "umari:common/types@0.1.0": crate::runtime::common,
         "umari:sqlite/types@0.1.0": crate::runtime::sqlite,
         "umari:sqlite/connection@0.1.0": crate::runtime::sqlite,

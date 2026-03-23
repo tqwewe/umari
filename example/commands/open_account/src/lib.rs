@@ -41,7 +41,7 @@ impl Command for OpenAccountState {
 
     fn handle(&self, input: Input) -> Result<Emit, CommandError> {
         if self.is_open {
-            return Err(CommandError::rejected("account already open"));
+            return Err(CommandError::reject("account already open"));
         }
 
         Ok(emit![OpenedAccount {

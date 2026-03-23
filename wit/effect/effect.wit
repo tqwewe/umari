@@ -25,6 +25,7 @@ interface effect-runner {
 }
 
 world effect {
+    import umari:command/execute@0.1.0;
     import umari:sqlite/connection@0.1.0;
     import umari:sqlite/statement@0.1.0;
     import wasi:http/outgoing-handler@0.2.8;

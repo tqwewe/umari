@@ -1,9 +1,12 @@
-use std::{process, time::Duration};
+use std::{
+    process,
+    time::{Duration, Instant},
+};
 
 use clap::Parser;
 use kameo::{actor::ActorRef, prelude::Spawn};
 use tokio::signal;
-use tracing::{error, info};
+use tracing::{error, info, trace};
 use tracing_subscriber::EnvFilter;
 use umari_api::{AppState, start_server};
 use umari_runtime::{
@@ -14,7 +17,7 @@ use umari_runtime::{
 
 #[derive(Parser)]
 #[command(name = "umari")]
-#[command(about = "Rivo runtime and API server", long_about = None)]
+#[command(about = "Umari runtime and API server", long_about = None)]
 struct Cli {
     /// Path to the runtime database file
     #[arg(short, long, default_value = "umari.sqlite")]
@@ -31,6 +34,8 @@ struct Cli {
 
 #[tokio::main]
 async fn main() {
+    let start = Instant::now();
+
     tracing_subscriber::fmt()
         .without_time()
         .with_target(false)
@@ -61,7 +66,7 @@ async fn main() {
         process::exit(1);
     }
 
-    info!("runtime started");
+    info!("runtime started in {:?}", start.elapsed());
 
     // Get actor refs from registry
     let module_store_ref = ActorRef::<ModuleStoreActor>::lookup("module_store")
@@ -75,7 +80,7 @@ async fn main() {
     let api_handle = tokio::spawn({
         let api_addr = cli.api_addr.clone();
         async move {
-            info!("starting API server on {api_addr}");
+            trace!("starting API server on {api_addr}");
             let state = AppState {
                 module_store_ref,
                 command_ref,

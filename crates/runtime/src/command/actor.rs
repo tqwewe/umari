@@ -34,6 +34,7 @@ use crate::{
 pub struct VersionedModule {
     pub version: Version,
     pub component: Component,
+    pub command_pre: wit::command::CommandPre<BasicComponentState>,
 }
 
 pub struct CommandActor {
@@ -73,41 +74,22 @@ impl Actor for CommandActor {
             .send()
             .await?;
 
-        let mut modules: HashMap<Arc<str>, VersionedModule> =
-            HashMap::with_capacity(active_modules.len());
-
-        for module in active_modules {
-            assert_eq!(module.module_type, ModuleType::Command);
-
-            let component = match Component::new(&args.engine, module.wasm_bytes) {
-                Ok(wasm_module) => wasm_module,
-                Err(err) => {
-                    error!(module_type = %ModuleType::Command, name = %module.name, version = %module.version, "failed to compile command module: {err}");
-                    continue;
-                }
-            };
-
-            let name: Arc<str> = module.name.into();
-            let prev = modules.insert(
-                name.clone(),
-                VersionedModule {
-                    version: module.version.clone(),
-                    component,
-                },
-            );
-            if prev.is_some() {
-                return Err(CommandError::DuplicateActiveModule { name });
-            }
-            info!("loaded command module {name} v{}", module.version);
-        }
-
-        Ok(CommandActor {
+        let mut actor = CommandActor {
             engine: args.engine,
             linker,
             event_store: args.event_store,
             module_store_ref: args.module_store_ref,
-            components: modules,
-        })
+            components: HashMap::with_capacity(active_modules.len()),
+        };
+
+        for module in active_modules {
+            assert_eq!(module.module_type, ModuleType::Command);
+            actor
+                .load_module(module.name.into(), module.version, module.wasm_bytes)
+                .await?;
+        }
+
+        Ok(actor)
     }
 }
 
@@ -285,7 +267,7 @@ impl CommandActor {
             .get(&name)
             .ok_or(CommandError::ModuleNotFound { name })?;
 
-        let wasi_ctx = WasiCtx::builder().inherit_stdio().inherit_args().build();
+        let wasi_ctx = WasiCtx::builder().inherit_stderr().inherit_stdout().build();
         let state = BasicComponentState {
             wasi_ctx,
             resource_table: ResourceTable::new(),
@@ -293,14 +275,46 @@ impl CommandActor {
         let mut store = Store::new(&self.engine, state);
 
         // Instantiate the component using generated bindings
-        let command = wit::command::Command::instantiate_async(
-            &mut store,
-            &versioned_component.component,
-            &self.linker,
-        )
-        .await?;
+        let command = versioned_component
+            .command_pre
+            .instantiate_async(&mut store)
+            .await?;
 
         Ok(InstantiatedModule { store, command })
+    }
+
+    async fn load_module(
+        &mut self,
+        name: Arc<str>,
+        version: Version,
+        wasm_bytes: Vec<u8>,
+    ) -> Result<(), CommandError> {
+        let component = match Component::new(&self.engine, wasm_bytes) {
+            Ok(wasm_module) => wasm_module,
+            Err(err) => {
+                error!(module_type = %ModuleType::Command, %name, %version, "failed to compile module: {err}");
+                return Ok(());
+            }
+        };
+
+        let instance_pre = self.linker.instantiate_pre(&component)?;
+        let command_pre = wit::command::CommandPre::new(instance_pre)?;
+
+        let prev = self.components.insert(
+            name.clone(),
+            VersionedModule {
+                version: version.clone(),
+                component,
+                command_pre,
+            },
+        );
+        if prev.is_some() {
+            return Err(CommandError::DuplicateActiveModule { name });
+        }
+
+        info!(module_type = %ModuleType::Command, %name, %version, "module loaded");
+
+        Ok(())
     }
 }
 
@@ -362,24 +376,10 @@ impl Message<ModuleEvent> for CommandActor {
                         .await?;
                     match module {
                         Some((_, wasm_bytes)) => {
-                            let component = match Component::new(&self.engine, wasm_bytes) {
-                                Ok(component) => component,
-                                Err(err) => {
-                                    error!(module_type = %ModuleType::Command, %name, %version, "failed to compile command component: {err}");
-                                    return Ok(());
-                                }
-                            };
-                            self.components.insert(
-                                name.clone(),
-                                VersionedModule {
-                                    version: version.clone(),
-                                    component,
-                                },
-                            );
-                            info!("loaded command module {name} v{version}");
+                            self.load_module(name, version, wasm_bytes).await?;
                         }
                         None => {
-                            warn!("active module not found {name} v{version}");
+                            warn!(module_type = %ModuleType::Command, %name, %version, "active module not found");
                         }
                     }
                 }
@@ -388,7 +388,7 @@ impl Message<ModuleEvent> for CommandActor {
                 if module_type == ModuleType::Command
                     && let Some(module) = self.components.remove(&name)
                 {
-                    info!("unloaded command module {name} v{}", module.version);
+                    info!(module_type = %ModuleType::Command, %name, version = %module.version, "module unloaded");
                 }
             }
         }

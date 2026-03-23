@@ -13,6 +13,7 @@ wit_bindgen::generate!({
     world: "command",
     path: "../../wit/command",
     additional_derives: [PartialEq, Clone, serde::Serialize, serde::Deserialize],
+    generate_unused_types: true,
     pub_export_macro: true,
     with: {
         "umari:common/types@0.1.0": crate::runtime::common,

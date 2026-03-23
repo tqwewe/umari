@@ -38,7 +38,7 @@ libc = "0.2"
 maud = { version = "0.27", features = ["axum"] }
 proc-macro2 = "1.0"
 quote = "1.0"
-rusqlite = "0.38"
+rusqlite = "0.39"
 semver = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -48,6 +48,7 @@ strum = { version = "0.28", features = ["derive"] }
 syn = "2.0"
 thiserror = "2.0"
 tokio = { version = "1.50", features = ["macros", "rt-multi-thread"] }
+tokio-util = "0.7"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 umadb-client = { git = "https://github.com/tqwewe/umadb", branch = "feat/serde" }
@@ -56,14 +57,14 @@ utoipa = { version = "5.3", features = ["axum_extras", "uuid"] }
 utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
 uuid = { version = "1.22", features = ["serde", "v4"] }
 wasip2 = "1.0.2"
-wasmtime = "42.0"
-wasmtime-wasi = "42.0"
-wasmtime-wasi-http = "42.0"
+wasmtime = "43.0"
+wasmtime-wasi = "43.0"
+wasmtime-wasi-http = "43.0"
 wit-bindgen = { path = "/home/ari/dev/bytecodealliance/wit-bindgen/crates/guest-rust" } # "0.53"
 
 # CLI dependencies
 anyhow = "1.0"
 comfy-table = "7.1"
-colored = "2.1"
-indicatif = "0.17"
-ureq = "2.10"
+colored = "3.1"
+indicatif = "0.18"
+ureq = "3.2"

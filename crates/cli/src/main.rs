@@ -39,6 +39,16 @@ enum Commands {
         #[command(subcommand)]
         command: ProjectorsSubcommand,
     },
+    /// manage policy modules
+    Policies {
+        #[command(subcommand)]
+        command: PoliciesSubcommand,
+    },
+    /// manage effect modules
+    Effects {
+        #[command(subcommand)]
+        command: EffectsSubcommand,
+    },
     /// view active modules
     Modules {
         #[command(subcommand)]
@@ -143,6 +153,94 @@ enum ProjectorsSubcommand {
 }
 
 #[derive(Subcommand)]
+enum PoliciesSubcommand {
+    /// upload a policy module
+    Upload {
+        /// module name
+        name: String,
+        /// semantic version (e.g., 1.0.0)
+        version: String,
+        /// WASM file path
+        file: PathBuf,
+        /// activate immediately after upload
+        #[arg(long)]
+        activate: bool,
+    },
+    /// list policy modules
+    List {
+        /// show only active modules
+        #[arg(long)]
+        active_only: bool,
+        /// filter by module name
+        #[arg(long)]
+        name: Option<String>,
+    },
+    /// show policy module details
+    Show {
+        /// module name
+        name: String,
+        /// specific version (optional)
+        version: Option<String>,
+    },
+    /// activate a policy version
+    Activate {
+        /// module name
+        name: String,
+        /// version to activate
+        version: String,
+    },
+    /// deactivate a policy module
+    Deactivate {
+        /// module name
+        name: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum EffectsSubcommand {
+    /// upload an effect module
+    Upload {
+        /// module name
+        name: String,
+        /// semantic version (e.g., 1.0.0)
+        version: String,
+        /// WASM file path
+        file: PathBuf,
+        /// activate immediately after upload
+        #[arg(long)]
+        activate: bool,
+    },
+    /// list effect modules
+    List {
+        /// show only active modules
+        #[arg(long)]
+        active_only: bool,
+        /// filter by module name
+        #[arg(long)]
+        name: Option<String>,
+    },
+    /// show effect module details
+    Show {
+        /// module name
+        name: String,
+        /// specific version (optional)
+        version: Option<String>,
+    },
+    /// activate an effect version
+    Activate {
+        /// module name
+        name: String,
+        /// version to activate
+        version: String,
+    },
+    /// deactivate an effect module
+    Deactivate {
+        /// module name
+        name: String,
+    },
+}
+
+#[derive(Subcommand)]
 enum ModulesSubcommand {
     /// list all active modules
     Active {
@@ -195,6 +293,46 @@ fn main() -> Result<()> {
             }
             ProjectorsSubcommand::Deactivate { name } => {
                 commands::projectors::deactivate(&client, name)
+            }
+        },
+        Commands::Policies { command } => match command {
+            PoliciesSubcommand::Upload {
+                name,
+                version,
+                file,
+                activate,
+            } => commands::policies::upload(&client, name, version, file, activate),
+            PoliciesSubcommand::List { active_only, name } => {
+                commands::policies::list(&client, active_only, name)
+            }
+            PoliciesSubcommand::Show { name, version } => {
+                commands::policies::show(&client, name, version)
+            }
+            PoliciesSubcommand::Activate { name, version } => {
+                commands::policies::activate(&client, name, version)
+            }
+            PoliciesSubcommand::Deactivate { name } => {
+                commands::policies::deactivate(&client, name)
+            }
+        },
+        Commands::Effects { command } => match command {
+            EffectsSubcommand::Upload {
+                name,
+                version,
+                file,
+                activate,
+            } => commands::effects::upload(&client, name, version, file, activate),
+            EffectsSubcommand::List { active_only, name } => {
+                commands::effects::list(&client, active_only, name)
+            }
+            EffectsSubcommand::Show { name, version } => {
+                commands::effects::show(&client, name, version)
+            }
+            EffectsSubcommand::Activate { name, version } => {
+                commands::effects::activate(&client, name, version)
+            }
+            EffectsSubcommand::Deactivate { name } => {
+                commands::effects::deactivate(&client, name)
             }
         },
         Commands::Modules { command } => match command {

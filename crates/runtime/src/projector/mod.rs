@@ -2,16 +2,8 @@ use std::sync::Arc;
 
 use kameo::error::SendError;
 use thiserror::Error;
-use wasmtime::{
-    Store,
-    component::{Component, Linker, ResourceAny},
-};
 
-use crate::{
-    module::{EventHandlerModule, ModuleError},
-    module_store::{ModuleStoreError, ModuleType},
-    wit,
-};
+use crate::{module::ModuleError, module_store::ModuleStoreError, wit};
 
 pub mod actor;
 pub mod supervisor;
@@ -62,56 +54,5 @@ impl From<rusqlite::Error> for ProjectorError {
     fn from(err: rusqlite::Error) -> Self {
         let wit_err = wit::sqlite::SqliteError::from(err);
         ProjectorError::Database(wit_err.into())
-    }
-}
-
-impl EventHandlerModule for wit::projector::Projector {
-    type Error = wit::projector::Error;
-
-    const MODULE_TYPE: ModuleType = ModuleType::Projector;
-
-    fn add_to_linker(_linker: &mut Linker<wit::SqliteComponentState>) -> wasmtime::Result<()> {
-        Ok(())
-    }
-
-    async fn instantiate_async(
-        store: &mut Store<wit::SqliteComponentState>,
-        component: &Component,
-        linker: &Linker<wit::SqliteComponentState>,
-    ) -> wasmtime::Result<Self> {
-        wit::projector::Projector::instantiate_async(store, component, linker).await
-    }
-
-    async fn construct(
-        &self,
-        store: &mut Store<wit::SqliteComponentState>,
-    ) -> wasmtime::Result<Result<ResourceAny, Self::Error>> {
-        self.umari_projector_projector_runner()
-            .projector_state()
-            .call_constructor(store)
-            .await
-    }
-
-    async fn query(
-        &self,
-        store: &mut Store<wit::SqliteComponentState>,
-        handler: ResourceAny,
-    ) -> wasmtime::Result<wit::common::DcbQuery> {
-        self.umari_projector_projector_runner()
-            .projector_state()
-            .call_query(store, handler)
-            .await
-    }
-
-    async fn handle_event(
-        &self,
-        store: &mut Store<wit::SqliteComponentState>,
-        handler: ResourceAny,
-        event: wit::common::StoredEvent,
-    ) -> wasmtime::Result<Result<(), Self::Error>> {
-        self.umari_projector_projector_runner()
-            .projector_state()
-            .call_handle(store, handler, &event)
-            .await
     }
 }

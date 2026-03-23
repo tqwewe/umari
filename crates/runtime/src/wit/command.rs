@@ -1,8 +1,8 @@
 use wasmtime::component::bindgen;
 
-pub use self::umari::command::types::*;
+pub use self::umari::command::{types::*, *};
 
-use crate::wit::BasicComponentState;
+use crate::wit::{self, BasicComponentState};
 
 bindgen!({
     path: "../../wit/command",
@@ -15,3 +15,5 @@ bindgen!({
 });
 
 impl Host for BasicComponentState {}
+
+impl Host for wit::EventHandlerComponentState {}

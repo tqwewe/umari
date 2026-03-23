@@ -3,7 +3,7 @@ use wasmtime::component::bindgen;
 use crate::wit::BasicComponentState;
 
 pub use self::umari::common::{types::*, *};
-use super::SqliteComponentState;
+use super::EventHandlerComponentState;
 
 bindgen!({
     path: "../../wit/common",
@@ -13,7 +13,7 @@ bindgen!({
 });
 
 impl Host for BasicComponentState {}
-impl Host for SqliteComponentState {}
+impl Host for EventHandlerComponentState {}
 
 impl From<DcbQueryItem> for umadb_dcb::DCBQueryItem {
     fn from(item: DcbQueryItem) -> Self {

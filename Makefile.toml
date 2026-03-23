@@ -76,6 +76,10 @@ env = { WIT = "common" }
 extend = "clean-wit-deps"
 env = { WIT = "effect" }
 
+[tasks.clean-wit-deps-policy]
+extend = "clean-wit-deps"
+env = { WIT = "policy" }
+
 [tasks.clean-wit-deps-projector]
 extend = "clean-wit-deps"
 env = { WIT = "projector" }

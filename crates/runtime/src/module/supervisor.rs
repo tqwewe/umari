@@ -14,31 +14,33 @@ use super::{
     actor::{ModuleActor, ModuleActorArgs},
 };
 use crate::{
+    command::actor::CommandActor,
     events::ModuleEvent,
-    module_store::{
-        ModuleType,
-        actor::{GetActiveModule, GetAllActiveModules, ModuleStoreActor},
-    },
+    module_store::actor::{GetActiveModule, GetAllActiveModules, ModuleStoreActor},
     wit,
 };
 
 pub struct ModuleSupervisor<A: EventHandlerModule> {
     engine: Engine,
-    linker: Linker<wit::SqliteComponentState>,
+    linker: Linker<wit::EventHandlerComponentState>,
     event_store: Arc<AsyncUmaDBClient>,
     module_store_ref: ActorRef<ModuleStoreActor>,
+    command_ref: ActorRef<CommandActor>,
     modules: HashMap<Arc<str>, VersionedModule<A>>,
+    args: A::Args,
 }
 
 #[derive(Clone)]
-pub struct ModuleSupervisorArgs {
+pub struct ModuleSupervisorArgs<A> {
     pub engine: Engine,
     pub event_store: Arc<AsyncUmaDBClient>,
     pub module_store_ref: ActorRef<ModuleStoreActor>,
+    pub command_ref: ActorRef<CommandActor>,
+    pub args: A,
 }
 
 impl<A: EventHandlerModule> Actor for ModuleSupervisor<A> {
-    type Args = ModuleSupervisorArgs;
+    type Args = ModuleSupervisorArgs<A::Args>;
     type Error = ModuleError<A::Error>;
 
     fn name() -> &'static str {
@@ -47,6 +49,7 @@ impl<A: EventHandlerModule> Actor for ModuleSupervisor<A> {
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         let mut linker = Linker::new(&args.engine);
+        wasmtime_wasi::p2::add_to_linker_async(&mut linker)?;
         wit::common::Common::add_to_linker::<_, HasSelf<_>>(&mut linker, |s| s)?;
         wit::sqlite::Sqlite::add_to_linker::<_, HasSelf<_>>(&mut linker, |s| s)?;
         A::add_to_linker(&mut linker)?;
@@ -65,7 +68,9 @@ impl<A: EventHandlerModule> Actor for ModuleSupervisor<A> {
             linker,
             event_store: args.event_store,
             module_store_ref: args.module_store_ref,
+            command_ref: args.command_ref,
             modules: HashMap::with_capacity(active_modules.len()),
+            args: args.args,
         };
 
         for module in active_modules {
@@ -116,9 +121,11 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
                 engine: self.engine.clone(),
                 linker: self.linker.clone(),
                 event_store: self.event_store.clone(),
+                command_ref: self.command_ref.clone(),
                 component,
                 name: name.clone(),
                 version: version.clone(),
+                args: self.args.clone(),
             },
         )
         .spawn_in_thread()
@@ -183,7 +190,7 @@ impl<A: EventHandlerModule> Message<ModuleEvent> for ModuleSupervisor<A> {
                 }
             }
             ModuleEvent::Deactivated { module_type, name } => {
-                if module_type == ModuleType::Projector
+                if module_type == A::MODULE_TYPE
                     && let Some(module) = self.modules.remove(&name)
                 {
                     info!(module_type = %A::MODULE_TYPE, %name, version = %module.version, "module unloaded");

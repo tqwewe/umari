@@ -63,6 +63,52 @@ pub async fn activate_projector(
     activate_module(state, ModuleType::Projector, name, req).await
 }
 
+#[utoipa::path(
+    put,
+    path = "/policies/{name}/active",
+    params(
+        ("name" = String, Path, description = "Module name")
+    ),
+    request_body = ActivateRequest,
+    responses(
+        (status = 200, description = "Module activated successfully", body = ActivateResponse),
+        (status = 400, description = "Invalid version format", body = crate::error::ErrorResponse),
+        (status = 404, description = "Module or version not found", body = crate::error::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::error::ErrorResponse)
+    ),
+    tag = "policies"
+)]
+pub async fn activate_policy(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+    Json(req): Json<ActivateRequest>,
+) -> Result<Json<ActivateResponse>, Error> {
+    activate_module(state, ModuleType::Policy, name, req).await
+}
+
+#[utoipa::path(
+    put,
+    path = "/effects/{name}/active",
+    params(
+        ("name" = String, Path, description = "Module name")
+    ),
+    request_body = ActivateRequest,
+    responses(
+        (status = 200, description = "Module activated successfully", body = ActivateResponse),
+        (status = 400, description = "Invalid version format", body = crate::error::ErrorResponse),
+        (status = 404, description = "Module or version not found", body = crate::error::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::error::ErrorResponse)
+    ),
+    tag = "effects"
+)]
+pub async fn activate_effect(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+    Json(req): Json<ActivateRequest>,
+) -> Result<Json<ActivateResponse>, Error> {
+    activate_module(state, ModuleType::Effect, name, req).await
+}
+
 async fn activate_module(
     state: AppState,
     module_type: ModuleType,
@@ -143,6 +189,46 @@ pub async fn deactivate_projector(
     Path(name): Path<String>,
 ) -> Result<Json<DeactivateResponse>, Error> {
     deactivate_module(state, ModuleType::Projector, name).await
+}
+
+#[utoipa::path(
+    delete,
+    path = "/policies/{name}/active",
+    params(
+        ("name" = String, Path, description = "Module name")
+    ),
+    responses(
+        (status = 200, description = "Module deactivated successfully", body = DeactivateResponse),
+        (status = 404, description = "Module not found", body = crate::error::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::error::ErrorResponse)
+    ),
+    tag = "policies"
+)]
+pub async fn deactivate_policy(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> Result<Json<DeactivateResponse>, Error> {
+    deactivate_module(state, ModuleType::Policy, name).await
+}
+
+#[utoipa::path(
+    delete,
+    path = "/effects/{name}/active",
+    params(
+        ("name" = String, Path, description = "Module name")
+    ),
+    responses(
+        (status = 200, description = "Module deactivated successfully", body = DeactivateResponse),
+        (status = 404, description = "Module not found", body = crate::error::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::error::ErrorResponse)
+    ),
+    tag = "effects"
+)]
+pub async fn deactivate_effect(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> Result<Json<DeactivateResponse>, Error> {
+    deactivate_module(state, ModuleType::Effect, name).await
 }
 
 async fn deactivate_module(

@@ -18,10 +18,10 @@ use wasmtime::{
 use wasmtime_wasi::{ResourceTable, WasiCtx};
 
 use super::{EventHandlerModule, ModuleError};
-use crate::wit;
+use crate::{command::actor::CommandActor, wit};
 
 pub struct ModuleActor<A: EventHandlerModule> {
-    store: Store<wit::SqliteComponentState>,
+    store: Store<wit::EventHandlerComponentState>,
     instance: A,
     handler: ResourceAny,
     name: Arc<str>,
@@ -30,22 +30,24 @@ pub struct ModuleActor<A: EventHandlerModule> {
 }
 
 #[derive(Clone)]
-pub struct ModuleActorArgs {
+pub struct ModuleActorArgs<A> {
     pub engine: Engine,
-    pub linker: Linker<wit::SqliteComponentState>,
+    pub linker: Linker<wit::EventHandlerComponentState>,
     pub event_store: Arc<AsyncUmaDBClient>,
+    pub command_ref: ActorRef<CommandActor>,
     pub component: Component,
     pub name: Arc<str>,
     pub version: Version,
+    pub args: A,
 }
 
 impl<A: EventHandlerModule> Actor for ModuleActor<A> {
-    type Args = ModuleActorArgs;
+    type Args = ModuleActorArgs<A::Args>;
     type Error = ModuleError<A::Error>;
 
-    fn name() -> &'static str {
-        "ModuleActor"
-    }
+    // fn name() -> &'static str {
+    //     "ModuleActor"
+    // }
 
     async fn on_start(args: Self::Args, _actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         let conn = Connection::open(format!("{}-{}.sqlite", A::MODULE_TYPE, args.name))?;
@@ -67,28 +69,33 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
             ",
         )?;
         conn.execute(
-            r#"
-            INSERT INTO projector_meta (id, name, version) VALUES (?1, ?2, ?3)
+            "
+            INSERT INTO module_meta (id, name, version) VALUES (?1, ?2, ?3)
             ON CONFLICT(id) DO UPDATE SET version = excluded.version
-            "#,
+            ",
             (1, &args.name, args.version.to_string()),
         )?;
         let last_position = conn
             .query_one(
-                r#"
-                SELECT last_position FROM projector_meta WHERE id = 1
-                "#,
+                "
+                SELECT last_position FROM module_meta WHERE id = 1
+                ",
                 (),
                 |row| row.get::<_, Option<i64>>(0),
             )?
             .map(|n| n as u64);
 
-        let wasi_ctx = WasiCtx::builder().inherit_stdio().inherit_args().build();
-        let state =
-            wit::SqliteComponentState::new(wasi_ctx, ResourceTable::new(), conn, last_position);
+        let wasi_ctx = WasiCtx::builder().inherit_stderr().inherit_stdout().build();
+        let state = wit::EventHandlerComponentState::new(
+            wasi_ctx,
+            ResourceTable::new(),
+            args.command_ref,
+            conn,
+            last_position,
+        );
         let mut store = Store::new(&args.engine, state);
 
-        let instance = A::instantiate_async(&mut store, &args.component, &args.linker).await?;
+        let instance = A::instantiate(&mut store, &args.component, &args.linker, args.args).await?;
 
         store.data().conn().execute("BEGIN", [])?;
 
@@ -160,11 +167,11 @@ impl<A: EventHandlerModule> ModuleActor<A> {
             let expected_position = data.last_position().map(|n| n as i64);
             let rows = data.conn().execute(
                 "
-            UPDATE projector_meta
-            SET last_position = ?1
-            WHERE id = 1
-            AND last_position IS NOT DISTINCT FROM ?2
-            ",
+                UPDATE module_meta
+                SET last_position = ?1
+                WHERE id = 1
+                AND last_position IS NOT DISTINCT FROM ?2
+                ",
                 (new_position as i64, expected_position),
             )?;
 
@@ -209,7 +216,7 @@ impl<A: EventHandlerModule> ModuleActor<A> {
         };
 
         self.instance
-            .handle_event(&mut self.store, self.handler, event.into())
+            .handle_event(&mut self.store, self.handler, event)
             .await?
             .map_err(ModuleError::Wit)
     }

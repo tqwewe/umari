@@ -6,7 +6,7 @@ use wasmtime::component::{Resource, bindgen};
 use wasmtime_wasi::ResourceTableError;
 
 pub use self::umari::sqlite::{types::*, *};
-use super::SqliteComponentState;
+use super::EventHandlerComponentState;
 
 bindgen!({
     path: "../../wit/sqlite",
@@ -23,9 +23,9 @@ pub struct Stmt {
     key: DefaultKey,
 }
 
-impl umari::sqlite::types::Host for SqliteComponentState {}
+impl umari::sqlite::types::Host for EventHandlerComponentState {}
 
-impl umari::sqlite::connection::Host for SqliteComponentState {
+impl umari::sqlite::connection::Host for EventHandlerComponentState {
     fn execute(&mut self, sql: Sql, params: Vec<Value>) -> Result<i64, SqliteError> {
         self.check_thread();
         let params = params
@@ -80,9 +80,9 @@ impl umari::sqlite::connection::Host for SqliteComponentState {
     }
 }
 
-impl umari::sqlite::statement::Host for SqliteComponentState {}
+impl umari::sqlite::statement::Host for EventHandlerComponentState {}
 
-impl umari::sqlite::statement::HostStmt for SqliteComponentState {
+impl umari::sqlite::statement::HostStmt for EventHandlerComponentState {
     fn new(&mut self, sql: Sql) -> Result<Resource<Stmt>, SqliteError> {
         self.check_thread();
         let stmt = self.conn.prepare(&sql)?;

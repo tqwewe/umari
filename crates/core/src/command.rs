@@ -2,13 +2,15 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use umadb_dcb::{DCBEvent, DCBQuery, DCBQueryItem};
 use uuid::Uuid;
 
 use crate::{
     domain_id::DomainIdBindings,
     emit::Emit,
-    event::{EventEnvelope, EventSet},
+    error::CommandError,
+    event::{EventEnvelope, EventSet, StoredEvent},
 };
 
 /// Trait for command input structs that declare domain ID bindings.
@@ -133,6 +135,43 @@ pub trait Command: Default + Send {
     /// - Return new events to persist
     /// - Return an error rejecting the command
     fn handle(&self, input: Self::Input) -> Result<Emit, Self::Error>;
+}
+
+pub trait CommandExecute: Command {
+    fn execute(name: &str, input: &Self::Input) -> Result<Vec<StoredEvent<Value>>, CommandError>;
+}
+
+impl<T: Command> CommandExecute for T
+where
+    T::Input: Serialize,
+{
+    fn execute(name: &str, input: &Self::Input) -> Result<Vec<StoredEvent<Value>>, CommandError> {
+        // use crate::runtime::command::umari::command::execute::{Error, execute};
+        use crate::runtime::command::umari::command::types::Error as ExecuteError;
+
+        // let result = execute(
+        //     name,
+        //     &serde_json::to_string(input).map_err(|err| {
+        //         CommandError::invalid_input(format!("failed to serialize input: {err}"))
+        //     })?,
+        // )
+        // .map_err(|err| match err {
+        //     Error::Command(err) => match err {
+        //         ExecuteError::Command(err) => CommandError::reject(err),
+        //         ExecuteError::DeserializeEvent(err) => CommandError::internal(err.to_string()),
+        //         ExecuteError::DeserializeInput(err) => CommandError::internal(err),
+        //         ExecuteError::SerializeEvent(err) => CommandError::internal(err),
+        //     },
+        //     Error::CommandNotFound => CommandError::internal("command not found"), // TODO: Lets have a better execute error enum for executing commands
+        // })?;
+
+        // result
+        //     .into_iter()
+        //     .map(|event| event.try_into())
+        //     .collect::<Result<Vec<StoredEvent<Value>>, _>>()
+        //     .map_err(|err| CommandError::internal(err.to_string()))
+        todo!()
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

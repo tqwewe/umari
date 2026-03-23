@@ -28,6 +28,28 @@ interface types {
     }
 }
 
+interface execute {
+    use umari:common/types@0.1.0.{stored-event, json, uuid};
+    use types.{error as command-error};
+
+    variant error {
+        command(command-error),
+        command-not-found,
+        invalid-correlation-id,
+        invalid-causation-id,
+        invalid-triggered-by-id,
+        serialize-input(string),
+    }
+
+    record command-context {
+        command-id: option<uuid>,
+        correlation-id: option<uuid>,
+        triggered-by: option<uuid>,
+    }
+    
+    execute: func(command: string, input: json, context: command-context) -> result<list<stored-event>, error>;
+}
+
 /// The command world - what a command module must implement
 world command {
     use types.{error, execute-output};
