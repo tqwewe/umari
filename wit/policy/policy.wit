@@ -1,7 +1,7 @@
 package umari:policy@0.1.0;
 
-interface policy-runner {
-    use umari:common/types@0.1.0.{dcb-query, deserialize-event-error, json, stored-event};
+interface policy {
+    use umari:common/types@0.1.0.{event-query, json, stored-event};
     use umari:sqlite/types@0.1.0.{sqlite-error};
 
     /// A command to be submitted to the runtime
@@ -13,23 +13,14 @@ interface policy-runner {
     }
 
     variant error {
-        deserialize-event(deserialize-event-error),
         sqlite(sqlite-error),
-        other(string),
     }
 
-    resource policy-state {
-        constructor() -> result<policy-state, error>;
-        query: func() -> dcb-query;
-        partition-key: func(event: stored-event) -> result<option<string>, error>;
+    resource policy {
+        constructor();
+        query: func() -> event-query;
+        partition-key: func(event: stored-event) -> option<string>;
         /// Returns commands to submit. Empty list is valid - policy decided to do nothing.
-        handle: func(event: stored-event) -> result<list<command-submission>, error>;
+        handle: func(event: stored-event) -> list<command-submission>;
     }
-}
-
-world policy {
-    import umari:sqlite/connection@0.1.0;
-    import umari:sqlite/statement@0.1.0;
-
-    export policy-runner;
 }

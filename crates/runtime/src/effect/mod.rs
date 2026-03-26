@@ -12,16 +12,12 @@ pub mod supervisor;
 pub enum EffectError {
     #[error("duplicate active effect module '{name}'")]
     DuplicateActiveModule { name: Arc<str> },
-    #[error("failed to deserialize event: {0}")]
-    DeserializeEvent(#[from] umari_core::error::DeserializeEventError),
     #[error("missing event id")]
     MissingEventId,
     #[error("concurrent modification")]
     ConcurrentModification,
     #[error(transparent)]
     Http(#[from] wasmtime_wasi_http::HttpError),
-    #[error("effect error: {0}")]
-    Effect(String),
     #[error("event store error: {0}")]
     EventStore(#[from] umadb_dcb::DCBError),
     #[error("database error: {0}")]
@@ -43,12 +39,7 @@ impl<M> From<SendError<M, ModuleStoreError>> for EffectError {
 impl From<wit::effect::Error> for EffectError {
     fn from(err: wit::effect::Error) -> Self {
         match err {
-            wit::effect::Error::DeserializeEvent(err) => {
-                umari_core::error::DeserializeEventError::from(err).into()
-            }
             wit::effect::Error::Sqlite(err) => umari_core::error::SqliteError::from(err).into(),
-            wit::effect::Error::Http(err) => EffectError::Http(err.into()),
-            wit::effect::Error::Other(err) => EffectError::Effect(err),
         }
     }
 }

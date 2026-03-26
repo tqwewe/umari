@@ -1,9 +1,12 @@
 use axum::{
     Json,
     extract::{Path, State},
+    http::HeaderMap,
 };
+use umari_core::prelude::CommandContext;
 use umari_runtime::command::actor::{CommandPayload, Execute};
-use umari_types::{EmittedEventInfo, ExecuteResponse};
+use umari_types::{EmittedEventInfo, ErrorCode, ExecuteResponse};
+use uuid::Uuid;
 
 use crate::{AppState, error::Error};
 
@@ -25,13 +28,44 @@ use crate::{AppState, error::Error};
 pub async fn execute(
     State(state): State<AppState>,
     Path(name): Path<String>,
-    Json(command): Json<CommandPayload>,
+    headers: HeaderMap,
+    input: String,
 ) -> Result<Json<ExecuteResponse>, Error> {
+    let correlation_id = headers
+        .get("x-correlation-id")
+        .map(|value| {
+            value
+                .to_str()
+                .ok()
+                .and_then(|s| Uuid::parse_str(s).ok())
+                .ok_or_else(|| {
+                    Error::new(ErrorCode::InvalidInput).with_message("invalid correlation id")
+                })
+        })
+        .transpose()?
+        .unwrap_or_else(Uuid::new_v4);
+    let triggering_event_id = headers
+        .get("x-triggering-event-id")
+        .map(|value| {
+            value
+                .to_str()
+                .ok()
+                .and_then(|s| Uuid::parse_str(s).ok())
+                .ok_or_else(|| {
+                    Error::new(ErrorCode::InvalidInput).with_message("invalid triggering event id")
+                })
+        })
+        .transpose()?;
+    let context = CommandContext {
+        correlation_id,
+        triggering_event_id,
+    };
+
     let result = state
         .command_ref
         .ask(Execute {
             name: name.into(),
-            command,
+            command: CommandPayload { input, context },
         })
         .await?;
 

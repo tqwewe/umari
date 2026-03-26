@@ -1,14 +1,13 @@
 use std::{cell::RefCell, marker::PhantomData};
 
-pub use self::exports::umari::projector::projector_runner::{Error, Guest, GuestProjectorState};
+pub use self::exports::umari::projector::projector::{Guest, GuestProjector};
 use crate::{
     event::EventSet,
     projector::Projector,
-    runtime::common::{DcbQuery, DeserializeEventError, DeserializeEventErrorCode, StoredEvent},
+    runtime::common::{EventQuery, StoredEvent},
 };
 
 wit_bindgen::generate!({
-    world: "projector",
     path: "../../wit/projector",
     additional_derives: [PartialEq, Clone, serde::Serialize, serde::Deserialize],
     pub_export_macro: true,
@@ -34,37 +33,33 @@ pub struct ProjectorState<T> {
 }
 
 impl<T: Projector + 'static> Guest for ProjectorExport<T> {
-    type ProjectorState = ProjectorState<T>;
+    type Projector = ProjectorState<T>;
 }
 
-impl<T: Projector + 'static> GuestProjectorState for ProjectorState<T> {
-    fn new() -> Result<Self, Error>
+impl<T: Projector + 'static> GuestProjector for ProjectorState<T> {
+    fn new() -> Self
     where
         Self: Sized,
     {
-        let state = T::init()?;
-        Ok(ProjectorState {
+        let state = T::init().expect("projector init failed");
+        ProjectorState {
             inner: RefCell::new(state),
-        })
+        }
     }
 
-    fn query(&self) -> DcbQuery {
+    fn query(&self) -> EventQuery {
         self.inner.borrow().query().into()
     }
 
-    fn handle(&self, stored_event: StoredEvent) -> Result<(), Error> {
-        let event: crate::event::StoredEvent<serde_json::Value> = stored_event.try_into()?;
+    fn handle(&self, stored_event: StoredEvent) {
+        let event: crate::event::StoredEvent<serde_json::Value> = stored_event.into();
 
         let data = match T::Query::from_event(&event.event_type, event.data) {
             Some(Ok(event)) => event,
             Some(Err(err)) => {
-                return Err(DeserializeEventError {
-                    code: DeserializeEventErrorCode::InvalidData,
-                    message: Some(err.to_string()),
-                }
-                .into());
+                panic!("failed to deserialize event data: {err}");
             }
-            None => return Ok(()), // Event type not in query set, skip
+            None => return, // Event type not in query set, skip
         };
 
         let event = crate::event::StoredEvent {
@@ -75,27 +70,13 @@ impl<T: Projector + 'static> GuestProjectorState for ProjectorState<T> {
             timestamp: event.timestamp,
             correlation_id: event.correlation_id,
             causation_id: event.causation_id,
-            triggered_by: event.triggered_by,
+            triggering_event_id: event.triggering_event_id,
             data,
         };
 
-        self.inner.borrow_mut().handle(event)?;
-
-        Ok(())
-    }
-}
-
-impl From<crate::error::ProjectorError> for Error {
-    fn from(err: crate::error::ProjectorError) -> Self {
-        match err {
-            crate::error::ProjectorError::Sqlite(err) => Error::Sqlite(err),
-            crate::error::ProjectorError::Other { message } => Error::Other(message),
-        }
-    }
-}
-
-impl From<DeserializeEventError> for Error {
-    fn from(err: DeserializeEventError) -> Self {
-        Error::DeserializeEvent(err)
+        self.inner
+            .borrow_mut()
+            .handle(event)
+            .unwrap_or_else(|err| panic!("projector handle error: {err}"))
     }
 }

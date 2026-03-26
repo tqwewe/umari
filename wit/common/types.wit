@@ -14,11 +14,11 @@ interface types {
 
     type uuid = string;
 
-    record dcb-query {
-        items: list<dcb-query-item>,
+    record event-query {
+        items: list<event-filter>,
     }
 
-    record dcb-query-item {
+    record event-filter {
         types: list<string>,
         tags: list<string>,
     }
@@ -33,22 +33,7 @@ interface types {
         timestamp: timestamp,
         correlation-id: uuid,
         causation-id: uuid,
-        triggered-by: option<uuid>,
+        triggering-event-id: option<uuid>,
         data: json,
-    }
-
-    enum deserialize-event-error-code {
-        invalid-id,
-        invalid-position,
-        invalid-timestamp,
-        invalid-correlation-id,
-        invalid-causation-id,
-        invalid-triggered-by-id,
-        invalid-data,
-    }
-
-    record deserialize-event-error {
-        code: deserialize-event-error-code,
-        message: option<string>,
     }
 }

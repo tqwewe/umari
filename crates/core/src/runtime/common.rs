@@ -1,4 +1,4 @@
-use std::{error, fmt};
+use std::fmt;
 
 use chrono::DateTime;
 
@@ -11,17 +11,17 @@ wit_bindgen::generate!({
     generate_unused_types: true,
 });
 
-impl From<umadb_dcb::DCBQueryItem> for DcbQueryItem {
+impl From<umadb_dcb::DCBQueryItem> for EventFilter {
     fn from(item: umadb_dcb::DCBQueryItem) -> Self {
-        DcbQueryItem {
+        EventFilter {
             types: item.types,
             tags: item.tags,
         }
     }
 }
 
-impl From<DcbQueryItem> for umadb_dcb::DCBQueryItem {
-    fn from(item: DcbQueryItem) -> Self {
+impl From<EventFilter> for umadb_dcb::DCBQueryItem {
+    fn from(item: EventFilter) -> Self {
         umadb_dcb::DCBQueryItem {
             types: item.types,
             tags: item.tags,
@@ -29,107 +29,60 @@ impl From<DcbQueryItem> for umadb_dcb::DCBQueryItem {
     }
 }
 
-impl From<umadb_dcb::DCBQuery> for DcbQuery {
+impl From<umadb_dcb::DCBQuery> for EventQuery {
     fn from(query: umadb_dcb::DCBQuery) -> Self {
-        DcbQuery {
+        EventQuery {
             items: query.items.into_iter().map(|item| item.into()).collect(),
         }
     }
 }
 
-impl From<DcbQuery> for umadb_dcb::DCBQuery {
-    fn from(query: DcbQuery) -> Self {
+impl From<EventQuery> for umadb_dcb::DCBQuery {
+    fn from(query: EventQuery) -> Self {
         umadb_dcb::DCBQuery {
             items: query.items.into_iter().map(|item| item.into()).collect(),
         }
     }
 }
 
-impl fmt::Display for DeserializeEventErrorCode {
+impl fmt::Display for StoredEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            DeserializeEventErrorCode::InvalidId => write!(f, "invalid id"),
-            DeserializeEventErrorCode::InvalidPosition => write!(f, "invalid position"),
-            DeserializeEventErrorCode::InvalidTimestamp => write!(f, "invalid timestamp"),
-            DeserializeEventErrorCode::InvalidCorrelationId => write!(f, "invalid correlation id"),
-            DeserializeEventErrorCode::InvalidCausationId => write!(f, "invalid causation id"),
-            DeserializeEventErrorCode::InvalidTriggeredById => write!(f, "invalid triggered_by id"),
-            DeserializeEventErrorCode::InvalidData => write!(f, "invalid data"),
-        }
+        write!(f, "StoredEvent({})", self.id)
     }
 }
 
-impl error::Error for DeserializeEventErrorCode {}
-
-impl fmt::Display for DeserializeEventError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "failed to deserialize event: {}", self.code)?;
-        if let Some(message) = &self.message {
-            write!(f, ": {message}")?;
-        }
-
-        Ok(())
-    }
-}
-
-impl error::Error for DeserializeEventError {}
-
-impl TryFrom<StoredEvent> for crate::event::StoredEvent<serde_json::Value> {
-    type Error = DeserializeEventError;
-
-    fn try_from(event: StoredEvent) -> Result<Self, Self::Error> {
+impl From<StoredEvent> for crate::event::StoredEvent<serde_json::Value> {
+    fn from(event: StoredEvent) -> Self {
         let id = event
             .id
             .parse::<uuid::Uuid>()
-            .map_err(|_| DeserializeEventError {
-                code: DeserializeEventErrorCode::InvalidId,
-                message: None,
-            })?;
+            .expect("host guaranteed valid uuid for event id");
         let position = event
             .position
             .try_into()
-            .map_err(|_| DeserializeEventError {
-                code: DeserializeEventErrorCode::InvalidPosition,
-                message: None,
-            })?;
-        let timestamp = DateTime::from_timestamp_millis(event.timestamp).ok_or({
-            DeserializeEventError {
-                code: DeserializeEventErrorCode::InvalidTimestamp,
-                message: None,
-            }
-        })?;
-        let correlation_id =
-            event
-                .correlation_id
-                .parse::<uuid::Uuid>()
-                .map_err(|_| DeserializeEventError {
-                    code: DeserializeEventErrorCode::InvalidCorrelationId,
-                    message: None,
-                })?;
-        let causation_id =
-            event
-                .causation_id
-                .parse::<uuid::Uuid>()
-                .map_err(|_| DeserializeEventError {
-                    code: DeserializeEventErrorCode::InvalidCausationId,
-                    message: None,
-                })?;
-        let triggered_by = event
-            .triggered_by
-            .map(|triggered_by| triggered_by.parse::<uuid::Uuid>())
-            .transpose()
-            .map_err(|_| DeserializeEventError {
-                code: DeserializeEventErrorCode::InvalidTriggeredById,
-                message: None,
-            })?;
+            .expect("host guaranteed valid u64 for event position");
+        let timestamp = DateTime::from_timestamp_millis(event.timestamp)
+            .expect("host guaranteed valid timestamp for event");
+        let correlation_id = event
+            .correlation_id
+            .parse::<uuid::Uuid>()
+            .expect("host guaranteed valid uuid for correlation_id");
+        let causation_id = event
+            .causation_id
+            .parse::<uuid::Uuid>()
+            .expect("host guaranteed valid uuid for causation_id");
+        let triggering_event_id = event
+            .triggering_event_id
+            .map(|triggering_event_id| {
+                triggering_event_id
+                    .parse::<uuid::Uuid>()
+                    .expect("host guaranteed valid uuid for triggering_event_id")
+            });
 
-        let data: serde_json::Value =
-            serde_json::from_str(&event.data).map_err(|err| DeserializeEventError {
-                code: DeserializeEventErrorCode::InvalidTriggeredById,
-                message: Some(err.to_string()),
-            })?;
+        let data: serde_json::Value = serde_json::from_str(&event.data)
+            .expect("host guaranteed valid json for event data");
 
-        Ok(crate::event::StoredEvent {
+        crate::event::StoredEvent {
             id,
             position,
             event_type: event.event_type,
@@ -137,8 +90,8 @@ impl TryFrom<StoredEvent> for crate::event::StoredEvent<serde_json::Value> {
             timestamp,
             correlation_id,
             causation_id,
-            triggered_by,
+            triggering_event_id,
             data,
-        })
+        }
     }
 }

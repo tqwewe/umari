@@ -7,11 +7,10 @@ use wasmtime::{
 
 use crate::{module::EventHandlerModule, module_store::ModuleType, wit};
 
-pub use self::exports::umari::projector::projector_runner::Error;
+pub use self::exports::umari::projector::projector::Error;
 
 bindgen!({
     path: "../../wit/projector",
-    world: "projector",
     imports: { default: tracing | trappable },
     exports: { default: async },
     with: {
@@ -20,13 +19,15 @@ bindgen!({
     }
 });
 
-impl EventHandlerModule for Projector {
+impl EventHandlerModule for ProjectorWorld {
     type Args = ();
     type Error = Error;
 
     const MODULE_TYPE: ModuleType = ModuleType::Projector;
 
-    fn add_to_linker(_linker: &mut Linker<wit::EventHandlerComponentState>) -> wasmtime::Result<()> {
+    fn add_to_linker(
+        _linker: &mut Linker<wit::EventHandlerComponentState>,
+    ) -> wasmtime::Result<()> {
         Ok(())
     }
 
@@ -36,15 +37,15 @@ impl EventHandlerModule for Projector {
         linker: &Linker<wit::EventHandlerComponentState>,
         _args: Self::Args,
     ) -> wasmtime::Result<Self> {
-        Projector::instantiate_async(store, component, linker).await
+        ProjectorWorld::instantiate_async(store, component, linker).await
     }
 
     async fn construct(
         &self,
         store: &mut Store<wit::EventHandlerComponentState>,
-    ) -> wasmtime::Result<Result<ResourceAny, Self::Error>> {
-        self.umari_projector_projector_runner()
-            .projector_state()
+    ) -> wasmtime::Result<ResourceAny> {
+        self.umari_projector_projector()
+            .projector()
             .call_constructor(store)
             .await
     }
@@ -53,9 +54,9 @@ impl EventHandlerModule for Projector {
         &self,
         store: &mut Store<wit::EventHandlerComponentState>,
         handler: ResourceAny,
-    ) -> wasmtime::Result<wit::common::DcbQuery> {
-        self.umari_projector_projector_runner()
-            .projector_state()
+    ) -> wasmtime::Result<wit::common::EventQuery> {
+        self.umari_projector_projector()
+            .projector()
             .call_query(store, handler)
             .await
     }
@@ -65,9 +66,9 @@ impl EventHandlerModule for Projector {
         store: &mut Store<wit::EventHandlerComponentState>,
         handler: ResourceAny,
         event: StoredEvent<Value>,
-    ) -> wasmtime::Result<Result<(), Self::Error>> {
-        self.umari_projector_projector_runner()
-            .projector_state()
+    ) -> wasmtime::Result<()> {
+        self.umari_projector_projector()
+            .projector()
             .call_handle(store, handler, &event.into())
             .await
     }

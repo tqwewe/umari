@@ -1,8 +1,6 @@
 use thiserror::Error;
-use umadb_dcb::DCBError;
 
-pub use crate::runtime::common::{DeserializeEventError, DeserializeEventErrorCode};
-pub use crate::runtime::sqlite::{SqliteError, SqliteErrorCode};
+pub use crate::runtime::sqlite::SqliteError;
 
 /// Error returned when a command is rejected or fails.
 #[derive(Clone, Debug, Error)]
@@ -12,19 +10,6 @@ pub struct CommandError {
     pub code: ErrorCode,
     /// Human-readable error message
     pub message: String,
-}
-
-/// Error returned when a command is rejected or fails.
-#[derive(Debug, Error)]
-pub enum ExecuteError<E> {
-    #[error(transparent)]
-    Command(E),
-    #[error(transparent)]
-    Validation(E),
-    #[error(transparent)]
-    DCB(#[from] DCBError),
-    #[error(transparent)]
-    Serialization(#[from] SerializationError),
 }
 
 /// Classification of command errors.
@@ -91,12 +76,4 @@ impl From<serde_json::Error> for SerializationError {
     fn from(err: serde_json::Error) -> Self {
         Self::new(err.to_string())
     }
-}
-
-#[derive(Clone, Debug, Error)]
-pub enum ProjectorError {
-    #[error(transparent)]
-    Sqlite(#[from] SqliteError),
-    #[error("projector error: {message}")]
-    Other { message: String },
 }

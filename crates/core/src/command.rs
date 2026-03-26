@@ -10,7 +10,7 @@ use crate::{
     domain_id::DomainIdBindings,
     emit::Emit,
     error::CommandError,
-    event::{EventEnvelope, EventSet, StoredEvent},
+    event::{EventSet, StoredEvent},
 };
 
 /// Trait for command input structs that declare domain ID bindings.
@@ -139,6 +139,12 @@ pub trait Command: Default + Send {
 
 pub trait CommandExecute: Command {
     fn execute(name: &str, input: &Self::Input) -> Result<Vec<StoredEvent<Value>>, CommandError>;
+
+    fn execute_with(
+        name: &str,
+        input: &Self::Input,
+        ctx: CommandContext,
+    ) -> Result<Vec<StoredEvent<Value>>, CommandError>;
 }
 
 impl<T: Command> CommandExecute for T
@@ -146,82 +152,94 @@ where
     T::Input: Serialize,
 {
     fn execute(name: &str, input: &Self::Input) -> Result<Vec<StoredEvent<Value>>, CommandError> {
-        // use crate::runtime::command::umari::command::execute::{Error, execute};
-        use crate::runtime::command::umari::command::types::Error as ExecuteError;
+        use crate::runtime::command::umari::command::executor::CommandContext;
 
-        // let result = execute(
-        //     name,
-        //     &serde_json::to_string(input).map_err(|err| {
-        //         CommandError::invalid_input(format!("failed to serialize input: {err}"))
-        //     })?,
-        // )
-        // .map_err(|err| match err {
-        //     Error::Command(err) => match err {
-        //         ExecuteError::Command(err) => CommandError::reject(err),
-        //         ExecuteError::DeserializeEvent(err) => CommandError::internal(err.to_string()),
-        //         ExecuteError::DeserializeInput(err) => CommandError::internal(err),
-        //         ExecuteError::SerializeEvent(err) => CommandError::internal(err),
-        //     },
-        //     Error::CommandNotFound => CommandError::internal("command not found"), // TODO: Lets have a better execute error enum for executing commands
-        // })?;
-
-        // result
-        //     .into_iter()
-        //     .map(|event| event.try_into())
-        //     .collect::<Result<Vec<StoredEvent<Value>>, _>>()
-        //     .map_err(|err| CommandError::internal(err.to_string()))
-        todo!()
+        execute_inner::<T>(
+            name,
+            input,
+            &CommandContext {
+                correlation_id: None,
+                triggering_event_id: None,
+            },
+        )
     }
+
+    fn execute_with(
+        name: &str,
+        input: &Self::Input,
+        ctx: CommandContext,
+    ) -> Result<Vec<StoredEvent<Value>>, CommandError> {
+        use crate::runtime::command::umari::command::executor::CommandContext;
+
+        execute_inner::<T>(
+            name,
+            input,
+            &CommandContext {
+                correlation_id: Some(ctx.correlation_id.to_string()),
+                triggering_event_id: ctx.triggering_event_id.as_ref().map(ToString::to_string),
+            },
+        )
+    }
+}
+
+fn execute_inner<T>(
+    name: &str,
+    input: &T::Input,
+    ctx: &crate::runtime::command::umari::command::executor::CommandContext,
+) -> Result<Vec<StoredEvent<Value>>, CommandError>
+where
+    T: Command,
+    T::Input: Serialize,
+{
+    use crate::runtime::command::umari::command::executor::{Error, execute};
+
+    let result = execute(
+        name,
+        &serde_json::to_string(input).map_err(|err| {
+            CommandError::invalid_input(format!("failed to serialize input: {err}"))
+        })?,
+        ctx,
+    )
+    .map_err(|err| match err {
+        Error::Rejected(msg) => CommandError::reject(msg),
+        Error::InvalidInput(msg) => CommandError::invalid_input(msg),
+    })?;
+
+    Ok(result.into_iter().map(|event| event.into()).collect())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CommandContext {
-    /// This execution's unique ID
-    pub command_id: Uuid,
     /// Original request ID (flows through everything)
     pub correlation_id: Uuid,
     /// Event ID that triggered this command (for sagas)
-    pub triggered_by: Option<Uuid>,
+    pub triggering_event_id: Option<Uuid>,
 }
 
 impl CommandContext {
     /// User-initiated command (HTTP request, CLI, etc.)
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
-        let id = Uuid::new_v4();
         Self {
-            command_id: id,
-            correlation_id: id,
-            triggered_by: None,
+            correlation_id: Uuid::new_v4(),
+            triggering_event_id: None,
         }
     }
 
     /// Continue from existing correlation (HTTP request with header)
     pub fn with_correlation_id(correlation_id: Uuid) -> Self {
         Self {
-            command_id: Uuid::new_v4(),
             correlation_id,
-            triggered_by: None,
+            triggering_event_id: None,
         }
     }
 
     /// Triggered by an event (saga/process manager)
     pub fn triggered_by_event(event_id: Uuid, correlation_id: Uuid) -> Self {
         Self {
-            command_id: Uuid::new_v4(),
             correlation_id,
-            triggered_by: Some(event_id),
-        }
-    }
-
-    /// Convert into an `EventEnvelope` with a timestamp.
-    pub fn into_event_envelope(self, timestamp: DateTime<Utc>) -> EventEnvelope {
-        EventEnvelope {
-            timestamp,
-            correlation_id: self.correlation_id,
-            causation_id: self.command_id,
-            triggered_by: self.triggered_by,
+            triggering_event_id: Some(event_id),
         }
     }
 }

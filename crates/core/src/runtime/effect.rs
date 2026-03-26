@@ -1,19 +1,18 @@
 use std::{cell::RefCell, fmt, marker::PhantomData};
 
-pub use self::exports::umari::effect::effect_runner::{Error, Guest, GuestEffectState};
+pub use self::exports::umari::effect::effect::{Guest, GuestEffect};
 use crate::{
     effect::Effect,
     event::EventSet,
-    runtime::common::{DcbQuery, DeserializeEventError, DeserializeEventErrorCode, StoredEvent},
+    runtime::common::{EventQuery, StoredEvent},
 };
 
 wit_bindgen::generate!({
-    world: "effect",
     path: "../../wit/effect",
     pub_export_macro: true,
     with: {
+        "umari:command/executor@0.1.0": crate::runtime::command,
         "umari:command/types@0.1.0": crate::runtime::command,
-        "umari:command/execute@0.1.0": crate::runtime::command,
         "umari:common/types@0.1.0": crate::runtime::common,
         "umari:sqlite/types@0.1.0": crate::runtime::sqlite,
         "umari:sqlite/connection@0.1.0": crate::runtime::sqlite,
@@ -45,67 +44,58 @@ where
     T: Effect + 'static,
     T::Error: fmt::Display,
 {
-    type EffectState = EffectState<T>;
+    type Effect = EffectState<T>;
 }
 
-impl<T> GuestEffectState for EffectState<T>
+impl<T> GuestEffect for EffectState<T>
 where
     T: Effect + 'static,
     T::Error: fmt::Display,
 {
-    fn new() -> Result<Self, Error>
+    fn new() -> Self
     where
         Self: Sized,
     {
-        Ok(EffectState {
+        EffectState {
             inner: RefCell::new(T::default()),
-        })
+        }
     }
 
-    fn query(&self) -> DcbQuery {
+    fn query(&self) -> EventQuery {
         self.inner.borrow().query().into()
     }
 
-    fn partition_key(&self, stored_event: StoredEvent) -> Result<Option<String>, Error> {
-        let Some(event) = transform_stored_event::<T>(stored_event)? else {
-            return Ok(None);
-        };
-
-        Ok(self.inner.borrow().partition_key(event))
+    fn partition_key(&self, stored_event: StoredEvent) -> Option<String> {
+        let event = transform_stored_event::<T>(stored_event)?;
+        self.inner.borrow().partition_key(event)
     }
 
-    fn handle(&self, stored_event: StoredEvent) -> Result<(), Error> {
-        let Some(event) = transform_stored_event::<T>(stored_event)? else {
-            return Ok(());
+    fn handle(&self, stored_event: StoredEvent) {
+        let Some(event) = transform_stored_event::<T>(stored_event) else {
+            return;
         };
 
         self.inner
             .borrow_mut()
             .handle(event)
-            .map_err(|err| Error::Other(err.to_string()))?;
-
-        Ok(())
+            .unwrap_or_else(|err| panic!("effect handle error: {err}"))
     }
 }
 
 fn transform_stored_event<T: Effect>(
     stored_event: StoredEvent,
-) -> Result<Option<crate::event::StoredEvent<T::Query>>, Error> {
-    let event: crate::event::StoredEvent<serde_json::Value> = stored_event.try_into()?;
+) -> Option<crate::event::StoredEvent<T::Query>> {
+    let event: crate::event::StoredEvent<serde_json::Value> = stored_event.into();
 
     let data = match T::Query::from_event(&event.event_type, event.data) {
         Some(Ok(event)) => event,
         Some(Err(err)) => {
-            return Err(DeserializeEventError {
-                code: DeserializeEventErrorCode::InvalidData,
-                message: Some(err.to_string()),
-            }
-            .into());
+            panic!("failed to deserialize event data: {err}");
         }
-        None => return Ok(None), // Event type not in query set, skip
+        None => return None, // Event type not in query set, skip
     };
 
-    Ok(Some(crate::event::StoredEvent {
+    Some(crate::event::StoredEvent {
         id: event.id,
         position: event.position,
         event_type: event.event_type,
@@ -113,13 +103,7 @@ fn transform_stored_event<T: Effect>(
         timestamp: event.timestamp,
         correlation_id: event.correlation_id,
         causation_id: event.causation_id,
-        triggered_by: event.triggered_by,
+        triggering_event_id: event.triggering_event_id,
         data,
-    }))
-}
-
-impl From<DeserializeEventError> for Error {
-    fn from(err: DeserializeEventError) -> Self {
-        Error::DeserializeEvent(err)
-    }
+    })
 }

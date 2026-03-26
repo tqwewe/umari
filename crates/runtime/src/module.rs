@@ -18,13 +18,11 @@ use crate::{
 };
 
 #[derive(Debug, Error)]
-pub enum ModuleError<E> {
+pub enum ModuleError {
     #[error("concurrent modification")]
     ConcurrentModification,
     #[error("database error: {0}")]
     Database(#[from] umari_core::error::SqliteError),
-    #[error("failed to deserialize event: {0}")]
-    DeserializeEvent(#[from] umari_core::error::DeserializeEventError),
     #[error("duplicate active projector module '{name}'")]
     DuplicateActiveModule { name: Arc<str> },
     #[error("event store error: {0}")]
@@ -35,17 +33,15 @@ pub enum ModuleError<E> {
     ModuleStore(SendError<(), ModuleStoreError>),
     #[error("wasmtime error: {0}")]
     Wasmtime(#[from] wasmtime::Error),
-    #[error(transparent)]
-    Wit(E),
 }
 
-impl<M, E> From<SendError<M, ModuleStoreError>> for ModuleError<E> {
+impl<M> From<SendError<M, ModuleStoreError>> for ModuleError {
     fn from(err: SendError<M, ModuleStoreError>) -> Self {
         ModuleError::ModuleStore(err.map_msg(|_| ()))
     }
 }
 
-impl<E> From<rusqlite::Error> for ModuleError<E> {
+impl From<rusqlite::Error> for ModuleError {
     fn from(err: rusqlite::Error) -> Self {
         let wit_err = wit::sqlite::SqliteError::from(err);
         ModuleError::Database(wit_err.into())
@@ -70,18 +66,18 @@ pub trait EventHandlerModule: Send + Sized + 'static {
     fn construct(
         &self,
         store: &mut Store<wit::EventHandlerComponentState>,
-    ) -> impl Future<Output = wasmtime::Result<Result<ResourceAny, Self::Error>>> + Send;
+    ) -> impl Future<Output = wasmtime::Result<ResourceAny>> + Send;
 
     fn query(
         &self,
         store: &mut Store<wit::EventHandlerComponentState>,
         handler: ResourceAny,
-    ) -> impl Future<Output = wasmtime::Result<wit::common::DcbQuery>> + Send;
+    ) -> impl Future<Output = wasmtime::Result<wit::common::EventQuery>> + Send;
 
     fn handle_event(
         &self,
         store: &mut Store<wit::EventHandlerComponentState>,
         handler: ResourceAny,
         event: StoredEvent<Value>,
-    ) -> impl Future<Output = wasmtime::Result<Result<(), Self::Error>>> + Send;
+    ) -> impl Future<Output = wasmtime::Result<()>> + Send;
 }

@@ -17,14 +17,10 @@ pub mod supervisor;
 pub enum PolicyError {
     #[error(transparent)]
     Command(#[from] SendError<Execute, CommandError>),
-    #[error("failed to deserialize event: {0}")]
-    DeserializeEvent(#[from] umari_core::error::DeserializeEventError),
     #[error("duplicate active projector module '{name}'")]
     DuplicateActiveModule { name: Arc<str> },
     #[error("event store error: {0}")]
     EventStore(#[from] umadb_dcb::DCBError),
-    #[error("policy error: {0}")]
-    Policy(String),
     #[error("missing event id")]
     MissingEventId,
     #[error("database error: {0}")]
@@ -46,11 +42,7 @@ impl<M> From<SendError<M, ModuleStoreError>> for PolicyError {
 impl From<wit::policy::Error> for PolicyError {
     fn from(err: wit::policy::Error) -> Self {
         match err {
-            wit::policy::Error::DeserializeEvent(err) => {
-                umari_core::error::DeserializeEventError::from(err).into()
-            }
             wit::policy::Error::Sqlite(err) => umari_core::error::SqliteError::from(err).into(),
-            wit::policy::Error::Other(err) => PolicyError::Policy(err),
         }
     }
 }

@@ -21,38 +21,24 @@ interface types {
         columns: list<column>,
     }
 
-    /// SQLite error codes
-    enum sqlite-error-code {
-        unknown,
-        internal-malfunction,
-        permission-denied,
-        operation-aborted,
-        database-busy,
-        database-locked,
-        out-of-memory,
-        read-only,
-        operation-interrupted,
-        system-io-failure,
-        database-corrupt,
-        not-found,
-        disk-full,
-        cannot-open,
-        file-locking-protocol-failed,
-        schema-changed,
-        too-big,
-        constraint-violation,
-        type-mismatch,
-        api-misuse,
-        no-large-file-support,
-        authorization-for-statement-denied,
-        parameter-out-of-range,
-        not-a-database,
+    /// The type of constraint that was violated
+    enum constraint-violation-kind {
+        unique,
+        primary-key,
+        not-null,
+        foreign-key,
+        check,
+        other,
     }
 
-    /// SQLite error details
-    record sqlite-error {
-        code: sqlite-error-code,
-        extended-code: s32,
-        message: option<string>,
+    /// Details of a SQLite constraint violation
+    record constraint-violation {
+        kind: constraint-violation-kind,
+        message: string,
+    }
+
+    /// SQLite error - only constraint violations are surfaced; all other errors trap the actor.
+    variant sqlite-error {
+        constraint-violation(constraint-violation),
     }
 }

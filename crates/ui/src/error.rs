@@ -76,8 +76,7 @@ impl From<umari_runtime::command::CommandError> for HtmlError {
         use umari_runtime::command::CommandError;
         let status = match &err {
             CommandError::ModuleNotFound { .. } => StatusCode::NOT_FOUND,
-            CommandError::DeserializeInput { .. }
-            | CommandError::SerializeInput { .. }
+            CommandError::SerializeInput { .. }
             | CommandError::CommandHandler { .. } => StatusCode::BAD_REQUEST,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };

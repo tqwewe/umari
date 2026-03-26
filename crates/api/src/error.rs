@@ -128,13 +128,10 @@ impl AsErrorCode for umari_runtime::command::CommandError {
                 ErrorCode::Duplicate
             }
             umari_runtime::command::CommandError::ModuleNotFound { .. } => ErrorCode::NotFound,
-            umari_runtime::command::CommandError::DeserializeInput { .. }
-            | umari_runtime::command::CommandError::SerializeInput { .. } => {
+            umari_runtime::command::CommandError::SerializeInput { .. } => {
                 ErrorCode::InvalidInput
             }
-            umari_runtime::command::CommandError::DeserializeEvent { .. } => ErrorCode::Integrity,
             umari_runtime::command::CommandError::CommandHandler { .. } => ErrorCode::InvalidInput,
-            umari_runtime::command::CommandError::SerializeEvent { .. } => ErrorCode::Internal,
             umari_runtime::command::CommandError::EventStore(_)
             | umari_runtime::command::CommandError::MissingEventId => ErrorCode::Database,
             umari_runtime::command::CommandError::ModuleStore(send_err) => send_err.error_code(),

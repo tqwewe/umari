@@ -7,7 +7,6 @@ use tracing::info;
 use umadb_client::AsyncUmaDBClient;
 use umadb_dcb::{DCBError, DCBEventStoreAsync, DCBReadResponseAsync, DCBSequencedEvent};
 use umari_core::{
-    error::DeserializeEventError,
     event::{StoredEvent, StoredEventData},
     prelude::CommandContext,
 };
@@ -115,10 +114,8 @@ impl PolicyActor {
 
     async fn handle_event(&mut self, event: DCBSequencedEvent) -> Result<(), PolicyError> {
         let data: StoredEventData<Value> =
-            serde_json::from_slice(&event.event.data).map_err(|err| DeserializeEventError {
-                code: umari_core::error::DeserializeEventErrorCode::InvalidData,
-                message: Some(err.to_string()),
-            })?;
+            serde_json::from_slice(&event.event.data)
+                .unwrap_or_else(|err| panic!("failed to deserialize event data: {err}"));
 
         let event = StoredEvent {
             id: event.event.uuid.ok_or(PolicyError::MissingEventId)?,
@@ -128,7 +125,7 @@ impl PolicyActor {
             timestamp: data.timestamp,
             correlation_id: data.correlation_id,
             causation_id: data.causation_id,
-            triggered_by: data.triggered_by,
+            triggering_event_id: data.triggering_event_id,
             data: data.data,
         };
 
@@ -152,26 +149,23 @@ impl PolicyActor {
                     timestamp: event.timestamp.timestamp_millis(),
                     correlation_id: event.correlation_id.to_string(),
                     causation_id: event.causation_id.to_string(),
-                    triggered_by: event
-                        .triggered_by
-                        .map(|triggered_by| triggered_by.to_string()),
+                    triggering_event_id: event
+                        .triggering_event_id
+                        .map(|triggering_event_id| triggering_event_id.to_string()),
                     data: serde_json::to_string(&event.data).unwrap(),
                 },
             )
             .await??;
 
         for cmd in cmds {
+            let input = serde_json::from_str(&cmd.input)
+                .unwrap_or_else(|err| panic!("policy returned invalid json input: {err}"));
             self.command_ref
                 .ask(Execute {
                     name: cmd.command_type.into(),
                     command: CommandPayload {
-                        input: serde_json::from_str(&cmd.input).map_err(|err| {
-                            DeserializeEventError {
-                                code: umari_core::error::DeserializeEventErrorCode::InvalidData,
-                                message: Some(err.to_string()),
-                            }
-                        })?,
-                        context: Some(CommandContext::triggered_by_event(
+                        input,
+                        context: Some(CommandContext::triggering_event_id_event(
                             event.id,
                             event.correlation_id,
                         )),

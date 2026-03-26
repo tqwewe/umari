@@ -1,6 +1,6 @@
 use kameo::actor::ActorRef;
 use serde_json::Value;
-use umari_core::{error::DeserializeEventError, event::StoredEvent, prelude::CommandContext};
+use umari_core::{event::StoredEvent, prelude::CommandContext};
 use wasmtime::{
     Store,
     component::{Component, Linker, ResourceAny, bindgen},
@@ -13,11 +13,10 @@ use crate::{
     wit,
 };
 
-pub use self::exports::umari::policy::policy_runner::Error;
+pub use self::exports::umari::policy::policy::Error;
 
 bindgen!({
     path: "../../wit/policy",
-    world: "policy",
     imports: { default: tracing | trappable },
     exports: { default: async },
     with: {
@@ -28,7 +27,7 @@ bindgen!({
 
 pub struct PolicyState {
     command_ref: ActorRef<CommandActor>,
-    instance: Policy,
+    instance: PolicyWorld,
 }
 
 #[derive(Clone)]
@@ -42,7 +41,9 @@ impl EventHandlerModule for PolicyState {
 
     const MODULE_TYPE: ModuleType = ModuleType::Policy;
 
-    fn add_to_linker(_linker: &mut Linker<wit::EventHandlerComponentState>) -> wasmtime::Result<()> {
+    fn add_to_linker(
+        _linker: &mut Linker<wit::EventHandlerComponentState>,
+    ) -> wasmtime::Result<()> {
         Ok(())
     }
 
@@ -52,7 +53,7 @@ impl EventHandlerModule for PolicyState {
         linker: &Linker<wit::EventHandlerComponentState>,
         args: Self::Args,
     ) -> wasmtime::Result<Self> {
-        let instance = Policy::instantiate_async(store, component, linker).await?;
+        let instance = PolicyWorld::instantiate_async(store, component, linker).await?;
         Ok(PolicyState {
             command_ref: args.command_ref,
             instance,
@@ -62,10 +63,10 @@ impl EventHandlerModule for PolicyState {
     async fn construct(
         &self,
         store: &mut Store<wit::EventHandlerComponentState>,
-    ) -> wasmtime::Result<Result<ResourceAny, Self::Error>> {
+    ) -> wasmtime::Result<ResourceAny> {
         self.instance
-            .umari_policy_policy_runner()
-            .policy_state()
+            .umari_policy_policy()
+            .policy()
             .call_constructor(store)
             .await
     }
@@ -74,10 +75,10 @@ impl EventHandlerModule for PolicyState {
         &self,
         store: &mut Store<wit::EventHandlerComponentState>,
         handler: ResourceAny,
-    ) -> wasmtime::Result<wit::common::DcbQuery> {
+    ) -> wasmtime::Result<wit::common::EventQuery> {
         self.instance
-            .umari_policy_policy_runner()
-            .policy_state()
+            .umari_policy_policy()
+            .policy()
             .call_query(store, handler)
             .await
     }
@@ -87,34 +88,29 @@ impl EventHandlerModule for PolicyState {
         store: &mut Store<wit::EventHandlerComponentState>,
         handler: ResourceAny,
         event: StoredEvent<Value>,
-    ) -> wasmtime::Result<Result<(), Self::Error>> {
+    ) -> wasmtime::Result<()> {
         let event_id = event.id;
         let correlation_id = event.correlation_id;
 
         let cmds = self
             .instance
-            .umari_policy_policy_runner()
-            .policy_state()
+            .umari_policy_policy()
+            .policy()
             .call_handle(store, handler, &event.into())
-            .await??;
+            .await?;
 
         for cmd in cmds {
             self.command_ref
                 .ask(Execute {
                     name: cmd.command_type.into(),
                     command: CommandPayload {
-                        input: serde_json::from_str(&cmd.input).map_err(|err| {
-                            DeserializeEventError {
-                                code: umari_core::error::DeserializeEventErrorCode::InvalidData,
-                                message: Some(err.to_string()),
-                            }
-                        })?,
-                        context: Some(CommandContext::triggered_by_event(event_id, correlation_id)),
+                        input: cmd.input,
+                        context: CommandContext::triggered_by_event(event_id, correlation_id),
                     },
                 })
                 .await?;
         }
 
-        Ok(Ok(()))
+        Ok(())
     }
 }

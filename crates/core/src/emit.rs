@@ -129,7 +129,7 @@ pub fn encode_with_envelope(envelope: EventEnvelope, data: Value) -> Vec<u8> {
         timestamp: envelope.timestamp,
         correlation_id: envelope.correlation_id,
         causation_id: envelope.causation_id,
-        triggered_by: envelope.triggered_by,
+        triggering_event_id: envelope.triggering_event_id,
         data,
     })
     .unwrap()

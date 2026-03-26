@@ -7,7 +7,9 @@ interface statement {
         constructor(sql: sql) -> result<stmt, sqlite-error>;
         execute: func(params: list<value>) -> result<s64, sqlite-error>;
         query: func(params: list<value>) -> result<list<row>, sqlite-error>;
+        /// Returns the single matching row. Errors if more than one row is returned.
         query-one: func(params: list<value>) -> result<option<row>, sqlite-error>;
+        /// Returns the first matching row or `none`, ignoring any additional rows.
         query-row: func(params: list<value>) -> result<option<row>, sqlite-error>;
     }
 }

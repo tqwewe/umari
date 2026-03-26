@@ -1,0 +1,17 @@
+package umari:command@0.1.0;
+
+/// The command world - what a command module must implement
+world command {
+    import executor;
+
+    use types.{error, execute-output};
+    use umari:common/types@0.1.0.{event-query, json, stored-event};
+
+    /// Build a query from command input to fetch relevant events
+    /// This determines what events need to be loaded from the event store
+    export query: func(input: json) -> result<event-query, error>;
+
+    /// Execute the command with input and fetched events
+    /// Returns events to be emitted/persisted
+    export execute: func(input: json, events: list<stored-event>) -> result<execute-output, error>;
+}

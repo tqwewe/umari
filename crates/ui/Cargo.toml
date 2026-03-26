@@ -3,6 +3,7 @@ name = "umari-ui"
 edition = "2024"
 
 [dependencies]
+umari-core = { workspace = true }
 umari-runtime = { workspace = true }
 umari-types = { workspace = true }
 axum.workspace = true

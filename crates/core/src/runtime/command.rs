@@ -4,7 +4,6 @@ use std::marker::PhantomData;
 use serde::de::DeserializeOwned;
 
 use crate::command::{Command, EventMeta};
-use crate::error::DeserializeEventErrorCode;
 use crate::event::EventSet;
 
 pub use self::umari::command::types::*;
@@ -35,32 +34,28 @@ where
     T::Input: DeserializeOwned,
     T::Error: fmt::Display,
 {
-    fn query(input: Json) -> Result<DcbQuery, Error> {
-        let input: T::Input =
-            serde_json::from_str(&input).map_err(|err| Error::DeserializeInput(err.to_string()))?;
+    fn query(input: Json) -> Result<EventQuery, Error> {
+        let input: T::Input = serde_json::from_str(&input)
+            .map_err(|err| Error::InvalidInput(err.to_string()))?;
 
-        T::validate(&input).map_err(|err| Error::Command(err.to_string()))?;
+        T::validate(&input).map_err(|err| Error::Rejected(err.to_string()))?;
 
         Ok(T::query(&input).into())
     }
 
     fn execute(input: Json, events: Vec<StoredEvent>) -> Result<ExecuteOutput, Error> {
-        let input: T::Input =
-            serde_json::from_str(&input).map_err(|err| Error::DeserializeInput(err.to_string()))?;
+        let input: T::Input = serde_json::from_str(&input)
+            .map_err(|err| Error::InvalidInput(err.to_string()))?;
 
         let mut handler = T::default();
 
         for stored_event in events {
-            let event: crate::event::StoredEvent<serde_json::Value> = stored_event.try_into()?;
+            let event: crate::event::StoredEvent<serde_json::Value> = stored_event.into();
 
             let data = match T::Query::from_event(&event.event_type, event.data) {
                 Some(Ok(event)) => event,
                 Some(Err(err)) => {
-                    return Err(DeserializeEventError {
-                        code: DeserializeEventErrorCode::InvalidData,
-                        message: Some(err.to_string()),
-                    }
-                    .into());
+                    panic!("failed to deserialize event data: {err}");
                 }
                 None => continue, // Event type not in query set, skip
             };
@@ -74,33 +69,31 @@ where
 
         let emit = handler
             .handle(input)
-            .map_err(|err| Error::Command(err.to_string()))?;
+            .map_err(|err| Error::Rejected(err.to_string()))?;
 
         let emitted_events = emit
             .into_events()
             .into_iter()
             .map(|event| {
-                Ok(EmittedEvent {
+                let data = serde_json::to_string(&event.data)
+                    .unwrap_or_else(|err| panic!("failed to serialize event data: {err}"));
+                EmittedEvent {
                     event_type: event.event_type,
-                    data: serde_json::to_string(&event.data)
-                        .map_err(|err| Error::SerializeEvent(err.to_string()))?,
+                    data,
                     domain_ids: event
                         .domain_ids
                         .into_iter()
-                        .map(|(k, v)| (k.to_string(), v.into_option()))
+                        .map(|(k, v)| DomainId {
+                            name: k.to_string(),
+                            id: v.into_option(),
+                        })
                         .collect(),
-                })
+                }
             })
-            .collect::<Result<_, Error>>()?;
+            .collect();
 
         Ok(ExecuteOutput {
             events: emitted_events,
         })
-    }
-}
-
-impl From<DeserializeEventError> for Error {
-    fn from(err: DeserializeEventError) -> Self {
-        Error::DeserializeEvent(err)
     }
 }

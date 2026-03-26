@@ -7,10 +7,7 @@ use serde_json::Value;
 use tracing::info;
 use umadb_client::AsyncUmaDBClient;
 use umadb_dcb::{DCBError, DCBEventStoreAsync, DCBQuery, DCBReadResponseAsync, DCBSequencedEvent};
-use umari_core::{
-    error::{DeserializeEventError, DeserializeEventErrorCode},
-    event::{StoredEvent, StoredEventData},
-};
+use umari_core::event::{StoredEvent, StoredEventData};
 use wasmtime::{
     Engine, Store,
     component::{Component, Linker, ResourceAny},
@@ -43,7 +40,7 @@ pub struct ModuleActorArgs<A> {
 
 impl<A: EventHandlerModule> Actor for ModuleActor<A> {
     type Args = ModuleActorArgs<A::Args>;
-    type Error = ModuleError<A::Error>;
+    type Error = ModuleError;
 
     // fn name() -> &'static str {
     //     "ModuleActor"
@@ -99,10 +96,7 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
 
         store.data().conn().execute("BEGIN", [])?;
 
-        let handler = instance
-            .construct(&mut store)
-            .await?
-            .map_err(ModuleError::Wit)?;
+        let handler = instance.construct(&mut store).await?;
 
         store.data().conn().execute_batch("COMMIT; BEGIN")?;
 
@@ -151,10 +145,7 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
 }
 
 impl<A: EventHandlerModule> ModuleActor<A> {
-    async fn process_batch(
-        &mut self,
-        batch: Vec<DCBSequencedEvent>,
-    ) -> Result<(), ModuleError<A::Error>> {
+    async fn process_batch(&mut self, batch: Vec<DCBSequencedEvent>) -> Result<(), ModuleError> {
         let mut new_position = None;
         for event in batch {
             new_position = Some(event.position);
@@ -193,15 +184,9 @@ impl<A: EventHandlerModule> ModuleActor<A> {
         Ok(())
     }
 
-    async fn handle_event(
-        &mut self,
-        event: DCBSequencedEvent,
-    ) -> Result<(), ModuleError<A::Error>> {
-        let data: StoredEventData<Value> =
-            serde_json::from_slice(&event.event.data).map_err(|err| DeserializeEventError {
-                code: DeserializeEventErrorCode::InvalidData,
-                message: Some(err.to_string()),
-            })?;
+    async fn handle_event(&mut self, event: DCBSequencedEvent) -> Result<(), ModuleError> {
+        let data: StoredEventData<Value> = serde_json::from_slice(&event.event.data)
+            .unwrap_or_else(|err| panic!("failed to deserialize event data: {err}"));
 
         let event = StoredEvent {
             id: event.event.uuid.ok_or(ModuleError::MissingEventId)?,
@@ -211,13 +196,14 @@ impl<A: EventHandlerModule> ModuleActor<A> {
             timestamp: data.timestamp,
             correlation_id: data.correlation_id,
             causation_id: data.causation_id,
-            triggered_by: data.triggered_by,
+            triggering_event_id: data.triggering_event_id,
             data: data.data,
         };
 
         self.instance
             .handle_event(&mut self.store, self.handler, event)
-            .await?
-            .map_err(ModuleError::Wit)
+            .await?;
+
+        Ok(())
     }
 }

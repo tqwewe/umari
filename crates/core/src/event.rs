@@ -7,11 +7,15 @@ use crate::{domain_id::DomainIdValues, error::SerializationError};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EventEnvelope {
+    /// When the command was executed.
     pub timestamp: DateTime<Utc>,
+    /// The top-level flow these events belong to, propogated across the whole chain.
     pub correlation_id: Uuid,
+    /// The specific command execution that produced these vents.
     pub causation_id: Uuid,
+    /// the event that caused a policy to submit this command, `None` for commands originating from HTTP/direct calls
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub triggered_by: Option<Uuid>,
+    pub triggering_event_id: Option<Uuid>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -23,7 +27,7 @@ pub struct StoredEvent<T> {
     pub timestamp: DateTime<Utc>,
     pub correlation_id: Uuid,
     pub causation_id: Uuid,
-    pub triggered_by: Option<Uuid>,
+    pub triggering_event_id: Option<Uuid>,
     pub data: T,
 }
 
@@ -37,7 +41,7 @@ impl<T> StoredEvent<T> {
             timestamp: self.timestamp,
             correlation_id: self.correlation_id,
             causation_id: self.causation_id,
-            triggered_by: self.triggered_by,
+            triggering_event_id: self.triggering_event_id,
             data,
         }
     }
@@ -48,7 +52,7 @@ pub struct StoredEventData<T> {
     pub timestamp: DateTime<Utc>,
     pub correlation_id: Uuid,
     pub causation_id: Uuid,
-    pub triggered_by: Option<Uuid>,
+    pub triggering_event_id: Option<Uuid>,
     pub data: T,
 }
 

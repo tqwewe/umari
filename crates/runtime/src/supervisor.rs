@@ -99,7 +99,7 @@ impl Actor for RuntimeSupervisor {
 
         // Setup event handlers: projector, policy, effect
 
-        spawn_event_handler_supervisor::<wit::projector::Projector>(
+        spawn_event_handler_supervisor::<wit::projector::ProjectorWorld>(
             &supervisor_ref,
             engine.clone(),
             event_store.clone(),
@@ -125,7 +125,7 @@ impl Actor for RuntimeSupervisor {
         )
         .await?;
 
-        spawn_event_handler_supervisor::<wit::effect::Effect>(
+        spawn_event_handler_supervisor::<wit::effect::EffectWorld>(
             &supervisor_ref,
             engine.clone(),
             event_store.clone(),

@@ -1,0 +1,14 @@
+package umari:command@0.1.0;
+
+interface executor {
+    use types.{error};
+    use umari:common/types@0.1.0.{stored-event, json, uuid};
+
+
+    record command-context {
+        correlation-id: option<uuid>,
+        triggering-event-id: option<uuid>,
+    }
+
+    execute: func(command: string, input: json, context: command-context) -> result<list<stored-event>, error>;
+}

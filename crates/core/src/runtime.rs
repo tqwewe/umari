@@ -35,7 +35,7 @@ pub struct StoredEventData {
     pub timestamp: i64, // Unix timestamp in milliseconds
     pub correlation_id: String,
     pub causation_id: String,
-    pub triggered_by: Option<String>,
+    pub triggering_event_id: Option<String>,
     pub data: String, // JSON as string
 }
 

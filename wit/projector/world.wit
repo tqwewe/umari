@@ -1,0 +1,8 @@
+package umari:projector@0.1.0;
+
+world projector-world {
+    import umari:sqlite/connection@0.1.0;
+    import umari:sqlite/statement@0.1.0;
+
+    export projector;
+}

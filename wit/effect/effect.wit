@@ -1,34 +1,21 @@
 package umari:effect@0.1.0;
 
-interface effect-runner {
-    use umari:common/types@0.1.0.{dcb-query, deserialize-event-error, stored-event};
+interface effect {
+    use umari:common/types@0.1.0.{event-query, stored-event};
     use umari:sqlite/types@0.1.0.{sqlite-error};
-    use wasi:http/types@0.2.8.{error-code as http-error-code};
 
     variant error {
-        deserialize-event(deserialize-event-error),
         sqlite(sqlite-error),
-        http(http-error-code),
-        other(string),
     }
 
-    resource effect-state {
-        constructor() -> result<effect-state, error>;
+    resource effect {
+        constructor();
         /// Tags-based subscription - same as projector
-        query: func() -> dcb-query;
+        query: func() -> event-query;
         /// Extracts the partition key from an event for lane routing.
         /// None means the event falls into the global sequential lane.
-        partition-key: func(event: stored-event) -> result<option<string>, error>;
+        partition-key: func(event: stored-event) -> option<string>;
         /// Handle a single event. Returning an error triggers runtime retry.
-        handle: func(event: stored-event) -> result<_, error>;
+        handle: func(event: stored-event);
     }
-}
-
-world effect {
-    import umari:command/execute@0.1.0;
-    import umari:sqlite/connection@0.1.0;
-    import umari:sqlite/statement@0.1.0;
-    import wasi:http/outgoing-handler@0.2.8;
-
-    export effect-runner;
 }

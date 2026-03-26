@@ -41,7 +41,7 @@ pub struct ModuleSupervisorArgs<A> {
 
 impl<A: EventHandlerModule> Actor for ModuleSupervisor<A> {
     type Args = ModuleSupervisorArgs<A::Args>;
-    type Error = ModuleError<A::Error>;
+    type Error = ModuleError;
 
     fn name() -> &'static str {
         "ModuleSupervisor"
@@ -106,7 +106,7 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
         name: Arc<str>,
         version: Version,
         wasm_bytes: Vec<u8>,
-    ) -> Result<(), ModuleError<A::Error>> {
+    ) -> Result<(), ModuleError> {
         let component = match Component::new(&self.engine, wasm_bytes) {
             Ok(wasm_module) => wasm_module,
             Err(err) => {
@@ -155,7 +155,7 @@ struct VersionedModule<A: EventHandlerModule> {
 }
 
 impl<A: EventHandlerModule> Message<ModuleEvent> for ModuleSupervisor<A> {
-    type Reply = Result<(), ModuleError<A::Error>>;
+    type Reply = Result<(), ModuleError>;
 
     async fn handle(
         &mut self,

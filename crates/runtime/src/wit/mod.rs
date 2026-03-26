@@ -19,12 +19,12 @@ pub mod policy;
 pub mod projector;
 pub mod sqlite;
 
-pub struct BasicComponentState {
+pub struct CommandComponentState {
     pub wasi_ctx: WasiCtx,
     pub resource_table: ResourceTable,
 }
 
-impl WasiView for BasicComponentState {
+impl WasiView for CommandComponentState {
     fn ctx(&mut self) -> WasiCtxView<'_> {
         WasiCtxView {
             ctx: &mut self.wasi_ctx,

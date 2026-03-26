@@ -12,14 +12,10 @@ pub mod supervisor;
 pub enum ProjectorError {
     #[error("duplicate active projector module '{name}'")]
     DuplicateActiveModule { name: Arc<str> },
-    #[error("failed to deserialize event: {0}")]
-    DeserializeEvent(#[from] umari_core::error::DeserializeEventError),
     #[error("missing event id")]
     MissingEventId,
     #[error("concurrent modification")]
     ConcurrentModification,
-    #[error("projector error: {0}")]
-    Projector(String),
     #[error("event store error: {0}")]
     EventStore(#[from] umadb_dcb::DCBError),
     #[error("database error: {0}")]
@@ -41,11 +37,7 @@ impl<M> From<SendError<M, ModuleStoreError>> for ProjectorError {
 impl From<wit::projector::Error> for ProjectorError {
     fn from(err: wit::projector::Error) -> Self {
         match err {
-            wit::projector::Error::DeserializeEvent(err) => {
-                umari_core::error::DeserializeEventError::from(err).into()
-            }
             wit::projector::Error::Sqlite(err) => umari_core::error::SqliteError::from(err).into(),
-            wit::projector::Error::Other(err) => ProjectorError::Projector(err),
         }
     }
 }

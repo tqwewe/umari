@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use kameo::error::SendError;
 use thiserror::Error;
-use umari_core::error::DeserializeEventError;
 
 use crate::{module_store::ModuleStoreError, wit};
 
@@ -14,14 +13,8 @@ pub enum CommandError {
     DuplicateActiveModule { name: Arc<str> },
     #[error("module '{name}' not found")]
     ModuleNotFound { name: Arc<str> },
-    #[error("failed to deserialize event: {0}")]
-    DeserializeEvent(#[from] DeserializeEventError),
-    #[error("failed to serialize event: {0}")]
-    SerializeEvent(String),
-    #[error("failed to serialize comand input: {0}")]
+    #[error("failed to serialize command input: {0}")]
     SerializeInput(serde_json::Error),
-    #[error("failed to deserialize comand input: {0}")]
-    DeserializeInput(String),
     #[error("command error: {0}")]
     CommandHandler(String),
     #[error("missing event id")]
@@ -40,19 +33,11 @@ impl<M> From<SendError<M, ModuleStoreError>> for CommandError {
     }
 }
 
-impl From<wit::common::DeserializeEventError> for CommandError {
-    fn from(err: wit::common::DeserializeEventError) -> Self {
-        CommandError::DeserializeEvent(err.into())
-    }
-}
-
 impl From<wit::command::Error> for CommandError {
     fn from(err: wit::command::Error) -> Self {
         match err {
-            wit::command::Error::Command(err) => CommandError::CommandHandler(err),
-            wit::command::Error::DeserializeEvent(err) => err.into(),
-            wit::command::Error::DeserializeInput(err) => CommandError::DeserializeInput(err),
-            wit::command::Error::SerializeEvent(err) => CommandError::SerializeEvent(err),
+            wit::command::Error::Rejected(msg) => CommandError::CommandHandler(msg),
+            wit::command::Error::InvalidInput(msg) => CommandError::CommandHandler(msg),
         }
     }
 }

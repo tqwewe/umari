@@ -10,7 +10,6 @@ use umadb_client::AsyncUmaDBClient;
 use umadb_dcb::{DCBAppendCondition, DCBEvent, DCBEventStoreAsync, DCBQuery};
 use umari_core::{
     emit::encode_with_envelope,
-    error::{DeserializeEventError, DeserializeEventErrorCode},
     event::{EventEnvelope, StoredEventData},
     prelude::CommandContext,
 };
@@ -28,18 +27,18 @@ use crate::{
         ModuleType,
         actor::{GetActiveModule, GetAllActiveModules, ModuleStoreActor},
     },
-    wit::{self, BasicComponentState},
+    wit::{self, CommandComponentState},
 };
 
 pub struct VersionedModule {
     pub version: Version,
     pub component: Component,
-    pub command_pre: wit::command::CommandPre<BasicComponentState>,
+    pub command_pre: wit::command::CommandPre<CommandComponentState>,
 }
 
 pub struct CommandActor {
     engine: Engine,
-    linker: Linker<BasicComponentState>,
+    linker: Linker<CommandComponentState>,
     event_store: Arc<AsyncUmaDBClient>,
     module_store_ref: ActorRef<ModuleStoreActor>,
     components: HashMap<Arc<str>, VersionedModule>,
@@ -97,10 +96,9 @@ impl Actor for CommandActor {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CommandPayload {
     /// Command input as JSON
-    pub input: Value,
+    pub input: String,
     /// Optional command context for correlation and causation tracking
-    #[serde(default)]
-    pub context: Option<CommandContext>,
+    pub context: CommandContext,
 }
 
 #[derive(Serialize)]
@@ -146,7 +144,7 @@ impl CommandActor {
                 .collect_with_head()
                 .await?;
 
-            let triggered_by = command.context.and_then(|ctx| ctx.triggered_by);
+            let triggering_event_id = command.context.triggering_event_id;
             let mut mapped_events = Vec::with_capacity(events.len());
 
             for sequenced_event in events {
@@ -156,18 +154,14 @@ impl CommandActor {
                     .ok_or(CommandError::MissingEventId)?;
 
                 let stored: StoredEventData<Value> =
-                    serde_json::from_slice(&sequenced_event.event.data).map_err(|err| {
-                        DeserializeEventError {
-                            code: DeserializeEventErrorCode::InvalidData,
-                            message: Some(err.to_string()),
-                        }
-                    })?;
+                    serde_json::from_slice(&sequenced_event.event.data)
+                        .unwrap_or_else(|err| panic!("failed to deserialize event data: {err}"));
 
                 let data = serde_json::to_string(&stored.data)
-                    .map_err(|err| CommandError::SerializeEvent(err.to_string()))?;
+                    .unwrap_or_else(|err| panic!("failed to serialize event data: {err}"));
 
-                if let Some(triggered_by) = triggered_by
-                    && Some(triggered_by) == stored.triggered_by
+                if let Some(triggering_event_id) = triggering_event_id
+                    && Some(triggering_event_id) == stored.triggering_event_id
                 {
                     return Ok(ExecuteResult {
                         position: head,
@@ -183,9 +177,9 @@ impl CommandActor {
                     timestamp: stored.timestamp.timestamp(),
                     correlation_id: stored.correlation_id.to_string(),
                     causation_id: stored.causation_id.to_string(),
-                    triggered_by: stored
-                        .triggered_by
-                        .map(|triggered_by| triggered_by.to_string()),
+                    triggering_event_id: stored
+                        .triggering_event_id
+                        .map(|triggering_event_id| triggering_event_id.to_string()),
                     data,
                 })
             }
@@ -194,12 +188,13 @@ impl CommandActor {
 
             // Convert emitted events to DCBEvents and persist to event store
             let timestamp = Utc::now();
-            let context = command.context.unwrap_or_else(CommandContext::new);
+            let causation_id = Uuid::new_v4();
+            let context = command.context;
             let envelope = EventEnvelope {
                 timestamp,
                 correlation_id: context.correlation_id,
-                causation_id: context.command_id,
-                triggered_by: context.triggered_by,
+                causation_id,
+                triggering_event_id: context.triggering_event_id,
             };
 
             let mut emitted_events = Vec::new();
@@ -211,7 +206,9 @@ impl CommandActor {
                     let tags: Vec<String> = event
                         .domain_ids
                         .into_iter()
-                        .filter_map(|(category, id)| id.map(|id| format!("{category}:{id}")))
+                        .filter_map(|domain_id| {
+                            domain_id.id.map(|id| format!("{}:{id}", domain_id.name))
+                        })
                         .collect();
 
                     // Store event info for result
@@ -220,21 +217,17 @@ impl CommandActor {
                         tags: tags.clone(),
                     });
 
-                    let data_value: Value = serde_json::from_str(&event.data).map_err(|err| {
-                        CommandError::DeserializeEvent(DeserializeEventError {
-                            code: DeserializeEventErrorCode::InvalidData,
-                            message: Some(err.to_string()),
-                        })
-                    })?;
+                    let data_value: Value = serde_json::from_str(&event.data)
+                        .unwrap_or_else(|err| panic!("command emitted invalid json data: {err}"));
 
-                    Ok(DCBEvent {
+                    DCBEvent {
                         event_type: event.event_type,
                         tags,
                         data: encode_with_envelope(envelope, data_value),
                         uuid: Some(Uuid::new_v4()),
-                    })
+                    }
                 })
-                .collect::<Result<Vec<_>, CommandError>>()?;
+                .collect::<Vec<_>>();
 
             // Append events to event store if any were emitted
             let position = if !dcb_events.is_empty() {
@@ -268,7 +261,7 @@ impl CommandActor {
             .ok_or(CommandError::ModuleNotFound { name })?;
 
         let wasi_ctx = WasiCtx::builder().inherit_stderr().inherit_stdout().build();
-        let state = BasicComponentState {
+        let state = CommandComponentState {
             wasi_ctx,
             resource_table: ResourceTable::new(),
         };
@@ -319,16 +312,15 @@ impl CommandActor {
 }
 
 struct InstantiatedModule {
-    store: Store<BasicComponentState>,
+    store: Store<CommandComponentState>,
     command: wit::command::Command,
 }
 
 impl InstantiatedModule {
-    async fn query(&mut self, input: &Value) -> Result<DCBQuery, CommandError> {
-        let input_json = serde_json::to_string(input).map_err(CommandError::SerializeInput)?;
+    async fn query(&mut self, input: &String) -> Result<DCBQuery, CommandError> {
         let query = self
             .command
-            .call_query(&mut self.store, &input_json)
+            .call_query(&mut self.store, input)
             .await??
             .into();
 
@@ -337,13 +329,12 @@ impl InstantiatedModule {
 
     async fn execute(
         &mut self,
-        input: &Value,
+        input: &String,
         events: Vec<wit::common::StoredEvent>,
     ) -> Result<wit::command::ExecuteOutput, CommandError> {
-        let wit_input = serde_json::to_string(input).map_err(CommandError::SerializeInput)?;
         let result = self
             .command
-            .call_execute(&mut self.store, &wit_input, &events)
+            .call_execute(&mut self.store, input, &events)
             .await??;
 
         Ok(result)
