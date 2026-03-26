@@ -36,21 +36,24 @@ pub enum ModuleType {
 
 #[derive(Debug, Error)]
 pub enum ModuleStoreError {
+    #[error("database error: {0}")]
+    Database(#[from] rusqlite::Error),
+
+    #[error("integrity error: {0}")]
+    Integrity(String),
+
+    #[error("invalid module name '{0}': module names must be snake case")]
+    InvalidName(String),
+
+    #[error("module already exists")]
+    ModuleAlreadyExists,
+
     #[error("module not found: {module_type}/{name}/{version}")]
     ModuleNotFound {
         module_type: ModuleType,
         name: String,
         version: Version,
     },
-
-    #[error("module already exists")]
-    ModuleAlreadyExists,
-
-    #[error("database error: {0}")]
-    Database(#[from] rusqlite::Error),
-
-    #[error("integrity error: {0}")]
-    Integrity(String),
 
     #[error("module pubsub error: {0}")]
     ModulePubSubSendError(SendError),

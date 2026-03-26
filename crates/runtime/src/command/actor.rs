@@ -5,7 +5,7 @@ use kameo::prelude::*;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use umadb_client::AsyncUmaDBClient;
 use umadb_dcb::{DCBAppendCondition, DCBEvent, DCBEventStoreAsync, DCBQuery};
 use umari_core::{
@@ -30,6 +30,7 @@ use crate::{
     wit::{self, CommandComponentState},
 };
 
+#[derive(Clone)]
 pub struct VersionedModule {
     pub version: Version,
     pub component: Component,
@@ -84,8 +85,12 @@ impl Actor for CommandActor {
         for module in active_modules {
             assert_eq!(module.module_type, ModuleType::Command);
             actor
-                .load_module(module.name.into(), module.version, module.wasm_bytes)
+                .load_module(module.name.into(), module.version, module.wasm_bytes, true)
                 .await?;
+        }
+
+        if !actor.components.is_empty() {
+            info!("loaded {} commands", actor.components.len());
         }
 
         Ok(actor)
@@ -121,6 +126,11 @@ pub struct EmittedEvent {
 
 #[messages]
 impl CommandActor {
+    #[message]
+    fn active_commands(&self) -> HashMap<Arc<str>, VersionedModule> {
+        self.components.clone()
+    }
+
     #[message(ctx)]
     pub async fn execute(
         &mut self,
@@ -281,6 +291,7 @@ impl CommandActor {
         name: Arc<str>,
         version: Version,
         wasm_bytes: Vec<u8>,
+        startup: bool,
     ) -> Result<(), CommandError> {
         let component = match Component::new(&self.engine, wasm_bytes) {
             Ok(wasm_module) => wasm_module,
@@ -294,7 +305,7 @@ impl CommandActor {
         let command_pre = wit::command::CommandPre::new(instance_pre)?;
 
         if let Some(module) = self.components.remove(&name) {
-            info!(module_type = %ModuleType::Command, %name, version = %module.version, "stopping module");
+            debug!(module_type = %ModuleType::Command, %name, version = %module.version, "stopping module");
         }
 
         self.components.insert(
@@ -306,7 +317,11 @@ impl CommandActor {
             },
         );
 
-        info!(module_type = %ModuleType::Command, %name, %version, "module loaded");
+        if startup {
+            debug!(module_type = %ModuleType::Command, %name, %version, "module loaded");
+        } else {
+            info!(module_type = %ModuleType::Command, %name, %version, "module loaded");
+        }
 
         Ok(())
     }
@@ -368,7 +383,7 @@ impl Message<ModuleEvent> for CommandActor {
                         .await?;
                     match module {
                         Some((_, wasm_bytes)) => {
-                            self.load_module(name, version, wasm_bytes).await?;
+                            self.load_module(name, version, wasm_bytes, false).await?;
                         }
                         None => {
                             warn!(module_type = %ModuleType::Command, %name, %version, "active module not found");

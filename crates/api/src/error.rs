@@ -104,14 +104,17 @@ where
 impl AsErrorCode for umari_runtime::module_store::ModuleStoreError {
     fn error_code(&self) -> ErrorCode {
         match self {
-            umari_runtime::module_store::ModuleStoreError::ModuleNotFound { .. } => {
-                ErrorCode::NotFound
+            umari_runtime::module_store::ModuleStoreError::Database(_) => ErrorCode::Database,
+            umari_runtime::module_store::ModuleStoreError::Integrity(_) => ErrorCode::Integrity,
+            umari_runtime::module_store::ModuleStoreError::InvalidName(_) => {
+                ErrorCode::InvalidInput
             }
             umari_runtime::module_store::ModuleStoreError::ModuleAlreadyExists => {
                 ErrorCode::Duplicate
             }
-            umari_runtime::module_store::ModuleStoreError::Database(_) => ErrorCode::Database,
-            umari_runtime::module_store::ModuleStoreError::Integrity(_) => ErrorCode::Integrity,
+            umari_runtime::module_store::ModuleStoreError::ModuleNotFound { .. } => {
+                ErrorCode::NotFound
+            }
             umari_runtime::module_store::ModuleStoreError::ModulePubSubSendError(_) => {
                 ErrorCode::Internal
             }

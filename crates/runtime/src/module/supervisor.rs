@@ -1,8 +1,8 @@
-use std::{collections::HashMap, ops::ControlFlow, sync::Arc, time::Duration};
+use std::{collections::HashMap, ops::ControlFlow, path::PathBuf, sync::Arc, time::Duration};
 
 use kameo::{prelude::*, supervision::RestartPolicy};
 use semver::Version;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use umadb_client::AsyncUmaDBClient;
 use wasmtime::{
     Engine,
@@ -24,6 +24,7 @@ use crate::{
 };
 
 pub struct ModuleSupervisor<A: EventHandlerModule> {
+    data_dir: Arc<PathBuf>,
     engine: Engine,
     linker: Linker<wit::EventHandlerComponentState>,
     event_store: Arc<AsyncUmaDBClient>,
@@ -35,6 +36,7 @@ pub struct ModuleSupervisor<A: EventHandlerModule> {
 
 #[derive(Clone)]
 pub struct ModuleSupervisorArgs<A> {
+    pub data_dir: Arc<PathBuf>,
     pub engine: Engine,
     pub event_store: Arc<AsyncUmaDBClient>,
     pub module_store_ref: ActorRef<ModuleStoreActor>,
@@ -72,6 +74,7 @@ impl<A: EventHandlerModule> Actor for ModuleSupervisor<A> {
             .await?;
 
         let mut supervisor = ModuleSupervisor {
+            data_dir: args.data_dir,
             engine: args.engine,
             linker,
             event_store: args.event_store,
@@ -89,8 +92,19 @@ impl<A: EventHandlerModule> Actor for ModuleSupervisor<A> {
                     module.name.into(),
                     module.version,
                     module.wasm_bytes,
+                    true,
                 )
                 .await?;
+        }
+
+        if !supervisor.modules.is_empty() {
+            let label = match A::MODULE_TYPE {
+                ModuleType::Command => "commands",
+                ModuleType::Policy => "policies",
+                ModuleType::Projector => "projectors",
+                ModuleType::Effect => "effects",
+            };
+            info!("started {} {label}", supervisor.modules.len());
         }
 
         Ok(supervisor)
@@ -107,13 +121,20 @@ impl<A: EventHandlerModule> Actor for ModuleSupervisor<A> {
     }
 }
 
+#[messages]
 impl<A: EventHandlerModule> ModuleSupervisor<A> {
+    #[message]
+    fn active_modules(&self) -> HashMap<Arc<str>, VersionedModule<A>> {
+        self.modules.clone()
+    }
+
     async fn load_module(
         &mut self,
         supervisor_ref: &ActorRef<Self>,
         name: Arc<str>,
         version: Version,
         wasm_bytes: Vec<u8>,
+        startup: bool,
     ) -> Result<(), ModuleError> {
         let component = match Component::new(&self.engine, wasm_bytes) {
             Ok(wasm_module) => wasm_module,
@@ -126,7 +147,7 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
         if let Some(module) = self.modules.remove(&name)
             && module.actor_ref.is_alive()
         {
-            info!(module_type = %A::MODULE_TYPE, %name, version = %module.version, "stopping module");
+            debug!(module_type = %A::MODULE_TYPE, %name, version = %module.version, "stopping module");
             let _ = module.actor_ref.stop_gracefully().await;
             module.actor_ref.wait_for_shutdown().await;
         }
@@ -134,6 +155,7 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
         let actor_ref = ModuleActor::supervise(
             supervisor_ref,
             ModuleActorArgs {
+                data_dir: self.data_dir.clone(),
                 engine: self.engine.clone(),
                 linker: self.linker.clone(),
                 event_store: self.event_store.clone(),
@@ -156,7 +178,11 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
             },
         );
 
-        info!(module_type = %A::MODULE_TYPE, %name, %version, "module loaded");
+        if startup {
+            debug!(module_type = %A::MODULE_TYPE, %name, %version, "module loaded");
+        } else {
+            info!(module_type = %A::MODULE_TYPE, %name, %version, "module loaded");
+        }
 
         Ok(())
     }
@@ -166,6 +192,15 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
 struct VersionedModule<A: EventHandlerModule> {
     version: Version,
     actor_ref: ActorRef<ModuleActor<A>>,
+}
+
+impl<A: EventHandlerModule> Clone for VersionedModule<A> {
+    fn clone(&self) -> Self {
+        Self {
+            version: self.version.clone(),
+            actor_ref: self.actor_ref.clone(),
+        }
+    }
 }
 
 impl<A: EventHandlerModule> Message<ModuleEvent> for ModuleSupervisor<A> {
@@ -194,7 +229,7 @@ impl<A: EventHandlerModule> Message<ModuleEvent> for ModuleSupervisor<A> {
                         .await?;
                     match module {
                         Some((version, wasm_bytes)) => {
-                            self.load_module(ctx.actor_ref(), name, version, wasm_bytes)
+                            self.load_module(ctx.actor_ref(), name, version, wasm_bytes, false)
                                 .await?;
                         }
                         None => {

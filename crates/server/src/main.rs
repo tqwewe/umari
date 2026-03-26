@@ -2,6 +2,7 @@ mod banner;
 mod tracing_subscriber;
 
 use std::{
+    path::PathBuf,
     process,
     time::{Duration, Instant},
 };
@@ -25,8 +26,8 @@ use crate::tracing_subscriber::PrettyNoSpans;
 #[command(about = "Umari runtime and API server", long_about = None)]
 struct Cli {
     /// Path to the runtime database file
-    #[arg(short, long, default_value = "umari.sqlite")]
-    store_path: String,
+    #[arg(short, long, default_value = "./umari-data")]
+    data_dir: PathBuf,
 
     /// Event store URL
     #[arg(short, long, default_value = "http://localhost:50051")]
@@ -41,8 +42,6 @@ struct Cli {
 async fn main() {
     banner::print_banner();
 
-    let start = Instant::now();
-
     ::tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::builder()
@@ -54,8 +53,9 @@ async fn main() {
 
     let cli = Cli::parse();
 
+    let start = Instant::now();
     let runtime_ref = RuntimeSupervisor::spawn(RuntimeConfig {
-        store_path: cli.store_path.into(),
+        data_dir: cli.data_dir.into(),
         event_store_url: cli.event_store_url,
     });
 
@@ -72,7 +72,7 @@ async fn main() {
         process::exit(1);
     }
 
-    info!("runtime started in {:?}", start.elapsed());
+    info!("runtime started after {:?}", start.elapsed());
 
     // Get actor refs from registry
     let module_store_ref = ActorRef::<ModuleStoreActor>::lookup("module_store")
@@ -97,7 +97,7 @@ async fn main() {
         }
     });
 
-    info!("API server started on {}", cli.api_addr);
+    info!("API server started on http://{}", cli.api_addr);
 
     tokio::select! {
         _ = signal::ctrl_c() => {

@@ -6,6 +6,7 @@ use kameo_actors::{
     pubsub::{PubSub, Subscribe},
 };
 use thiserror::Error;
+use tokio::fs;
 use umadb_client::AsyncUmaDBClient;
 use wasmtime::Engine;
 
@@ -23,20 +24,30 @@ use crate::{
 pub struct RuntimeSupervisor;
 
 pub struct RuntimeConfig {
-    pub store_path: PathBuf,
+    pub data_dir: Arc<PathBuf>,
     pub event_store_url: String,
 }
 
 #[derive(Debug, Error)]
 pub enum RuntimeError {
+    #[error("command startup failed: {0}")]
+    CommandStartupFailed(String),
+    #[error("projector startup failed: {0}")]
+    ProjectorStartupFailed(String),
+    #[error("policy startup failed: {0}")]
+    PolicyStartupFailed(String),
+    #[error("effect startup failed: {0}")]
+    EffectStartupFailed(String),
+    #[error("module store startup failed: {0}")]
+    ModuleStoreStartupFailed(String),
     #[error("event store error: {0}")]
     EventStore(#[from] umadb_dcb::DCBError),
+    #[error("failed to subscribe to module events")]
+    ModulePubSubSendError,
     #[error(transparent)]
     Registry(#[from] RegistryError),
     #[error(transparent)]
     Wasmtime(#[from] wasmtime::Error),
-    #[error("failed to subscribe to module events")]
-    ModulePubSubSendError,
 }
 
 impl Actor for RuntimeSupervisor {
@@ -51,6 +62,8 @@ impl Actor for RuntimeSupervisor {
         config: Self::Args,
         supervisor_ref: ActorRef<Self>,
     ) -> Result<Self, Self::Error> {
+        let _ = fs::create_dir_all(config.data_dir.as_path()).await;
+
         let engine = Engine::default();
 
         // Setup event store
@@ -71,13 +84,19 @@ impl Actor for RuntimeSupervisor {
         let module_store_ref = ModuleStoreActor::supervise(
             &supervisor_ref,
             StoreActorArgs {
-                store_path: config.store_path,
+                store_path: config.data_dir.join("umari.sqlite"),
                 module_pubsub: module_pubsub.clone(),
             },
         )
         .spawn_in_thread()
         .await;
         module_store_ref.register("module_store")?;
+
+        module_store_ref
+            .wait_for_startup_with_result(|res| {
+                res.map_err(|err| RuntimeError::ModuleStoreStartupFailed(err.to_string()))
+            })
+            .await?;
 
         // Setup command system
         let command_ref = CommandActor::supervise(
@@ -99,43 +118,53 @@ impl Actor for RuntimeSupervisor {
 
         // Setup event handlers: projector, policy, effect
 
-        spawn_event_handler_supervisor::<wit::projector::ProjectorWorld>(
-            &supervisor_ref,
-            engine.clone(),
-            event_store.clone(),
-            module_store_ref.clone(),
-            command_ref.clone(),
-            &module_pubsub,
-            "projector",
-            (),
-        )
-        .await?;
+        macro_rules! start_event_handler {
+            ($t:path, $name:literal, $args:expr $(,)?) => {
+                spawn_event_handler_supervisor::<$t>(
+                    &supervisor_ref,
+                    config.data_dir.clone(),
+                    engine.clone(),
+                    event_store.clone(),
+                    module_store_ref.clone(),
+                    command_ref.clone(),
+                    &module_pubsub,
+                    $name,
+                    $args,
+                )
+                .await?
+            };
+        }
 
-        spawn_event_handler_supervisor::<wit::policy::PolicyState>(
-            &supervisor_ref,
-            engine.clone(),
-            event_store.clone(),
-            module_store_ref.clone(),
-            command_ref.clone(),
-            &module_pubsub,
+        let projector_ref = start_event_handler!(wit::projector::ProjectorWorld, "projector", ());
+        let policy_ref = start_event_handler!(
+            wit::policy::PolicyState,
             "policy",
             PolicyArgs {
                 command_ref: command_ref.clone(),
             },
-        )
-        .await?;
+        );
+        let effect_ref = start_event_handler!(wit::effect::EffectWorld, "effect", ());
 
-        spawn_event_handler_supervisor::<wit::effect::EffectWorld>(
-            &supervisor_ref,
-            engine.clone(),
-            event_store.clone(),
-            module_store_ref.clone(),
-            command_ref.clone(),
-            &module_pubsub,
-            "effect",
-            (),
-        )
-        .await?;
+        command_ref
+            .wait_for_startup_with_result(|res| {
+                res.map_err(|err| RuntimeError::CommandStartupFailed(err.to_string()))
+            })
+            .await?;
+        projector_ref
+            .wait_for_startup_with_result(|res| {
+                res.map_err(|err| RuntimeError::ProjectorStartupFailed(err.to_string()))
+            })
+            .await?;
+        policy_ref
+            .wait_for_startup_with_result(|res| {
+                res.map_err(|err| RuntimeError::PolicyStartupFailed(err.to_string()))
+            })
+            .await?;
+        effect_ref
+            .wait_for_startup_with_result(|res| {
+                res.map_err(|err| RuntimeError::EffectStartupFailed(err.to_string()))
+            })
+            .await?;
 
         Ok(RuntimeSupervisor)
     }
@@ -144,6 +173,7 @@ impl Actor for RuntimeSupervisor {
 #[allow(clippy::too_many_arguments)]
 async fn spawn_event_handler_supervisor<A: EventHandlerModule>(
     supervisor_ref: &ActorRef<RuntimeSupervisor>,
+    data_dir: Arc<PathBuf>,
     engine: Engine,
     event_store: Arc<AsyncUmaDBClient>,
     module_store_ref: ActorRef<ModuleStoreActor>,
@@ -155,6 +185,7 @@ async fn spawn_event_handler_supervisor<A: EventHandlerModule>(
     let actor_ref = ModuleSupervisor::<A>::supervise(
         supervisor_ref,
         ModuleSupervisorArgs {
+            data_dir,
             engine,
             event_store,
             module_store_ref,

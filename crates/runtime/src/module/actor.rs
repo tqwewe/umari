@@ -1,10 +1,10 @@
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use kameo::prelude::*;
 use rusqlite::Connection;
 use semver::Version;
 use serde_json::Value;
-use tracing::info;
+use tracing::{debug, info};
 use umadb_client::AsyncUmaDBClient;
 use umadb_dcb::{DCBError, DCBEventStoreAsync, DCBQuery, DCBReadResponseAsync, DCBSequencedEvent};
 use umari_core::event::{StoredEvent, StoredEventData};
@@ -28,6 +28,7 @@ pub struct ModuleActor<A: EventHandlerModule> {
 
 #[derive(Clone)]
 pub struct ModuleActorArgs<A> {
+    pub data_dir: Arc<PathBuf>,
     pub engine: Engine,
     pub linker: Linker<wit::EventHandlerComponentState>,
     pub event_store: Arc<AsyncUmaDBClient>,
@@ -52,7 +53,11 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
     }
 
     async fn on_start(args: Self::Args, _actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
-        let conn = Connection::open(format!("{}-{}.sqlite", A::MODULE_TYPE, args.name))?;
+        let conn = Connection::open(args.data_dir.join(format!(
+            "{}-{}.sqlite",
+            A::MODULE_TYPE,
+            args.name
+        )))?;
 
         conn.execute_batch(
             "
@@ -116,7 +121,7 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
             .read(Some(query), start, false, None, true)
             .await?;
 
-        info!(module_type = %A::MODULE_TYPE, name = %args.name, version = %args.version, ?start, "subscribed to event store");
+        debug!(module_type = %A::MODULE_TYPE, name = %args.name, version = %args.version, ?start, "subscribed to event store");
 
         Ok(ModuleActor {
             store,

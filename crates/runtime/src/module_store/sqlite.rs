@@ -54,6 +54,10 @@ impl ModuleStore for SqliteModuleStore {
         version: Version,
         wasm_bytes: &[u8],
     ) -> Result<(), ModuleStoreError> {
+        if !is_valid_module_name(name) {
+            return Err(ModuleStoreError::InvalidName(name.to_string()));
+        }
+
         let sha256 = hex::encode(Sha256::digest(wasm_bytes));
         self.conn
             .execute(
@@ -275,6 +279,13 @@ impl ModuleStore for SqliteModuleStore {
 
         rows.map_err(ModuleStoreError::Database)
     }
+}
+
+fn is_valid_module_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
 impl ToSql for ModuleType {
