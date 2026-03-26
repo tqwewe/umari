@@ -124,13 +124,8 @@ impl_into_error!(umari_runtime::module_store::ModuleStoreError);
 impl AsErrorCode for umari_runtime::command::CommandError {
     fn error_code(&self) -> ErrorCode {
         match self {
-            umari_runtime::command::CommandError::DuplicateActiveModule { .. } => {
-                ErrorCode::Duplicate
-            }
             umari_runtime::command::CommandError::ModuleNotFound { .. } => ErrorCode::NotFound,
-            umari_runtime::command::CommandError::SerializeInput { .. } => {
-                ErrorCode::InvalidInput
-            }
+            umari_runtime::command::CommandError::SerializeInput { .. } => ErrorCode::InvalidInput,
             umari_runtime::command::CommandError::CommandHandler { .. } => ErrorCode::InvalidInput,
             umari_runtime::command::CommandError::EventStore(_)
             | umari_runtime::command::CommandError::MissingEventId => ErrorCode::Database,

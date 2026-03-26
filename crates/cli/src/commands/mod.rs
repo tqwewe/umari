@@ -5,3 +5,4 @@ pub mod execute;
 pub mod modules;
 pub mod policies;
 pub mod projectors;
+pub mod workspace;

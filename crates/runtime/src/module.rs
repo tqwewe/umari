@@ -1,7 +1,7 @@
 pub mod actor;
 pub mod supervisor;
 
-use std::{fmt, sync::Arc};
+use std::fmt;
 
 use kameo::error::SendError;
 use serde_json::Value;
@@ -23,8 +23,6 @@ pub enum ModuleError {
     ConcurrentModification,
     #[error("database error: {0}")]
     Database(#[from] umari_core::error::SqliteError),
-    #[error("duplicate active projector module '{name}'")]
-    DuplicateActiveModule { name: Arc<str> },
     #[error("event store error: {0}")]
     EventStore(#[from] umadb_dcb::DCBError),
     #[error("missing event id")]

@@ -293,7 +293,11 @@ impl CommandActor {
         let instance_pre = self.linker.instantiate_pre(&component)?;
         let command_pre = wit::command::CommandPre::new(instance_pre)?;
 
-        let prev = self.components.insert(
+        if let Some(module) = self.components.remove(&name) {
+            info!(module_type = %ModuleType::Command, %name, version = %module.version, "stopping module");
+        }
+
+        self.components.insert(
             name.clone(),
             VersionedModule {
                 version: version.clone(),
@@ -301,9 +305,6 @@ impl CommandActor {
                 command_pre,
             },
         );
-        if prev.is_some() {
-            return Err(CommandError::DuplicateActiveModule { name });
-        }
 
         info!(module_type = %ModuleType::Command, %name, %version, "module loaded");
 

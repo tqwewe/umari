@@ -9,8 +9,6 @@ pub mod actor;
 
 #[derive(Debug, Error)]
 pub enum CommandError {
-    #[error("duplicate active command module '{name}'")]
-    DuplicateActiveModule { name: Arc<str> },
     #[error("module '{name}' not found")]
     ModuleNotFound { name: Arc<str> },
     #[error("failed to serialize command input: {0}")]

@@ -1,6 +1,6 @@
 use std::{collections::HashMap, ops::ControlFlow, sync::Arc, time::Duration};
 
-use kameo::prelude::*;
+use kameo::{prelude::*, supervision::RestartPolicy};
 use semver::Version;
 use tracing::{error, info, warn};
 use umadb_client::AsyncUmaDBClient;
@@ -115,6 +115,14 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
             }
         };
 
+        if let Some(module) = self.modules.remove(&name)
+            && module.actor_ref.is_alive()
+        {
+            info!(module_type = %A::MODULE_TYPE, %name, version = %module.version, "stopping module");
+            let _ = module.actor_ref.stop_gracefully().await;
+            module.actor_ref.wait_for_shutdown().await;
+        }
+
         let actor_ref = ModuleActor::supervise(
             supervisor_ref,
             ModuleActorArgs {
@@ -128,19 +136,17 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
                 args: self.args.clone(),
             },
         )
+        .restart_policy(RestartPolicy::Transient)
         .spawn_in_thread()
         .await;
 
-        let prev = self.modules.insert(
+        self.modules.insert(
             name.clone(),
             VersionedModule {
                 version: version.clone(),
                 actor_ref,
             },
         );
-        if prev.is_some() {
-            return Err(ModuleError::DuplicateActiveModule { name });
-        }
 
         info!(module_type = %A::MODULE_TYPE, %name, %version, "module loaded");
 

@@ -62,6 +62,23 @@ enum Commands {
         #[arg(long)]
         input: String,
     },
+    /// build wasm modules in the workspace
+    Build {
+        #[arg(value_name = "PATHS")]
+        paths: Vec<PathBuf>,
+        #[arg(long)]
+        debug: bool,
+    },
+    /// build and deploy wasm modules to the server
+    Deploy {
+        #[arg(value_name = "PATHS")]
+        paths: Vec<PathBuf>,
+        /// upload without activating
+        #[arg(long)]
+        no_activate: bool,
+        #[arg(long)]
+        debug: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -339,5 +356,11 @@ fn main() -> Result<()> {
             ModulesSubcommand::Active { r#type } => commands::modules::active(&client, r#type),
         },
         Commands::Execute { name, input } => commands::execute::execute(&client, name, input),
+        Commands::Build { paths, debug } => commands::workspace::build(paths, debug),
+        Commands::Deploy {
+            paths,
+            no_activate,
+            debug,
+        } => commands::workspace::deploy(&client, paths, no_activate, debug),
     }
 }
