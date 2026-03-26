@@ -17,14 +17,14 @@ use crate::{
     htmx::respond,
 };
 
-pub async fn list_projectors(
+pub async fn list_effects(
     State(state): State<UiState>,
     headers: HeaderMap,
 ) -> Result<Markup, HtmlError> {
     let names = state
         .module_store_ref
         .ask(GetAllModuleNames {
-            module_type: ModuleType::Projector,
+            module_type: ModuleType::Effect,
         })
         .await
         .map_err(HtmlError::from)?;
@@ -32,21 +32,21 @@ pub async fn list_projectors(
     let active_modules = state
         .module_store_ref
         .ask(GetAllActiveModules {
-            module_type: Some(ModuleType::Projector),
+            module_type: Some(ModuleType::Effect),
         })
         .await
         .map_err(HtmlError::from)?;
 
     let content = html! {
-        h2 class="text-2xl font-semibold text-gray-900 mb-6" { "Projectors" }
-        (module_summary_table(ModuleType::Projector, &names, &active_modules))
-        (upload_form(ModuleType::Projector, None))
+        h2 class="text-2xl font-semibold text-gray-900 mb-6" { "Effects" }
+        (module_summary_table(ModuleType::Effect, &names, &active_modules))
+        (upload_form(ModuleType::Effect, None))
     };
 
-    Ok(respond(&headers, "Projectors", content))
+    Ok(respond(&headers, "Effects", content))
 }
 
-pub async fn get_projector(
+pub async fn get_effect(
     State(state): State<UiState>,
     Path(name): Path<String>,
     headers: HeaderMap,
@@ -56,7 +56,7 @@ pub async fn get_projector(
     let versions = state
         .module_store_ref
         .ask(GetModuleVersions {
-            module_type: ModuleType::Projector,
+            module_type: ModuleType::Effect,
             name: name_arc.clone(),
         })
         .await
@@ -65,7 +65,7 @@ pub async fn get_projector(
     let active = state
         .module_store_ref
         .ask(GetActiveModule {
-            module_type: ModuleType::Projector,
+            module_type: ModuleType::Effect,
             name: name_arc,
         })
         .await
@@ -73,16 +73,16 @@ pub async fn get_projector(
     let active_version = active.map(|(v, _)| v);
 
     let content = html! {
-        a href="/ui/projectors"
-            hx-get="/ui/projectors"
+        a href="/ui/effects"
+            hx-get="/ui/effects"
             hx-target="#content"
-            hx-push-url="/ui/projectors"
+            hx-push-url="/ui/effects"
             class="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 mb-6"
-            { "← Back to Projectors" }
-        h2 class="text-2xl font-semibold text-gray-900 mb-6" { "Projector: " (name) }
+            { "← Back to Effects" }
+        h2 class="text-2xl font-semibold text-gray-900 mb-6" { "Effect: " (name) }
         h3 class="text-base font-semibold text-gray-700 mb-3 mt-6" { "Versions" }
-        (versions_table(ModuleType::Projector, &name, &versions, active_version.as_ref()))
-        (upload_form(ModuleType::Projector, Some(&name)))
+        (versions_table(ModuleType::Effect, &name, &versions, active_version.as_ref()))
+        (upload_form(ModuleType::Effect, Some(&name)))
     };
 
     Ok(respond(&headers, &name, content))

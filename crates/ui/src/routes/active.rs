@@ -15,28 +15,28 @@ pub async fn list_active(
         .map_err(HtmlError::from)?;
 
     let content = html! {
-        section {
-            h2 { "Active Modules" }
-            @if modules.is_empty() {
-                p { "No active modules." }
-            } @else {
-                table {
+        h2 class="text-2xl font-semibold text-gray-900 mb-6" { "Active Modules" }
+        @if modules.is_empty() {
+            p class="text-sm text-gray-500 py-4" { "No active modules." }
+        } @else {
+            div class="overflow-hidden rounded-lg border border-gray-200 bg-white" {
+                table class="w-full text-sm" {
                     thead {
-                        tr {
-                            th { "Type" }
-                            th { "Name" }
-                            th { "Version" }
-                            th { "SHA256" }
+                        tr class="bg-gray-50 border-b border-gray-200" {
+                            th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" { "Type" }
+                            th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" { "Name" }
+                            th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" { "Version" }
+                            th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" { "SHA256" }
                         }
                     }
                     tbody {
                         @for module in &modules {
                             @let sha_short = &module.sha256[..12.min(module.sha256.len())];
-                            tr {
-                                td { (module.module_type) }
-                                td { (module.name) }
-                                td { (module.version) }
-                                td {
+                            tr class="border-b border-gray-100 last:border-0 hover:bg-gray-50" {
+                                td class="px-4 py-3 text-gray-700" { (module.module_type) }
+                                td class="px-4 py-3 text-gray-700" { (module.name) }
+                                td class="px-4 py-3 text-gray-700" { (module.version) }
+                                td class="px-4 py-3 text-gray-700" {
                                     span title=(module.sha256) { (sha_short) "…" }
                                 }
                             }

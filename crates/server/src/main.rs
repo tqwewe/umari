@@ -1,19 +1,24 @@
+mod banner;
+mod tracing_subscriber;
+
 use std::{
     process,
     time::{Duration, Instant},
 };
 
+use ::tracing_subscriber::EnvFilter;
 use clap::Parser;
 use kameo::{actor::ActorRef, prelude::Spawn};
 use tokio::signal;
 use tracing::{error, info, trace};
-use tracing_subscriber::EnvFilter;
 use umari_api::{AppState, start_server};
 use umari_runtime::{
     command::actor::CommandActor,
     module_store::actor::ModuleStoreActor,
     supervisor::{RuntimeConfig, RuntimeSupervisor},
 };
+
+use crate::tracing_subscriber::PrettyNoSpans;
 
 #[derive(Parser)]
 #[command(name = "umari")]
@@ -34,16 +39,17 @@ struct Cli {
 
 #[tokio::main]
 async fn main() {
+    banner::print_banner();
+
     let start = Instant::now();
 
-    tracing_subscriber::fmt()
-        .without_time()
-        .with_target(false)
+    ::tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::builder()
                 .with_default_directive("info".parse().unwrap())
                 .from_env_lossy(),
         )
+        .event_format(PrettyNoSpans)
         .init();
 
     let cli = Cli::parse();

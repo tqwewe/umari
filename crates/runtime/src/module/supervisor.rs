@@ -16,7 +16,10 @@ use super::{
 use crate::{
     command::actor::CommandActor,
     events::ModuleEvent,
-    module_store::actor::{GetActiveModule, GetAllActiveModules, ModuleStoreActor},
+    module_store::{
+        ModuleType,
+        actor::{GetActiveModule, GetAllActiveModules, ModuleStoreActor},
+    },
     wit,
 };
 
@@ -44,7 +47,12 @@ impl<A: EventHandlerModule> Actor for ModuleSupervisor<A> {
     type Error = ModuleError;
 
     fn name() -> &'static str {
-        "ModuleSupervisor"
+        match A::MODULE_TYPE {
+            ModuleType::Command => "CommandSupervisor",
+            ModuleType::Policy => "PolicySupervisor",
+            ModuleType::Projector => "ProjectorSupervisor",
+            ModuleType::Effect => "EffectSupervisor",
+        }
     }
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {

@@ -124,12 +124,13 @@ impl_into_error!(umari_runtime::module_store::ModuleStoreError);
 impl AsErrorCode for umari_runtime::command::CommandError {
     fn error_code(&self) -> ErrorCode {
         match self {
-            umari_runtime::command::CommandError::ModuleNotFound { .. } => ErrorCode::NotFound,
-            umari_runtime::command::CommandError::SerializeInput { .. } => ErrorCode::InvalidInput,
             umari_runtime::command::CommandError::CommandHandler { .. } => ErrorCode::InvalidInput,
+            umari_runtime::command::CommandError::DeserializeEvent(_) => ErrorCode::Integrity,
+            umari_runtime::command::CommandError::ModuleNotFound { .. } => ErrorCode::NotFound,
+            umari_runtime::command::CommandError::ModuleStore(send_err) => send_err.error_code(),
+            umari_runtime::command::CommandError::SerializeInput { .. } => ErrorCode::InvalidInput,
             umari_runtime::command::CommandError::EventStore(_)
             | umari_runtime::command::CommandError::MissingEventId => ErrorCode::Database,
-            umari_runtime::command::CommandError::ModuleStore(send_err) => send_err.error_code(),
             umari_runtime::command::CommandError::Wasmtime(_) => ErrorCode::Internal,
         }
     }

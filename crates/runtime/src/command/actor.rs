@@ -155,10 +155,10 @@ impl CommandActor {
 
                 let stored: StoredEventData<Value> =
                     serde_json::from_slice(&sequenced_event.event.data)
-                        .unwrap_or_else(|err| panic!("failed to deserialize event data: {err}"));
+                        .map_err(CommandError::DeserializeEvent)?;
 
                 let data = serde_json::to_string(&stored.data)
-                    .unwrap_or_else(|err| panic!("failed to serialize event data: {err}"));
+                    .expect("serde value should never fail to serialize");
 
                 if let Some(triggering_event_id) = triggering_event_id
                     && Some(triggering_event_id) == stored.triggering_event_id
@@ -218,16 +218,16 @@ impl CommandActor {
                     });
 
                     let data_value: Value = serde_json::from_str(&event.data)
-                        .unwrap_or_else(|err| panic!("command emitted invalid json data: {err}"));
+                        .map_err(CommandError::DeserializeEvent)?;
 
-                    DCBEvent {
+                    Ok(DCBEvent {
                         event_type: event.event_type,
                         tags,
                         data: encode_with_envelope(envelope, data_value),
                         uuid: Some(Uuid::new_v4()),
-                    }
+                    })
                 })
-                .collect::<Vec<_>>();
+                .collect::<Result<Vec<_>, CommandError>>()?;
 
             // Append events to event store if any were emitted
             let position = if !dcb_events.is_empty() {

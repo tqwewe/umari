@@ -15,7 +15,7 @@ use wasmtime::{
 use wasmtime_wasi::{ResourceTable, WasiCtx};
 
 use super::{EventHandlerModule, ModuleError};
-use crate::{command::actor::CommandActor, wit};
+use crate::{command::actor::CommandActor, module_store::ModuleType, wit};
 
 pub struct ModuleActor<A: EventHandlerModule> {
     store: Store<wit::EventHandlerComponentState>,
@@ -42,9 +42,14 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
     type Args = ModuleActorArgs<A::Args>;
     type Error = ModuleError;
 
-    // fn name() -> &'static str {
-    //     "ModuleActor"
-    // }
+    fn name() -> &'static str {
+        match A::MODULE_TYPE {
+            ModuleType::Command => "CommandActor",
+            ModuleType::Policy => "PolicyActor",
+            ModuleType::Projector => "ProjectorActor",
+            ModuleType::Effect => "EffectActor",
+        }
+    }
 
     async fn on_start(args: Self::Args, _actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         let conn = Connection::open(format!("{}-{}.sqlite", A::MODULE_TYPE, args.name))?;
@@ -185,8 +190,8 @@ impl<A: EventHandlerModule> ModuleActor<A> {
     }
 
     async fn handle_event(&mut self, event: DCBSequencedEvent) -> Result<(), ModuleError> {
-        let data: StoredEventData<Value> = serde_json::from_slice(&event.event.data)
-            .unwrap_or_else(|err| panic!("failed to deserialize event data: {err}"));
+        let data: StoredEventData<Value> =
+            serde_json::from_slice(&event.event.data).map_err(ModuleError::DeserializeEvent)?;
 
         let event = StoredEvent {
             id: event.event.uuid.ok_or(ModuleError::MissingEventId)?,

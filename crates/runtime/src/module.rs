@@ -23,6 +23,8 @@ pub enum ModuleError {
     ConcurrentModification,
     #[error("database error: {0}")]
     Database(#[from] umari_core::error::SqliteError),
+    #[error("failed to deserialize event: {0}")]
+    DeserializeEvent(serde_json::Error),
     #[error("event store error: {0}")]
     EventStore(#[from] umadb_dcb::DCBError),
     #[error("missing event id")]
