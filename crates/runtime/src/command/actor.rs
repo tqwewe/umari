@@ -2,8 +2,9 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use chrono::Utc;
 use kameo::prelude::*;
+use schemars::Schema;
 use semver::Version;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::Value;
 use tracing::{debug, error, info, warn};
 use umadb_client::AsyncUmaDBClient;
@@ -35,6 +36,7 @@ pub struct VersionedModule {
     pub version: Version,
     pub component: Component,
     pub command_pre: wit::command::CommandPre<CommandComponentState>,
+    pub schema: Option<Schema>,
 }
 
 pub struct CommandActor {
@@ -97,8 +99,6 @@ impl Actor for CommandActor {
     }
 }
 
-#[derive(Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CommandPayload {
     /// Command input as JSON
     pub input: String,
@@ -127,7 +127,7 @@ pub struct EmittedEvent {
 #[messages]
 impl CommandActor {
     #[message]
-    fn active_commands(&self) -> HashMap<Arc<str>, VersionedModule> {
+    pub fn active_commands(&self) -> HashMap<Arc<str>, VersionedModule> {
         self.components.clone()
     }
 
@@ -138,7 +138,7 @@ impl CommandActor {
         command: CommandPayload,
         ctx: &mut Context<CommandActor, DelegatedReply<Result<ExecuteResult, CommandError>>>,
     ) -> DelegatedReply<Result<ExecuteResult, CommandError>> {
-        let mut module = match self.instantiate_module(name).await {
+        let mut module = match self.instantiate_module(&name).await {
             Ok(module) => module,
             Err(err) => return ctx.reply(Err(err)),
         };
@@ -264,11 +264,14 @@ impl CommandActor {
         })
     }
 
-    async fn instantiate_module(&self, name: Arc<str>) -> Result<InstantiatedModule, CommandError> {
+    async fn instantiate_module(
+        &self,
+        name: &Arc<str>,
+    ) -> Result<InstantiatedModule, CommandError> {
         let versioned_component = self
             .components
-            .get(&name)
-            .ok_or(CommandError::ModuleNotFound { name })?;
+            .get(name)
+            .ok_or_else(|| CommandError::ModuleNotFound { name: name.clone() })?;
 
         let wasi_ctx = WasiCtx::builder().inherit_stderr().inherit_stdout().build();
         let state = CommandComponentState {
@@ -304,6 +307,9 @@ impl CommandActor {
         let instance_pre = self.linker.instantiate_pre(&component)?;
         let command_pre = wit::command::CommandPre::new(instance_pre)?;
 
+        let mut module = self.instantiate_module(&name).await?;
+        let schema = module.schema().await?;
+
         if let Some(module) = self.components.remove(&name) {
             debug!(module_type = %ModuleType::Command, %name, version = %module.version, "stopping module");
         }
@@ -314,6 +320,7 @@ impl CommandActor {
                 version: version.clone(),
                 component,
                 command_pre,
+                schema,
             },
         );
 
@@ -333,6 +340,15 @@ struct InstantiatedModule {
 }
 
 impl InstantiatedModule {
+    async fn schema(&mut self) -> Result<Option<Schema>, CommandError> {
+        let Some(schema_str) = self.command.call_schema(&mut self.store).await? else {
+            return Ok(None);
+        };
+
+        let schema = serde_json::from_str(&schema_str).map_err(CommandError::InvalidSchema)?;
+        Ok(Some(schema))
+    }
+
     async fn query(&mut self, input: &String) -> Result<DCBQuery, CommandError> {
         let query = self
             .command

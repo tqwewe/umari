@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
+use schemars::Schema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use umadb_dcb::{DCBEvent, DCBQuery, DCBQueryItem};
@@ -108,6 +109,11 @@ pub trait Command: Default + Send {
     /// The error type returned when handling the command.
     type Error;
 
+    /// An optional json schema for the command input.
+    fn schema() -> Option<Schema> {
+        None
+    }
+
     /// Validate the input before querying anything.
     #[allow(unused_variables)]
     fn validate(input: &Self::Input) -> Result<(), Self::Error> {
@@ -209,7 +215,6 @@ where
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CommandContext {
     /// Original request ID (flows through everything)
     pub correlation_id: Uuid,

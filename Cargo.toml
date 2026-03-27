@@ -39,10 +39,11 @@ maud = { version = "0.27", features = ["axum"] }
 proc-macro2 = "1.0"
 quote = "1.0"
 rusqlite = "0.39"
+schemars = "1.2"
 semver = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-sha2 = "0.10"
+sha2 = "0.11"
 slotmap = "1.1"
 strum = { version = "0.28", features = ["derive"] }
 syn = "2.0"

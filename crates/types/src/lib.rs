@@ -6,7 +6,7 @@ pub mod modules;
 pub use error::{ErrorBody, ErrorCode, ErrorResponse};
 pub use execute::{EmittedEventInfo, ExecuteResponse};
 pub use modules::{
-    ActivateRequest, ActivateResponse, ActiveModuleInfo, ActiveModulesResponse,
-    DeactivateResponse, ListModulesResponse, ModuleDetailsResponse, ModuleSummary,
-    UploadResponse, VersionDetailsResponse, VersionInfo,
+    ActivateRequest, ActivateResponse, ActiveModuleInfo, ActiveModuleStatus, ActiveModulesResponse,
+    DeactivateResponse, ListModulesResponse, ModuleDetailsResponse, ModuleHealthResponse,
+    ModuleSummary, UploadResponse, VersionDetailsResponse, VersionInfo,
 };

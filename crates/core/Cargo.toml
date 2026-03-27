@@ -8,15 +8,12 @@ umari-macros.workspace = true
 chrono.workspace = true
 indexmap.workspace = true
 libc.workspace = true
+schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 umadb-dcb.workspace = true
-utoipa = { workspace = true, optional = true }
 uuid.workspace = true
 wasip2.workspace = true
 wit-bindgen.workspace = true
-
-[features]
-openapi = ["utoipa"]

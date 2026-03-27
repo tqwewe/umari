@@ -7,7 +7,12 @@ use axum::{
 };
 use kameo::actor::ActorRef;
 use tokio::{io, net::ToSocketAddrs};
-use umari_runtime::{command::actor::CommandActor, module_store::actor::ModuleStoreActor};
+use umari_runtime::{
+    command::actor::CommandActor,
+    module::supervisor::ModuleSupervisor,
+    module_store::actor::ModuleStoreActor,
+    wit::{effect::EffectWorld, policy::PolicyState, projector::ProjectorWorld},
+};
 use umari_ui::{UiState, ui_router};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
@@ -17,8 +22,9 @@ use crate::routes::{
     modules::{
         activate_command, activate_effect, activate_policy, activate_projector, deactivate_command,
         deactivate_effect, deactivate_policy, deactivate_projector, get_command_details,
-        get_command_version_details, get_effect_details, get_effect_version_details,
-        get_policy_details, get_policy_version_details, get_projector_details,
+        get_command_health, get_command_version_details, get_effect_details, get_effect_health,
+        get_effect_version_details, get_policy_details, get_policy_health,
+        get_policy_version_details, get_projector_details, get_projector_health,
         get_projector_version_details, list_active_modules, list_commands, list_effects,
         list_policies, list_projectors, upload_command, upload_effect, upload_policy,
         upload_projector,
@@ -71,8 +77,6 @@ use umari_types::*;
             ActiveModuleInfo,
             umari_types::ExecuteResponse,
             umari_types::EmittedEventInfo,
-            umari_runtime::command::actor::CommandPayload,
-            umari_core::prelude::CommandContext,
             umari_types::ErrorResponse,
             umari_types::ErrorBody,
             umari_types::ErrorCode,
@@ -101,6 +105,9 @@ struct ApiDoc;
 pub struct AppState {
     pub module_store_ref: ActorRef<ModuleStoreActor>,
     pub command_ref: ActorRef<CommandActor>,
+    pub projector_supervisor_ref: ActorRef<ModuleSupervisor<ProjectorWorld>>,
+    pub policy_supervisor_ref: ActorRef<ModuleSupervisor<PolicyState>>,
+    pub effect_supervisor_ref: ActorRef<ModuleSupervisor<EffectWorld>>,
 }
 
 pub async fn start_server(addr: impl ToSocketAddrs, state: AppState) -> io::Result<()> {
@@ -112,6 +119,9 @@ pub async fn start_server(addr: impl ToSocketAddrs, state: AppState) -> io::Resu
     let ui_state = UiState {
         module_store_ref: state.module_store_ref.clone(),
         command_ref: state.command_ref.clone(),
+        projector_supervisor_ref: state.projector_supervisor_ref.clone(),
+        policy_supervisor_ref: state.policy_supervisor_ref.clone(),
+        effect_supervisor_ref: state.effect_supervisor_ref.clone(),
     };
 
     // Create API routes with state
@@ -144,10 +154,7 @@ pub async fn start_server(addr: impl ToSocketAddrs, state: AppState) -> io::Resu
         .route("/projectors/{name}/active", put(activate_projector))
         .route("/projectors/{name}/active", delete(deactivate_projector))
         // Policy module management
-        .route(
-            "/policies/{name}/versions/{version}",
-            post(upload_policy),
-        )
+        .route("/policies/{name}/versions/{version}", post(upload_policy))
         .route("/policies", get(list_policies))
         .route("/policies/{name}", get(get_policy_details))
         .route(
@@ -157,10 +164,7 @@ pub async fn start_server(addr: impl ToSocketAddrs, state: AppState) -> io::Resu
         .route("/policies/{name}/active", put(activate_policy))
         .route("/policies/{name}/active", delete(deactivate_policy))
         // Effect module management
-        .route(
-            "/effects/{name}/versions/{version}",
-            post(upload_effect),
-        )
+        .route("/effects/{name}/versions/{version}", post(upload_effect))
         .route("/effects", get(list_effects))
         .route("/effects/{name}", get(get_effect_details))
         .route(
@@ -171,6 +175,11 @@ pub async fn start_server(addr: impl ToSocketAddrs, state: AppState) -> io::Resu
         .route("/effects/{name}/active", delete(deactivate_effect))
         // Cross-module operations
         .route("/modules/active", get(list_active_modules))
+        // Runtime health per category
+        .route("/commands/active", get(get_command_health))
+        .route("/projectors/active", get(get_projector_health))
+        .route("/policies/active", get(get_policy_health))
+        .route("/effects/active", get(get_effect_health))
         .with_state(state);
 
     // Merge routers

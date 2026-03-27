@@ -34,9 +34,15 @@ where
     T::Input: DeserializeOwned,
     T::Error: fmt::Display,
 {
+    fn schema() -> Option<Json> {
+        T::schema().map(|schema| {
+            serde_json::to_string(&schema).unwrap_or_else(|_| panic!("invalid json schema"))
+        })
+    }
+
     fn query(input: Json) -> Result<EventQuery, Error> {
-        let input: T::Input = serde_json::from_str(&input)
-            .map_err(|err| Error::InvalidInput(err.to_string()))?;
+        let input: T::Input =
+            serde_json::from_str(&input).map_err(|err| Error::InvalidInput(err.to_string()))?;
 
         T::validate(&input).map_err(|err| Error::Rejected(err.to_string()))?;
 
@@ -44,8 +50,8 @@ where
     }
 
     fn execute(input: Json, events: Vec<StoredEvent>) -> Result<ExecuteOutput, Error> {
-        let input: T::Input = serde_json::from_str(&input)
-            .map_err(|err| Error::InvalidInput(err.to_string()))?;
+        let input: T::Input =
+            serde_json::from_str(&input).map_err(|err| Error::InvalidInput(err.to_string()))?;
 
         let mut handler = T::default();
 

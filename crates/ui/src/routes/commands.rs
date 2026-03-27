@@ -1,18 +1,21 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use axum::{
     extract::{Path, State},
     http::HeaderMap,
 };
 use maud::{Markup, html};
-use umari_runtime::module_store::{
-    ModuleType,
-    actor::{GetActiveModule, GetAllActiveModules, GetAllModuleNames, GetModuleVersions},
+use umari_runtime::{
+    command::actor::ActiveCommands,
+    module_store::{
+        ModuleType,
+        actor::{GetActiveModule, GetAllActiveModules, GetAllModuleNames, GetModuleVersions},
+    },
 };
 
 use crate::{
     UiState,
-    components::{execute_form, module_summary_table, upload_form, versions_table},
+    components::{ModuleHealth, execute_form, module_summary_table, upload_form, versions_table},
     error::HtmlError,
     htmx::respond,
 };
@@ -26,20 +29,24 @@ pub async fn list_commands(
         .ask(GetAllModuleNames {
             module_type: ModuleType::Command,
         })
-        .await
-        .map_err(HtmlError::from)?;
+        .await?;
 
     let active_modules = state
         .module_store_ref
         .ask(GetAllActiveModules {
             module_type: Some(ModuleType::Command),
         })
-        .await
-        .map_err(HtmlError::from)?;
+        .await?;
+
+    let active_commands = state.command_ref.ask(ActiveCommands).await?;
+    let health: HashMap<Arc<str>, ModuleHealth> = active_commands
+        .into_keys()
+        .map(|name| (name, ModuleHealth { healthy: true, shutdown_reason: None, last_position: None }))
+        .collect();
 
     let content = html! {
         h2 class="text-2xl font-semibold text-gray-900 mb-6" { "Commands" }
-        (module_summary_table(ModuleType::Command, &names, &active_modules))
+        (module_summary_table(ModuleType::Command, &names, &active_modules, &health))
         (upload_form(ModuleType::Command, None))
     };
 
@@ -59,8 +66,7 @@ pub async fn get_command(
             module_type: ModuleType::Command,
             name: name_arc.clone(),
         })
-        .await
-        .map_err(HtmlError::from)?;
+        .await?;
 
     let active = state
         .module_store_ref
@@ -68,8 +74,7 @@ pub async fn get_command(
             module_type: ModuleType::Command,
             name: name_arc,
         })
-        .await
-        .map_err(HtmlError::from)?;
+        .await?;
     let active_version = active.map(|(v, _)| v);
 
     let content = html! {

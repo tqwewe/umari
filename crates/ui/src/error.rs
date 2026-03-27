@@ -3,7 +3,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use kameo::error::SendError;
-use maud::{html, Markup};
+use maud::{Markup, html};
 
 use umari_runtime::module_store::ModuleStoreError;
 
@@ -59,6 +59,12 @@ impl From<ModuleStoreError> for HtmlError {
     }
 }
 
+impl From<kameo::error::Infallible> for HtmlError {
+    fn from(_: kameo::error::Infallible) -> Self {
+        unreachable!()
+    }
+}
+
 impl<M, E> From<SendError<M, E>> for HtmlError
 where
     E: Into<HtmlError> + std::fmt::Display,
@@ -76,8 +82,9 @@ impl From<umari_runtime::command::CommandError> for HtmlError {
         use umari_runtime::command::CommandError;
         let status = match &err {
             CommandError::ModuleNotFound { .. } => StatusCode::NOT_FOUND,
-            CommandError::SerializeInput { .. }
-            | CommandError::CommandHandler { .. } => StatusCode::BAD_REQUEST,
+            CommandError::SerializeInput { .. } | CommandError::CommandHandler { .. } => {
+                StatusCode::BAD_REQUEST
+            }
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
         HtmlError::new(status, err.to_string())

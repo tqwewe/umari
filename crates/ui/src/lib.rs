@@ -9,7 +9,12 @@ use axum::{
     routing::{delete, get, post, put},
 };
 use kameo::actor::ActorRef;
-use umari_runtime::{command::actor::CommandActor, module_store::actor::ModuleStoreActor};
+use umari_runtime::{
+    command::actor::CommandActor,
+    module::supervisor::ModuleSupervisor,
+    module_store::actor::ModuleStoreActor,
+    wit::{effect::EffectWorld, policy::PolicyState, projector::ProjectorWorld},
+};
 
 use crate::routes::{
     activate::{activate, deactivate},
@@ -27,6 +32,9 @@ use crate::routes::{
 pub struct UiState {
     pub module_store_ref: ActorRef<ModuleStoreActor>,
     pub command_ref: ActorRef<CommandActor>,
+    pub projector_supervisor_ref: ActorRef<ModuleSupervisor<ProjectorWorld>>,
+    pub policy_supervisor_ref: ActorRef<ModuleSupervisor<PolicyState>>,
+    pub effect_supervisor_ref: ActorRef<ModuleSupervisor<EffectWorld>>,
 }
 
 pub fn ui_router(state: UiState) -> Router {

@@ -124,7 +124,7 @@ impl<A: EventHandlerModule> Actor for ModuleSupervisor<A> {
 #[messages]
 impl<A: EventHandlerModule> ModuleSupervisor<A> {
     #[message]
-    fn active_modules(&self) -> HashMap<Arc<str>, VersionedModule<A>> {
+    pub fn active_modules(&self) -> HashMap<Arc<str>, VersionedModule<A>> {
         self.modules.clone()
     }
 
@@ -189,9 +189,9 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
 }
 
 #[derive(Debug)]
-struct VersionedModule<A: EventHandlerModule> {
-    version: Version,
-    actor_ref: ActorRef<ModuleActor<A>>,
+pub struct VersionedModule<A: EventHandlerModule> {
+    pub version: Version,
+    pub actor_ref: ActorRef<ModuleActor<A>>,
 }
 
 impl<A: EventHandlerModule> Clone for VersionedModule<A> {
@@ -242,6 +242,7 @@ impl<A: EventHandlerModule> Message<ModuleEvent> for ModuleSupervisor<A> {
                 if module_type == A::MODULE_TYPE
                     && let Some(module) = self.modules.remove(&name)
                 {
+                    let _ = module.actor_ref.stop_gracefully().await;
                     info!(module_type = %A::MODULE_TYPE, %name, version = %module.version, "module unloaded");
                 }
             }

@@ -7,6 +7,9 @@ world command {
     use types.{error, execute-output};
     use umari:common/types@0.1.0.{event-query, json, stored-event};
 
+    /// An optional json schema for the command input.
+    export schema: func() -> option<json>;
+
     /// Build a query from command input to fetch relevant events
     /// This determines what events need to be loaded from the event store
     export query: func(input: json) -> result<event-query, error>;

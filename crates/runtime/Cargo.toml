@@ -11,6 +11,7 @@ hex.workspace = true
 kameo.workspace = true
 kameo_actors.workspace = true
 rusqlite.workspace = true
+schemars.workspace = true
 semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true

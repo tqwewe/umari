@@ -16,7 +16,7 @@ use crate::{AppState, error::Error};
     params(
         ("name" = String, Path, description = "Command module name")
     ),
-    request_body = CommandPayload,
+    request_body = String,
     responses(
         (status = 200, description = "Command executed successfully", body = ExecuteResponse),
         (status = 400, description = "Invalid input or command validation failed", body = crate::error::ErrorResponse),

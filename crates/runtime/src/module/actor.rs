@@ -4,7 +4,7 @@ use kameo::prelude::*;
 use rusqlite::Connection;
 use semver::Version;
 use serde_json::Value;
-use tracing::{debug, info};
+use tracing::debug;
 use umadb_client::AsyncUmaDBClient;
 use umadb_dcb::{DCBError, DCBEventStoreAsync, DCBQuery, DCBReadResponseAsync, DCBSequencedEvent};
 use umari_core::event::{StoredEvent, StoredEventData};
@@ -154,6 +154,14 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
     }
 }
 
+#[messages]
+impl<A: EventHandlerModule> ModuleActor<A> {
+    #[message]
+    pub fn last_position(&self) -> Option<u64> {
+        self.store.data().last_position()
+    }
+}
+
 impl<A: EventHandlerModule> ModuleActor<A> {
     async fn process_batch(&mut self, batch: Vec<DCBSequencedEvent>) -> Result<(), ModuleError> {
         let mut new_position = None;
@@ -182,7 +190,7 @@ impl<A: EventHandlerModule> ModuleActor<A> {
 
             data.conn().execute_batch("COMMIT; BEGIN")?;
             data.update_last_position(Some(new_position));
-            info!(
+            debug!(
                 name = %self.name,
                 version = %self.version,
                 last_position = ?expected_position,

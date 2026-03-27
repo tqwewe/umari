@@ -1,11 +1,21 @@
+use std::{collections::HashMap, sync::Arc};
+
 use maud::{Markup, html};
 use semver::Version;
 use umari_runtime::module_store::{Module, ModuleType, ModuleVersionInfo};
+
+#[derive(Debug)]
+pub struct ModuleHealth {
+    pub healthy: bool,
+    pub shutdown_reason: Option<String>,
+    pub last_position: Option<u64>,
+}
 
 pub fn module_summary_table(
     module_type: ModuleType,
     names: &[String],
     active_modules: &[Module],
+    health: &HashMap<Arc<str>, ModuleHealth>,
 ) -> Markup {
     let type_path = match module_type {
         ModuleType::Command => "commands",
@@ -21,17 +31,20 @@ pub fn module_summary_table(
                     tr class="bg-gray-50 border-b border-gray-200" {
                         th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" { "Name" }
                         th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" { "Active Version" }
+                        th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" { "Status" }
+                        th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" { "Position" }
                         th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" { "SHA256" }
                     }
                 }
                 tbody {
                     @if names.is_empty() {
                         tr {
-                            td colspan="3" class="px-4 py-3 text-sm text-gray-500" { "No modules uploaded yet." }
+                            td colspan="5" class="px-4 py-3 text-sm text-gray-500" { "No modules uploaded yet." }
                         }
                     }
                     @for name in names {
                         @let active = active_modules.iter().find(|m| m.name == *name);
+                        @let module_health = health.get(name.as_str());
                         tr class="border-b border-gray-100 last:border-0 hover:bg-gray-50" {
                             td class="px-4 py-3" {
                                 a href={"/ui/" (type_path) "/" (name)}
@@ -46,6 +59,25 @@ pub fn module_summary_table(
                                     span class="text-emerald-600 font-medium" { (a.version) }
                                 } @else {
                                     span class="text-gray-400" { "—" }
+                                }
+                            }
+                            td class="px-4 py-3" {
+                                @if active.is_none() {
+                                    // no active version — show nothing
+                                } @else if let Some(h) = module_health {
+                                    @if h.healthy {
+                                        span class="text-emerald-500" { "● Running" }
+                                    } @else {
+                                        @let title = h.shutdown_reason.as_deref().unwrap_or("");
+                                        span class="text-red-500" title=(title) { "● Stopped" }
+                                    }
+                                } @else {
+                                    span class="text-amber-500" { "● Not running" }
+                                }
+                            }
+                            td class="px-4 py-3 text-gray-500 font-mono text-xs" {
+                                @if let Some(pos) = module_health.and_then(|h| h.last_position) {
+                                    (pos)
                                 }
                             }
                             td class="px-4 py-3 text-gray-500 font-mono text-xs" {

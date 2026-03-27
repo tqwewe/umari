@@ -15,8 +15,10 @@ use tracing::{error, info, trace};
 use umari_api::{AppState, start_server};
 use umari_runtime::{
     command::actor::CommandActor,
+    module::supervisor::ModuleSupervisor,
     module_store::actor::ModuleStoreActor,
     supervisor::{RuntimeConfig, RuntimeSupervisor},
+    wit::{effect::EffectWorld, policy::PolicyState, projector::ProjectorWorld},
 };
 
 use crate::tracing_subscriber::PrettyNoSpans;
@@ -81,6 +83,16 @@ async fn main() {
     let command_ref = ActorRef::<CommandActor>::lookup("command")
         .expect("failed to lookup command actor")
         .expect("command actor should be registered");
+    let projector_supervisor_ref =
+        ActorRef::<ModuleSupervisor<ProjectorWorld>>::lookup("projector")
+            .expect("failed to lookup projector supervisor")
+            .expect("projector supervisor should be registered");
+    let policy_supervisor_ref = ActorRef::<ModuleSupervisor<PolicyState>>::lookup("policy")
+        .expect("failed to lookup policy supervisor")
+        .expect("policy supervisor should be registered");
+    let effect_supervisor_ref = ActorRef::<ModuleSupervisor<EffectWorld>>::lookup("effect")
+        .expect("failed to lookup effect supervisor")
+        .expect("effect supervisor should be registered");
 
     // Start API server
     let api_handle = tokio::spawn({
@@ -90,6 +102,9 @@ async fn main() {
             let state = AppState {
                 module_store_ref,
                 command_ref,
+                projector_supervisor_ref,
+                policy_supervisor_ref,
+                effect_supervisor_ref,
             };
             if let Err(err) = start_server(&api_addr, state).await {
                 error!("API server error: {err}");

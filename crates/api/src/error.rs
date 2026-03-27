@@ -124,11 +124,18 @@ impl AsErrorCode for umari_runtime::module_store::ModuleStoreError {
 
 impl_into_error!(umari_runtime::module_store::ModuleStoreError);
 
+impl From<kameo::error::Infallible> for Error {
+    fn from(err: kameo::error::Infallible) -> Self {
+        match err {}
+    }
+}
+
 impl AsErrorCode for umari_runtime::command::CommandError {
     fn error_code(&self) -> ErrorCode {
         match self {
             umari_runtime::command::CommandError::CommandHandler { .. } => ErrorCode::InvalidInput,
             umari_runtime::command::CommandError::DeserializeEvent(_) => ErrorCode::Integrity,
+            umari_runtime::command::CommandError::InvalidSchema(_) => ErrorCode::Integrity,
             umari_runtime::command::CommandError::ModuleNotFound { .. } => ErrorCode::NotFound,
             umari_runtime::command::CommandError::ModuleStore(send_err) => send_err.error_code(),
             umari_runtime::command::CommandError::SerializeInput { .. } => ErrorCode::InvalidInput,

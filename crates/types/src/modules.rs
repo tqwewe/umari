@@ -145,3 +145,25 @@ pub struct ActiveModuleInfo {
     /// Active version
     pub version: String,
 }
+
+// ========== Module Health Status ==========
+
+#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ActiveModuleStatus {
+    /// Module name
+    pub name: String,
+    /// Active version
+    pub version: String,
+    /// Whether the actor is alive and running
+    pub healthy: bool,
+    /// Reason for shutdown if not healthy
+    pub shutdown_reason: Option<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ModuleHealthResponse {
+    /// Health status of each active module
+    pub modules: Vec<ActiveModuleStatus>,
+}

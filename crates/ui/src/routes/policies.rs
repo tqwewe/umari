@@ -1,18 +1,22 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use axum::{
     extract::{Path, State},
     http::HeaderMap,
 };
 use maud::{Markup, html};
-use umari_runtime::module_store::{
-    ModuleType,
-    actor::{GetActiveModule, GetAllActiveModules, GetAllModuleNames, GetModuleVersions},
+use umari_runtime::{
+    module::actor::LastPosition,
+    module::supervisor::ActiveModules,
+    module_store::{
+        ModuleType,
+        actor::{GetActiveModule, GetAllActiveModules, GetAllModuleNames, GetModuleVersions},
+    },
 };
 
 use crate::{
     UiState,
-    components::{module_summary_table, upload_form, versions_table},
+    components::{ModuleHealth, module_summary_table, upload_form, versions_table},
     error::HtmlError,
     htmx::respond,
 };
@@ -26,20 +30,33 @@ pub async fn list_policies(
         .ask(GetAllModuleNames {
             module_type: ModuleType::Policy,
         })
-        .await
-        .map_err(HtmlError::from)?;
+        .await?;
 
     let active_modules = state
         .module_store_ref
         .ask(GetAllActiveModules {
             module_type: Some(ModuleType::Policy),
         })
-        .await
-        .map_err(HtmlError::from)?;
+        .await?;
+
+    let active_policies = state.policy_supervisor_ref.ask(ActiveModules).await?;
+    let mut health: HashMap<Arc<str>, ModuleHealth> = HashMap::new();
+    for (name, module) in active_policies {
+        let last_position = module.actor_ref.ask(LastPosition).await.ok().flatten();
+        let shutdown_reason = module.actor_ref.with_shutdown_result(|r| match r {
+            Ok(reason) => reason.to_string(),
+            Err(err) => err.to_string(),
+        });
+        health.insert(name, ModuleHealth {
+            healthy: shutdown_reason.is_none(),
+            shutdown_reason,
+            last_position,
+        });
+    }
 
     let content = html! {
         h2 class="text-2xl font-semibold text-gray-900 mb-6" { "Policies" }
-        (module_summary_table(ModuleType::Policy, &names, &active_modules))
+        (module_summary_table(ModuleType::Policy, &names, &active_modules, &health))
         (upload_form(ModuleType::Policy, None))
     };
 
@@ -59,8 +76,7 @@ pub async fn get_policy(
             module_type: ModuleType::Policy,
             name: name_arc.clone(),
         })
-        .await
-        .map_err(HtmlError::from)?;
+        .await?;
 
     let active = state
         .module_store_ref
@@ -68,8 +84,7 @@ pub async fn get_policy(
             module_type: ModuleType::Policy,
             name: name_arc,
         })
-        .await
-        .map_err(HtmlError::from)?;
+        .await?;
     let active_version = active.map(|(v, _)| v);
 
     let content = html! {
