@@ -1,11 +1,13 @@
-use serde_json::Value;
-use umari_core::event::StoredEvent;
 use wasmtime::{
     Store,
     component::{Component, HasSelf, Linker, ResourceAny, bindgen},
 };
 
-use crate::{module::EventHandlerModule, module_store::ModuleType, wit};
+use crate::{
+    module::{EventHandlerModule, PartitionKey},
+    module_store::ModuleType,
+    wit,
+};
 
 pub use self::exports::umari::effect::effect::Error;
 
@@ -65,15 +67,31 @@ impl EventHandlerModule for EffectWorld {
             .await
     }
 
+    async fn partition_key(
+        &self,
+        store: &mut Store<wit::EventHandlerComponentState>,
+        handler: ResourceAny,
+        event: &wit::common::StoredEvent,
+    ) -> wasmtime::Result<PartitionKey> {
+        self.umari_effect_effect()
+            .effect()
+            .call_partition_key(store, handler, event)
+            .await
+            .map(|partition_key| match partition_key {
+                Some(key) => PartitionKey::Keyed(key),
+                None => PartitionKey::Unkeyed,
+            })
+    }
+
     async fn handle_event(
         &self,
         store: &mut Store<wit::EventHandlerComponentState>,
         handler: ResourceAny,
-        event: StoredEvent<Value>,
+        event: &wit::common::StoredEvent,
     ) -> wasmtime::Result<()> {
         self.umari_effect_effect()
             .effect()
-            .call_handle(store, handler, &event.into())
+            .call_handle(store, handler, event)
             .await
     }
 }

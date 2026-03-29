@@ -60,22 +60,29 @@ pub async fn get_command(
 ) -> Result<Markup, HtmlError> {
     let name_arc: Arc<str> = name.clone().into();
 
-    let versions = state
+    let mut versions = state
         .module_store_ref
         .ask(GetModuleVersions {
             module_type: ModuleType::Command,
             name: name_arc.clone(),
         })
         .await?;
+    versions.sort_unstable_by(|a, b| b.version.cmp(&a.version));
 
     let active = state
         .module_store_ref
         .ask(GetActiveModule {
             module_type: ModuleType::Command,
-            name: name_arc,
+            name: name_arc.clone(),
         })
         .await?;
     let active_version = active.map(|(v, _)| v);
+
+    let active_commands = state.command_ref.ask(ActiveCommands).await?;
+    let schema = active_commands
+        .get(name_arc.as_ref())
+        .and_then(|m| m.schema.as_ref())
+        .cloned();
 
     let content = html! {
         a href="/ui/commands"
@@ -88,7 +95,7 @@ pub async fn get_command(
         h3 class="text-base font-semibold text-gray-700 mb-3 mt-6" { "Versions" }
         (versions_table(ModuleType::Command, &name, &versions, active_version.as_ref()))
         (upload_form(ModuleType::Command, Some(&name)))
-        (execute_form(&name))
+        (execute_form(&name, schema.as_ref()))
     };
 
     Ok(respond(&headers, &name, content))

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, ops::ControlFlow, sync::Arc, time::Duration};
 
 use chrono::Utc;
 use kameo::prelude::*;
@@ -87,8 +87,8 @@ impl Actor for CommandActor {
         for module in active_modules {
             assert_eq!(module.module_type, ModuleType::Command);
             actor
-                .load_module(module.name.into(), module.version, module.wasm_bytes, true)
-                .await?;
+                .load_module_gracefully(module.name.into(), module.version, module.wasm_bytes, true)
+                .await;
         }
 
         if !actor.components.is_empty() {
@@ -96,6 +96,15 @@ impl Actor for CommandActor {
         }
 
         Ok(actor)
+    }
+
+    async fn on_panic(
+        &mut self,
+        _actor_ref: WeakActorRef<Self>,
+        err: PanicError,
+    ) -> Result<ControlFlow<ActorStopReason>, Self::Error> {
+        error!("command actor panicked: {err:?}");
+        Ok(ControlFlow::Continue(()))
     }
 }
 
@@ -289,6 +298,21 @@ impl CommandActor {
         Ok(InstantiatedModule { store, command })
     }
 
+    async fn load_module_gracefully(
+        &mut self,
+        name: Arc<str>,
+        version: Version,
+        wasm_bytes: Vec<u8>,
+        startup: bool,
+    ) {
+        if let Err(err) = self
+            .load_module(name.clone(), version.clone(), wasm_bytes, startup)
+            .await
+        {
+            error!(module_type = %ModuleType::Command, %name, %version, "failed to load module: {err}");
+        }
+    }
+
     async fn load_module(
         &mut self,
         name: Arc<str>,
@@ -296,18 +320,19 @@ impl CommandActor {
         wasm_bytes: Vec<u8>,
         startup: bool,
     ) -> Result<(), CommandError> {
-        let component = match Component::new(&self.engine, wasm_bytes) {
-            Ok(wasm_module) => wasm_module,
-            Err(err) => {
-                error!(module_type = %ModuleType::Command, %name, %version, "failed to compile module: {err}");
-                return Ok(());
-            }
-        };
+        let component = Component::new(&self.engine, wasm_bytes)?;
 
         let instance_pre = self.linker.instantiate_pre(&component)?;
         let command_pre = wit::command::CommandPre::new(instance_pre)?;
 
-        let mut module = self.instantiate_module(&name).await?;
+        let wasi_ctx = WasiCtx::builder().inherit_stderr().inherit_stdout().build();
+        let state = CommandComponentState {
+            wasi_ctx,
+            resource_table: ResourceTable::new(),
+        };
+        let mut store = Store::new(&self.engine, state);
+        let command = command_pre.instantiate_async(&mut store).await?;
+        let mut module = InstantiatedModule { store, command };
         let schema = module.schema().await?;
 
         if let Some(module) = self.components.remove(&name) {

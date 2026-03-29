@@ -4,9 +4,7 @@ pub mod supervisor;
 use std::fmt;
 
 use kameo::error::SendError;
-use serde_json::Value;
 use thiserror::Error;
-use umari_core::event::StoredEvent;
 use wasmtime::{
     Store,
     component::{Component, Linker, ResourceAny},
@@ -74,10 +72,23 @@ pub trait EventHandlerModule: Send + Sized + 'static {
         handler: ResourceAny,
     ) -> impl Future<Output = wasmtime::Result<wit::common::EventQuery>> + Send;
 
+    fn partition_key(
+        &self,
+        store: &mut Store<wit::EventHandlerComponentState>,
+        handler: ResourceAny,
+        event: &wit::common::StoredEvent,
+    ) -> impl Future<Output = wasmtime::Result<PartitionKey>> + Send;
+
     fn handle_event(
         &self,
         store: &mut Store<wit::EventHandlerComponentState>,
         handler: ResourceAny,
-        event: StoredEvent<Value>,
+        event: &wit::common::StoredEvent,
     ) -> impl Future<Output = wasmtime::Result<()>> + Send;
+}
+
+pub enum PartitionKey {
+    Inline,
+    Unkeyed,
+    Keyed(String),
 }

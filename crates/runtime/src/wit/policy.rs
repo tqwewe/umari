@@ -1,6 +1,6 @@
 use kameo::actor::ActorRef;
-use serde_json::Value;
-use umari_core::{event::StoredEvent, prelude::CommandContext};
+use umari_core::prelude::CommandContext;
+use uuid::Uuid;
 use wasmtime::{
     Store,
     component::{Component, Linker, ResourceAny, bindgen},
@@ -8,7 +8,7 @@ use wasmtime::{
 
 use crate::{
     command::actor::{CommandActor, CommandPayload, Execute},
-    module::EventHandlerModule,
+    module::{EventHandlerModule, PartitionKey},
     module_store::ModuleType,
     wit,
 };
@@ -83,20 +83,29 @@ impl EventHandlerModule for PolicyState {
             .await
     }
 
+    async fn partition_key(
+        &self,
+        _store: &mut Store<wit::EventHandlerComponentState>,
+        _handler: ResourceAny,
+        _event: &wit::common::StoredEvent,
+    ) -> wasmtime::Result<PartitionKey> {
+        Ok(PartitionKey::Inline)
+    }
+
     async fn handle_event(
         &self,
         store: &mut Store<wit::EventHandlerComponentState>,
         handler: ResourceAny,
-        event: StoredEvent<Value>,
+        event: &wit::common::StoredEvent,
     ) -> wasmtime::Result<()> {
-        let event_id = event.id;
-        let correlation_id = event.correlation_id;
+        let event_id: Uuid = event.id.parse()?;
+        let correlation_id: Uuid = event.correlation_id.parse()?;
 
         let cmds = self
             .instance
             .umari_policy_policy()
             .policy()
-            .call_handle(store, handler, &event.into())
+            .call_handle(store, handler, event)
             .await?;
 
         for cmd in cmds {

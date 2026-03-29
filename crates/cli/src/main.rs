@@ -79,6 +79,11 @@ enum Commands {
         #[arg(long)]
         debug: bool,
     },
+    /// scaffold a new module in the workspace
+    New {
+        #[command(subcommand)]
+        command: NewSubcommand,
+    },
 }
 
 #[derive(Subcommand)]
@@ -258,6 +263,18 @@ enum EffectsSubcommand {
 }
 
 #[derive(Subcommand)]
+enum NewSubcommand {
+    /// create a new command module
+    Command { name: String },
+    /// create a new projector module
+    Projector { name: String },
+    /// create a new policy module
+    Policy { name: String },
+    /// create a new effect module
+    Effect { name: String },
+}
+
+#[derive(Subcommand)]
 enum ModulesSubcommand {
     /// list all active modules
     Active {
@@ -362,5 +379,11 @@ fn main() -> Result<()> {
             no_activate,
             debug,
         } => commands::workspace::deploy(&client, paths, no_activate, debug),
+        Commands::New { command } => match command {
+            NewSubcommand::Command { name } => commands::new::generate("command", &name),
+            NewSubcommand::Projector { name } => commands::new::generate("projector", &name),
+            NewSubcommand::Policy { name } => commands::new::generate("policy", &name),
+            NewSubcommand::Effect { name } => commands::new::generate("effect", &name),
+        },
     }
 }

@@ -56,11 +56,6 @@ where
         self.inner.borrow().query().into()
     }
 
-    fn partition_key(&self, stored_event: StoredEvent) -> Option<String> {
-        let event = transform_stored_event::<T>(stored_event)?;
-        self.inner.borrow().partition_key(event)
-    }
-
     fn handle(&self, stored_event: StoredEvent) -> Vec<CommandSubmission> {
         let Some(event) = transform_stored_event::<T>(stored_event) else {
             return vec![];

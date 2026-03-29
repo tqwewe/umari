@@ -17,4 +17,5 @@ comfy-table.workspace = true
 indicatif.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+toml_edit.workspace = true
 ureq.workspace = true

@@ -70,13 +70,14 @@ pub async fn get_effect(
 ) -> Result<Markup, HtmlError> {
     let name_arc: Arc<str> = name.clone().into();
 
-    let versions = state
+    let mut versions = state
         .module_store_ref
         .ask(GetModuleVersions {
             module_type: ModuleType::Effect,
             name: name_arc.clone(),
         })
         .await?;
+    versions.sort_unstable_by(|a, b| b.version.cmp(&a.version));
 
     let active = state
         .module_store_ref

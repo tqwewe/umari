@@ -216,10 +216,16 @@ impl<A: EventHandlerModule> ModuleActor<A> {
             causation_id: data.causation_id,
             triggering_event_id: data.triggering_event_id,
             data: data.data,
-        };
+        }
+        .into();
+
+        let partiton_key = self
+            .instance
+            .partition_key(&mut self.store, self.handler, &event)
+            .await?;
 
         self.instance
-            .handle_event(&mut self.store, self.handler, event)
+            .handle_event(&mut self.store, self.handler, &event)
             .await?;
 
         Ok(())

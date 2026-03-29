@@ -12,6 +12,7 @@ kameo.workspace = true
 maud = { workspace = true, features = ["axum"] }
 semver.workspace = true
 serde.workspace = true
+schemars.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 tokio.workspace = true

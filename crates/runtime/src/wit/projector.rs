@@ -1,11 +1,13 @@
-use serde_json::Value;
-use umari_core::event::StoredEvent;
 use wasmtime::{
     Store,
     component::{Component, Linker, ResourceAny, bindgen},
 };
 
-use crate::{module::EventHandlerModule, module_store::ModuleType, wit};
+use crate::{
+    module::{EventHandlerModule, PartitionKey},
+    module_store::ModuleType,
+    wit,
+};
 
 pub use self::exports::umari::projector::projector::Error;
 
@@ -61,15 +63,24 @@ impl EventHandlerModule for ProjectorWorld {
             .await
     }
 
+    async fn partition_key(
+        &self,
+        _store: &mut Store<wit::EventHandlerComponentState>,
+        _handler: ResourceAny,
+        _event: &wit::common::StoredEvent,
+    ) -> wasmtime::Result<PartitionKey> {
+        Ok(PartitionKey::Inline)
+    }
+
     async fn handle_event(
         &self,
         store: &mut Store<wit::EventHandlerComponentState>,
         handler: ResourceAny,
-        event: StoredEvent<Value>,
+        event: &wit::common::StoredEvent,
     ) -> wasmtime::Result<()> {
         self.umari_projector_projector()
             .projector()
-            .call_handle(store, handler, &event.into())
+            .call_handle(store, handler, event)
             .await
     }
 }
