@@ -1,5 +1,6 @@
 /target
 /example/target
+/umari-data
 
 # Wit
 /wit/**/deps/
