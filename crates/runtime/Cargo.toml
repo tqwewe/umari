@@ -5,6 +5,7 @@ edition = "2024"
 [dependencies]
 umari-core.workspace = true
 
+bytes.workspace = true
 chrono.workspace = true
 futures-util.workspace = true
 hex.workspace = true

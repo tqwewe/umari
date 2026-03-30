@@ -8,6 +8,7 @@ use wasmtime::{
     Engine,
     component::{Component, HasSelf, Linker},
 };
+use crate::output::ModuleOutput;
 
 use super::{
     EventHandlerModule, ModuleError,
@@ -23,6 +24,11 @@ use crate::{
     wit,
 };
 
+struct PendingModule {
+    version: Version,
+    component: Component,
+}
+
 pub struct ModuleSupervisor<A: EventHandlerModule> {
     data_dir: Arc<PathBuf>,
     engine: Engine,
@@ -31,6 +37,9 @@ pub struct ModuleSupervisor<A: EventHandlerModule> {
     module_store_ref: ActorRef<ModuleStoreActor>,
     command_ref: ActorRef<CommandActor>,
     modules: HashMap<Arc<str>, VersionedModule<A>>,
+    /// Modules waiting for their predecessor to stop before spawning.
+    /// Keyed by the stopping actor's ID; value is (module name, pending info).
+    pending: HashMap<ActorId, (Arc<str>, PendingModule)>,
     args: A::Args,
 }
 
@@ -81,6 +90,7 @@ impl<A: EventHandlerModule> Actor for ModuleSupervisor<A> {
             module_store_ref: args.module_store_ref,
             command_ref: args.command_ref,
             modules: HashMap::with_capacity(active_modules.len()),
+            pending: HashMap::new(),
             args: args.args,
         };
 
@@ -112,11 +122,17 @@ impl<A: EventHandlerModule> Actor for ModuleSupervisor<A> {
 
     async fn on_link_died(
         &mut self,
-        _actor_ref: WeakActorRef<Self>,
+        actor_ref: WeakActorRef<Self>,
         id: ActorId,
         _reason: ActorStopReason,
     ) -> Result<ControlFlow<ActorStopReason>, Self::Error> {
-        self.modules.retain(|_, module| module.actor_ref.id() != id);
+        if let Some((name, pending)) = self.pending.remove(&id)
+            && let Some(supervisor_ref) = actor_ref.upgrade()
+        {
+            self.spawn_module(&supervisor_ref, name, pending, false)
+                .await?;
+        }
+
         Ok(ControlFlow::Continue(()))
     }
 }
@@ -126,6 +142,11 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
     #[message]
     pub fn active_modules(&self) -> HashMap<Arc<str>, VersionedModule<A>> {
         self.modules.clone()
+    }
+
+    #[message]
+    pub fn active_module(&self, name: Arc<str>) -> Option<VersionedModule<A>> {
+        self.modules.get(&name).cloned()
     }
 
     async fn load_module(
@@ -144,14 +165,32 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
             }
         };
 
-        if let Some(module) = self.modules.remove(&name)
-            && module.actor_ref.is_alive()
+        let pending = PendingModule { version, component };
+
+        // If a live actor exists, stop it and defer spawning until it fully dies.
+        if let Some(old_module) = self.modules.remove(&name)
+            && old_module.actor_ref.is_alive()
         {
-            debug!(module_type = %A::MODULE_TYPE, %name, version = %module.version, "stopping module");
-            let _ = module.actor_ref.stop_gracefully().await;
-            module.actor_ref.wait_for_shutdown().await;
+            debug!(module_type = %A::MODULE_TYPE, %name, version = %old_module.version, "stopping module");
+            let old_id = old_module.actor_ref.id();
+            let _ = old_module.actor_ref.stop_gracefully().await;
+            // Replace any previously queued pending entry for the same actor.
+            self.pending.insert(old_id, (name, pending));
+            return Ok(());
         }
 
+        self.spawn_module(supervisor_ref, name, pending, startup)
+            .await
+    }
+
+    async fn spawn_module(
+        &mut self,
+        supervisor_ref: &ActorRef<Self>,
+        name: Arc<str>,
+        pending: PendingModule,
+        startup: bool,
+    ) -> Result<(), ModuleError> {
+        let output = ModuleOutput::new(1024 * 10);
         let actor_ref = ModuleActor::supervise(
             supervisor_ref,
             ModuleActorArgs {
@@ -160,28 +199,30 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
                 linker: self.linker.clone(),
                 event_store: self.event_store.clone(),
                 command_ref: self.command_ref.clone(),
-                component,
+                component: pending.component,
                 name: name.clone(),
-                version: version.clone(),
+                version: pending.version.clone(),
                 args: self.args.clone(),
+                output: output.clone(),
             },
         )
-        .restart_policy(RestartPolicy::Transient)
+        .restart_policy(RestartPolicy::Never)
         .spawn_in_thread()
         .await;
 
         self.modules.insert(
             name.clone(),
             VersionedModule {
-                version: version.clone(),
+                version: pending.version.clone(),
                 actor_ref,
+                output,
             },
         );
 
         if startup {
-            debug!(module_type = %A::MODULE_TYPE, %name, %version, "module loaded");
+            debug!(module_type = %A::MODULE_TYPE, %name, version = %pending.version, "module loaded");
         } else {
-            info!(module_type = %A::MODULE_TYPE, %name, %version, "module loaded");
+            info!(module_type = %A::MODULE_TYPE, %name, version = %pending.version, "module loaded");
         }
 
         Ok(())
@@ -192,6 +233,7 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
 pub struct VersionedModule<A: EventHandlerModule> {
     pub version: Version,
     pub actor_ref: ActorRef<ModuleActor<A>>,
+    pub output: ModuleOutput,
 }
 
 impl<A: EventHandlerModule> Clone for VersionedModule<A> {
@@ -199,6 +241,7 @@ impl<A: EventHandlerModule> Clone for VersionedModule<A> {
         Self {
             version: self.version.clone(),
             actor_ref: self.actor_ref.clone(),
+            output: self.output.clone(),
         }
     }
 }

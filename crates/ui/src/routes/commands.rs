@@ -11,11 +11,12 @@ use umari_runtime::{
         ModuleType,
         actor::{GetActiveModule, GetAllActiveModules, GetAllModuleNames, GetModuleVersions},
     },
+    output::LogEntry,
 };
 
 use crate::{
     UiState,
-    components::{ModuleHealth, execute_form, module_summary_table, upload_form, versions_table},
+    components::{ModuleHealth, execute_form, module_summary_table, output, upload_form, versions_table},
     error::HtmlError,
     htmx::respond,
 };
@@ -41,7 +42,16 @@ pub async fn list_commands(
     let active_commands = state.command_ref.ask(ActiveCommands).await?;
     let health: HashMap<Arc<str>, ModuleHealth> = active_commands
         .into_keys()
-        .map(|name| (name, ModuleHealth { healthy: true, shutdown_reason: None, last_position: None }))
+        .map(|name| {
+            (
+                name,
+                ModuleHealth {
+                    healthy: true,
+                    shutdown_reason: None,
+                    last_position: None,
+                },
+            )
+        })
         .collect();
 
     let content = html! {
@@ -60,14 +70,13 @@ pub async fn get_command(
 ) -> Result<Markup, HtmlError> {
     let name_arc: Arc<str> = name.clone().into();
 
-    let mut versions = state
+    let versions = state
         .module_store_ref
         .ask(GetModuleVersions {
             module_type: ModuleType::Command,
             name: name_arc.clone(),
         })
         .await?;
-    versions.sort_unstable_by(|a, b| b.version.cmp(&a.version));
 
     let active = state
         .module_store_ref
@@ -79,10 +88,11 @@ pub async fn get_command(
     let active_version = active.map(|(v, _)| v);
 
     let active_commands = state.command_ref.ask(ActiveCommands).await?;
-    let schema = active_commands
-        .get(name_arc.as_ref())
-        .and_then(|m| m.schema.as_ref())
-        .cloned();
+    let active_command = active_commands.get(name_arc.as_ref());
+    let schema = active_command.and_then(|m| m.schema.as_ref()).cloned();
+    let entries: Vec<LogEntry> = active_command
+        .map(|m| m.output.entries())
+        .unwrap_or_default();
 
     let content = html! {
         a href="/ui/commands"
@@ -93,7 +103,8 @@ pub async fn get_command(
             { "← Back to Commands" }
         h2 class="text-2xl font-semibold text-gray-900 mb-6" { "Command: " (name) }
         h3 class="text-base font-semibold text-gray-700 mb-3 mt-6" { "Versions" }
-        (versions_table(ModuleType::Command, &name, &versions, active_version.as_ref()))
+        (versions_table(ModuleType::Command, &name, versions, active_version.as_ref()))
+        (output(&entries))
         (upload_form(ModuleType::Command, Some(&name)))
         (execute_form(&name, schema.as_ref()))
     };

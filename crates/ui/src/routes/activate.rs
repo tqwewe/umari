@@ -104,7 +104,7 @@ async fn render_versions_table(
     Ok(versions_table(
         module_type,
         name,
-        &versions,
+        versions,
         active_version.as_ref(),
     ))
 }

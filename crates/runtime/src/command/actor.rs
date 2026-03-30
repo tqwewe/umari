@@ -28,6 +28,7 @@ use crate::{
         ModuleType,
         actor::{GetActiveModule, GetAllActiveModules, ModuleStoreActor},
     },
+    output::ModuleOutput,
     wit::{self, CommandComponentState},
 };
 
@@ -37,6 +38,7 @@ pub struct VersionedModule {
     pub component: Component,
     pub command_pre: wit::command::CommandPre<CommandComponentState>,
     pub schema: Option<Schema>,
+    pub output: ModuleOutput,
 }
 
 pub struct CommandActor {
@@ -282,7 +284,10 @@ impl CommandActor {
             .get(name)
             .ok_or_else(|| CommandError::ModuleNotFound { name: name.clone() })?;
 
-        let wasi_ctx = WasiCtx::builder().inherit_stderr().inherit_stdout().build();
+        let wasi_ctx = WasiCtx::builder()
+            .stdout(versioned_component.output.stdout_pipe())
+            .stderr(versioned_component.output.stderr_pipe())
+            .build();
         let state = CommandComponentState {
             wasi_ctx,
             resource_table: ResourceTable::new(),
@@ -325,7 +330,13 @@ impl CommandActor {
         let instance_pre = self.linker.instantiate_pre(&component)?;
         let command_pre = wit::command::CommandPre::new(instance_pre)?;
 
-        let wasi_ctx = WasiCtx::builder().inherit_stderr().inherit_stdout().build();
+        let output = ModuleOutput::new(1024 * 10);
+
+        let schema_output = ModuleOutput::new(1024);
+        let wasi_ctx = WasiCtx::builder()
+            .stdout(schema_output.stdout_pipe())
+            .stderr(schema_output.stderr_pipe())
+            .build();
         let state = CommandComponentState {
             wasi_ctx,
             resource_table: ResourceTable::new(),
@@ -346,6 +357,7 @@ impl CommandActor {
                 component,
                 command_pre,
                 schema,
+                output,
             },
         );
 

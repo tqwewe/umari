@@ -42,6 +42,8 @@ struct Cli {
 
 #[tokio::main]
 async fn main() {
+    let ctrl_c_signal = signal::ctrl_c();
+
     banner::print_banner();
 
     ::tracing_subscriber::fmt()
@@ -115,13 +117,18 @@ async fn main() {
     info!("API server started on http://{}", cli.api_addr);
 
     tokio::select! {
-        _ = signal::ctrl_c() => {
-            info!("received shutdown signal");
+        _ = ctrl_c_signal => {
+            info!("received shutdown signal, shutting down gracefully...");
             api_handle.abort();
             if let Err(err) = runtime_ref.stop_gracefully().await {
                 error!("failed to gracefully stop runtime: {err}");
             }
-            if tokio::time::timeout(Duration::from_secs(5), ensure_runtime_shutdown(&runtime_ref)).await.is_err() {
+            let fut = async {
+                tokio::select! {
+                _ = ensure_runtime_shutdown(&runtime_ref) => {}
+                _ = signal::ctrl_c() => {}
+            } };
+            if tokio::time::timeout(Duration::from_secs(15), fut).await.is_err() {
                 error!("timed out waiting for runtime to stop");
                 runtime_ref.kill();
             }

@@ -3398,6 +3398,7 @@ dependencies = [
 name = "umari-runtime"
 version = "0.0.0"
 dependencies = [
+ "bytes",
  "chrono",
  "futures-util",
  "hex",
@@ -3454,6 +3455,7 @@ name = "umari-ui"
 version = "0.0.0"
 dependencies = [
  "axum",
+ "bytes",
  "hex",
  "kameo",
  "maud",

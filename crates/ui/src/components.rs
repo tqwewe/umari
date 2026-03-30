@@ -3,7 +3,10 @@ use std::{collections::HashMap, sync::Arc};
 use maud::{Markup, PreEscaped, html};
 use schemars::Schema;
 use semver::Version;
-use umari_runtime::module_store::{Module, ModuleType, ModuleVersionInfo};
+use umari_runtime::{
+    module_store::{Module, ModuleType, ModuleVersionInfo},
+    output::{LogEntry, LogStream},
+};
 
 #[derive(Debug)]
 pub struct ModuleHealth {
@@ -98,9 +101,10 @@ pub fn module_summary_table(
 pub fn versions_table(
     module_type: ModuleType,
     name: &str,
-    versions: &[ModuleVersionInfo],
+    mut versions: Vec<ModuleVersionInfo>,
     active_version: Option<&Version>,
 ) -> Markup {
+    versions.sort_unstable_by(|a, b| b.version.cmp(&a.version));
     let module_type_str = match module_type {
         ModuleType::Command => "commands",
         ModuleType::Policy => "policies",
@@ -155,6 +159,39 @@ pub fn versions_table(
                                         hx-swap="outerHTML"
                                         class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
                                         { "Activate" }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn output(entries: &[LogEntry]) -> Markup {
+    html! {
+        section class="mt-6" {
+            h3 class="text-base font-semibold text-gray-700 mb-3" { "Output" }
+            @if entries.is_empty() {
+                p class="text-sm text-gray-400 italic" { "no output" }
+            } @else {
+                div class="overflow-hidden rounded-lg border border-gray-200 bg-white" {
+                    table class="w-full text-xs font-mono" {
+                        tbody {
+                            @for entry in entries {
+                                @let ts = entry.timestamp.format("%H:%M:%S%.3f").to_string();
+                                @let is_stderr = matches!(entry.stream, LogStream::Stderr);
+                                tr class="border-b border-gray-100 last:border-0" {
+                                    td class="px-3 py-1 text-gray-400 whitespace-nowrap w-28" { (ts) }
+                                    td class="px-2 py-1 whitespace-nowrap w-16" {
+                                        @if is_stderr {
+                                            span class="text-red-500 font-semibold" { "stderr" }
+                                        } @else {
+                                            span class="text-gray-400" { "stdout" }
+                                        }
+                                    }
+                                    td class="px-3 py-1 text-gray-800 break-all" { (entry.message) }
                                 }
                             }
                         }
@@ -408,6 +445,7 @@ pub fn execute_form(name: &str, schema: Option<&Schema>) -> Markup {
     if let Some(fields) = fields {
         let form_id = format!("exec-{name}");
         let execute_url = format!("/ui/commands/{name}/execute");
+        let fn_name = name.replace('-', "_");
         html! {
             section class="bg-white rounded-lg border border-gray-200 p-5 mt-6" {
                 h3 class="text-base font-semibold text-gray-700 mb-3 mt-0" { "Execute Command" }
@@ -491,7 +529,7 @@ pub fn execute_form(name: &str, schema: Option<&Schema>) -> Markup {
                     }
                     button type="button"
                         onclick={
-                            "umariExec_" (name) "(this)"
+                            "umariExec_" (fn_name) "(this)"
                         }
                         class="self-start inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
                         { "Execute" }
@@ -499,7 +537,7 @@ pub fn execute_form(name: &str, schema: Option<&Schema>) -> Markup {
                 div #execute-result {}
                 script {
                     (PreEscaped(format!(
-                        r#"function umariExec_{name}(btn) {{
+                        r#"function umariExec_{fn_name}(btn) {{
   const form = btn.closest('form');
   const obj = {{}};
   form.querySelectorAll('[data-field]').forEach(el => {{

@@ -29,6 +29,10 @@ pub enum ModuleError {
     MissingEventId,
     #[error("module store error: {0}")]
     ModuleStore(SendError<(), ModuleStoreError>),
+    #[error("worker unavailable")]
+    WorkerUnavailable,
+    #[error("worker failed: {0}")]
+    WorkerFailed(String),
     #[error("wasmtime error: {0}")]
     Wasmtime(#[from] wasmtime::Error),
 }
@@ -51,6 +55,7 @@ pub trait EventHandlerModule: Send + Sized + 'static {
     type Error: fmt::Debug + Send;
 
     const MODULE_TYPE: ModuleType;
+    const POOL_SIZE: usize = 0;
 
     fn add_to_linker(linker: &mut Linker<wit::EventHandlerComponentState>) -> wasmtime::Result<()>;
 

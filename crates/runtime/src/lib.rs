@@ -1,7 +1,8 @@
 pub mod command;
-pub mod effect;
 pub mod events;
 pub mod module;
 pub mod module_store;
+pub mod output;
 pub mod supervisor;
 pub mod wit;
+pub mod worker;

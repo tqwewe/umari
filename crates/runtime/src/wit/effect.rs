@@ -30,6 +30,7 @@ impl EventHandlerModule for EffectWorld {
     type Error = Error;
 
     const MODULE_TYPE: ModuleType = ModuleType::Effect;
+    const POOL_SIZE: usize = 8;
 
     fn add_to_linker(linker: &mut Linker<wit::EventHandlerComponentState>) -> wasmtime::Result<()> {
         umari::command::executor::add_to_linker::<_, HasSelf<_>>(linker, |s| s)?;

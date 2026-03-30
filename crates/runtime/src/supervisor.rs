@@ -8,7 +8,7 @@ use kameo_actors::{
 use thiserror::Error;
 use tokio::fs;
 use umadb_client::AsyncUmaDBClient;
-use wasmtime::Engine;
+use wasmtime::{Config, Engine};
 
 use crate::{
     command::actor::{CommandActor, CommandActorArgs},
@@ -64,7 +64,7 @@ impl Actor for RuntimeSupervisor {
     ) -> Result<Self, Self::Error> {
         let _ = fs::create_dir_all(config.data_dir.as_path()).await;
 
-        let engine = Engine::default();
+        let engine = Engine::new(Config::new().wasm_backtrace_max_frames(None))?;
 
         // Setup event store
         let event_store = Arc::new(

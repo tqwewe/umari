@@ -4,10 +4,13 @@ use axum::{
     extract::{Path, State},
     http::HeaderMap,
 };
+use umari_runtime::output::LogEntry;
 use maud::{Markup, html};
 use umari_runtime::{
-    module::actor::LastPosition,
-    module::supervisor::ActiveModules,
+    module::{
+        actor::LastPosition,
+        supervisor::{ActiveModule, ActiveModules},
+    },
     module_store::{
         ModuleType,
         actor::{GetActiveModule, GetAllActiveModules, GetAllModuleNames, GetModuleVersions},
@@ -16,7 +19,7 @@ use umari_runtime::{
 
 use crate::{
     UiState,
-    components::{ModuleHealth, module_summary_table, upload_form, versions_table},
+    components::{ModuleHealth, module_summary_table, output, upload_form, versions_table},
     error::HtmlError,
     htmx::respond,
 };
@@ -47,11 +50,14 @@ pub async fn list_effects(
             Ok(reason) => reason.to_string(),
             Err(err) => err.to_string(),
         });
-        health.insert(name, ModuleHealth {
-            healthy: shutdown_reason.is_none(),
-            shutdown_reason,
-            last_position,
-        });
+        health.insert(
+            name,
+            ModuleHealth {
+                healthy: shutdown_reason.is_none(),
+                shutdown_reason,
+                last_position,
+            },
+        );
     }
 
     let content = html! {
@@ -70,14 +76,20 @@ pub async fn get_effect(
 ) -> Result<Markup, HtmlError> {
     let name_arc: Arc<str> = name.clone().into();
 
-    let mut versions = state
+    let active_module = state
+        .effect_supervisor_ref
+        .ask(ActiveModule {
+            name: name_arc.clone(),
+        })
+        .await?;
+
+    let versions = state
         .module_store_ref
         .ask(GetModuleVersions {
             module_type: ModuleType::Effect,
             name: name_arc.clone(),
         })
         .await?;
-    versions.sort_unstable_by(|a, b| b.version.cmp(&a.version));
 
     let active = state
         .module_store_ref
@@ -88,6 +100,11 @@ pub async fn get_effect(
         .await?;
     let active_version = active.map(|(v, _)| v);
 
+    let entries: Vec<LogEntry> = match active_module {
+        Some(module) => module.output.entries(),
+        None => Vec::new(),
+    };
+
     let content = html! {
         a href="/ui/effects"
             hx-get="/ui/effects"
@@ -97,7 +114,8 @@ pub async fn get_effect(
             { "← Back to Effects" }
         h2 class="text-2xl font-semibold text-gray-900 mb-6" { "Effect: " (name) }
         h3 class="text-base font-semibold text-gray-700 mb-3 mt-6" { "Versions" }
-        (versions_table(ModuleType::Effect, &name, &versions, active_version.as_ref()))
+        (versions_table(ModuleType::Effect, &name, versions, active_version.as_ref()))
+        (output(&entries))
         (upload_form(ModuleType::Effect, Some(&name)))
     };
 
