@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fs, ops::ControlFlow, path::PathBuf, sync::Arc, time::Duration};
 
-use crate::output::ModuleOutput;
 use kameo::{prelude::*, supervision::RestartPolicy};
+use rusqlite::{Connection, OptionalExtension};
 use semver::Version;
 use tracing::{debug, error, info, warn};
 use umadb_client::AsyncUmaDBClient;
@@ -21,6 +21,7 @@ use crate::{
         ModuleType,
         actor::{GetActiveModule, GetAllActiveModules, ModuleStoreActor},
     },
+    output::ModuleOutput,
     wit,
 };
 
@@ -28,6 +29,11 @@ struct PendingModule {
     version: Version,
     component: Component,
     reset_db: bool,
+}
+
+struct ModuleBackoffState {
+    delay: Duration,
+    last_failed_position: Option<u64>,
 }
 
 pub struct ModuleSupervisor<A: EventHandlerModule> {
@@ -41,6 +47,7 @@ pub struct ModuleSupervisor<A: EventHandlerModule> {
     /// Modules waiting for their predecessor to stop before spawning.
     /// Keyed by the stopping actor's ID; value is (module name, pending info).
     pending: HashMap<ActorId, (Arc<str>, PendingModule)>,
+    backoff: HashMap<Arc<str>, ModuleBackoffState>,
     args: A::Args,
 }
 
@@ -92,6 +99,7 @@ impl<A: EventHandlerModule> Actor for ModuleSupervisor<A> {
             command_ref: args.command_ref,
             modules: HashMap::with_capacity(active_modules.len()),
             pending: HashMap::new(),
+            backoff: HashMap::new(),
             args: args.args,
         };
 
@@ -132,6 +140,54 @@ impl<A: EventHandlerModule> Actor for ModuleSupervisor<A> {
         {
             self.spawn_module(&supervisor_ref, name, pending, false)
                 .await?;
+            return Ok(ControlFlow::Continue(()));
+        }
+
+        if A::RETRY_ON_FAILURE
+            && let Some((name, module)) = self
+                .modules
+                .iter()
+                .find(|(_, m)| m.actor_ref.id() == id)
+                .map(|(n, m)| (n.clone(), m.clone()))
+        {
+            self.modules.remove(&name);
+
+            let current_pos = self.read_last_position(&name);
+            let state = self
+                .backoff
+                .entry(name.clone())
+                .or_insert(ModuleBackoffState {
+                    delay: Duration::from_secs(1),
+                    last_failed_position: None,
+                });
+
+            if state.last_failed_position == current_pos {
+                state.delay = (state.delay * 2).min(Duration::from_secs(600));
+            } else {
+                state.delay = Duration::from_secs(1);
+            }
+            state.last_failed_position = current_pos;
+            let delay = state.delay;
+
+            warn!(
+                module_type = %A::MODULE_TYPE,
+                %name,
+                ?delay,
+                "module failed, retrying with backoff"
+            );
+
+            if let Some(supervisor_ref) = actor_ref.upgrade() {
+                let name = name.clone();
+                let version = module.version.clone();
+                let component = module.component.clone();
+                supervisor_ref
+                    .tell(RestartModule {
+                        name,
+                        version,
+                        component,
+                    })
+                    .send_after(delay);
+            }
         }
 
         Ok(ControlFlow::Continue(()))
@@ -170,6 +226,7 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
             component,
             reset_db: true,
         };
+        self.backoff.remove(&name);
         info!(module_type = %A::MODULE_TYPE, %name, "resetting module");
         if let Some(old) = self.modules.remove(&name)
             && old.actor_ref.is_alive()
@@ -182,6 +239,22 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
                 .await?;
         }
         Ok(())
+    }
+
+    fn read_last_position(&self, name: &str) -> Option<u64> {
+        let db_path = self
+            .data_dir
+            .join(format!("{}-{}.sqlite", A::MODULE_TYPE, name));
+        let conn = Connection::open(&db_path).ok()?;
+        conn.query_row(
+            "SELECT last_position FROM module_meta WHERE id = 1",
+            [],
+            |row| row.get::<_, Option<i64>>(0),
+        )
+        .optional()
+        .ok()?
+        .flatten()
+        .map(|n| n as u64)
     }
 
     async fn load_module(
@@ -207,6 +280,8 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
         };
 
         // If a live actor exists, stop it and defer spawning until it fully dies.
+        self.backoff.remove(&name);
+
         if let Some(old_module) = self.modules.remove(&name)
             && old_module.actor_ref.is_alive()
         {
@@ -219,6 +294,29 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
         }
 
         self.spawn_module(supervisor_ref, name, pending, startup)
+            .await
+    }
+
+    #[message(ctx)]
+    async fn restart_module(
+        &mut self,
+        name: Arc<str>,
+        version: Version,
+        component: Component,
+        ctx: &mut Context<Self, Result<(), ModuleError>>,
+    ) -> Result<(), ModuleError> {
+        if !self.backoff.contains_key(&name) {
+            return Ok(());
+        }
+        if self.modules.contains_key(&name) {
+            return Ok(());
+        }
+        let pending = PendingModule {
+            version,
+            component,
+            reset_db: false,
+        };
+        self.spawn_module(ctx.actor_ref(), name, pending, false)
             .await
     }
 
@@ -247,7 +345,7 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
                 linker: self.linker.clone(),
                 event_store: self.event_store.clone(),
                 command_ref: self.command_ref.clone(),
-                component: pending.component,
+                component: pending.component.clone(),
                 name: name.clone(),
                 version: pending.version.clone(),
                 args: self.args.clone(),
@@ -264,6 +362,7 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
                 version: pending.version.clone(),
                 actor_ref,
                 output,
+                component: pending.component,
             },
         );
 
@@ -277,11 +376,11 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
     }
 }
 
-#[derive(Debug)]
 pub struct VersionedModule<A: EventHandlerModule> {
     pub version: Version,
     pub actor_ref: ActorRef<ModuleActor<A>>,
     pub output: ModuleOutput,
+    component: Component,
 }
 
 impl<A: EventHandlerModule> Clone for VersionedModule<A> {
@@ -290,6 +389,7 @@ impl<A: EventHandlerModule> Clone for VersionedModule<A> {
             version: self.version.clone(),
             actor_ref: self.actor_ref.clone(),
             output: self.output.clone(),
+            component: self.component.clone(),
         }
     }
 }
@@ -330,11 +430,12 @@ impl<A: EventHandlerModule> Message<ModuleEvent> for ModuleSupervisor<A> {
                 }
             }
             ModuleEvent::Deactivated { module_type, name } => {
-                if module_type == A::MODULE_TYPE
-                    && let Some(module) = self.modules.remove(&name)
-                {
-                    let _ = module.actor_ref.stop_gracefully().await;
-                    info!(module_type = %A::MODULE_TYPE, %name, version = %module.version, "module unloaded");
+                if module_type == A::MODULE_TYPE {
+                    self.backoff.remove(&name);
+                    if let Some(module) = self.modules.remove(&name) {
+                        let _ = module.actor_ref.stop_gracefully().await;
+                        info!(module_type = %A::MODULE_TYPE, %name, version = %module.version, "module unloaded");
+                    }
                 }
             }
         }

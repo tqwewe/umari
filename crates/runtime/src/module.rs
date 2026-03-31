@@ -58,6 +58,7 @@ pub trait EventHandlerModule: Send + Sized + 'static {
 
     const MODULE_TYPE: ModuleType;
     const POOL_SIZE: usize = 0;
+    const RETRY_ON_FAILURE: bool = false;
 
     fn add_to_linker(linker: &mut Linker<wit::EventHandlerComponentState>) -> wasmtime::Result<()>;
 
