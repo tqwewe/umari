@@ -13,7 +13,7 @@ pub trait Effect: Default {
         DcbQuery::new().item(DcbQueryItem::new().types(Self::Query::EVENT_TYPES.iter().copied()))
     }
 
-    /// TODO Docs
+    /// Partition key for parallel effects
     fn partition_key(&self, _event: StoredEvent<Self::Query>) -> Option<String> {
         None
     }

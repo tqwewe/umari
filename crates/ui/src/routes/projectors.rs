@@ -22,7 +22,8 @@ use umari_runtime::{
 use crate::{
     UiState,
     components::{
-        ModuleHealth, module_status_card, module_summary_table, output, upload_form, versions_table,
+        ModuleHealth, module_status_card, module_summary_table, output, tabs, upload_form,
+        versions_table,
     },
     error::HtmlError,
     htmx::respond,
@@ -144,6 +145,13 @@ pub async fn get_projector(
 
     let query_url = format!("/ui/projectors/{name}/query");
 
+    let versions_panel = html! {
+        (versions_table(ModuleType::Projector, &name, versions, active_version.as_ref()))
+        (upload_form(ModuleType::Projector, Some(&name)))
+    };
+    let output_panel = output(&entries);
+    let sql_panel = sql_query_section(&query_url, default_query.as_deref());
+
     let content = html! {
         a href="/ui/projectors"
             hx-get="/ui/projectors"
@@ -153,11 +161,13 @@ pub async fn get_projector(
             { "← Back to Projectors" }
         h2 class="text-2xl font-semibold text-gray-900 mb-6" { "Projector: " (name) }
         (module_status_card(ModuleType::Projector, &name, active_version.as_ref(), health.as_ref()))
-        h3 class="text-base font-semibold text-gray-700 mb-3 mt-6" { "Versions" }
-        (versions_table(ModuleType::Projector, &name, versions, active_version.as_ref()))
-        (output(&entries))
-        (sql_query_section(&query_url, default_query.as_deref()))
-        (upload_form(ModuleType::Projector, Some(&name)))
+        div class="mt-6" {
+            (tabs(&format!("tabs-projector-{name}"), vec![
+                ("Versions", versions_panel),
+                ("Output", output_panel),
+                ("SQL", sql_panel),
+            ]))
+        }
     };
 
     Ok(respond(&headers, &name, content))
@@ -166,8 +176,7 @@ pub async fn get_projector(
 fn sql_query_section(query_url: &str, default_query: Option<&str>) -> Markup {
     let placeholder = default_query.unwrap_or("SELECT * FROM ...");
     html! {
-        section class="mt-6" {
-            h3 class="text-base font-semibold text-gray-700 mb-3" { "SQL Query" }
+        section {
             @if default_query.is_none() {
                 p class="text-sm text-gray-400 italic mb-3" { "no database found" }
             }

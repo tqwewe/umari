@@ -233,10 +233,69 @@ pub fn versions_table(
     }
 }
 
+pub fn tabs(id: &str, panels: Vec<(&str, Markup)>) -> Markup {
+    let slugs: Vec<String> = panels
+        .iter()
+        .map(|(l, _)| l.to_lowercase().replace(' ', "-"))
+        .collect();
+    let labels: Vec<&str> = panels.iter().map(|(l, _)| *l).collect();
+    let contents: Vec<Markup> = panels.into_iter().map(|(_, c)| c).collect();
+    // Build the init script: restore active tab from location.hash
+    let init_js = format!(
+        r#"(function(){{
+            const hash = location.hash.slice(1);
+            const group = document.getElementById('{}');
+            if (!hash || !group) return;
+            const btns = group.querySelectorAll('[data-tab-slug]');
+            btns.forEach((b, i) => {{ if (b.dataset.tabSlug === hash) umariTabs('{}', i, hash); }});
+        }})();"#,
+        id, id
+    );
+    html! {
+        div id=(id) {
+            div class="flex border-b border-gray-200 mb-6" {
+                @for (i, label) in labels.iter().enumerate() {
+                    button
+                        type="button"
+                        data-tab-btn=""
+                        data-tab-slug=(slugs[i])
+                        onclick=(format!("umariTabs('{}',{},'{}')", id, i, slugs[i]))
+                        class=(if i == 0 {
+                            "px-4 py-2 text-sm font-medium -mb-px border-b-2 border-indigo-600 text-indigo-600"
+                        } else {
+                            "px-4 py-2 text-sm font-medium -mb-px border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                        })
+                    { (label) }
+                }
+            }
+            @for (i, content) in contents.iter().enumerate() {
+                div
+                    data-tab-panel=""
+                    class=(if i == 0 { "" } else { "hidden" })
+                {
+                    (content)
+                }
+            }
+        }
+        script { (maud::PreEscaped(r#"
+            function umariTabs(id, idx, slug) {
+                const group = document.getElementById(id);
+                group.querySelectorAll('[data-tab-panel]').forEach((p, i) => p.classList.toggle('hidden', i !== idx));
+                group.querySelectorAll('[data-tab-btn]').forEach((b, i) => {
+                    b.classList.toggle('border-indigo-600', i === idx);
+                    b.classList.toggle('text-indigo-600', i === idx);
+                    b.classList.toggle('border-transparent', i !== idx);
+                    b.classList.toggle('text-gray-500', i !== idx);
+                });
+                history.replaceState(null, '', '#' + slug);
+            }
+        "#)) (maud::PreEscaped(init_js)) }
+    }
+}
+
 pub fn output(entries: &[LogEntry]) -> Markup {
     html! {
-        section class="mt-6" {
-            h3 class="text-base font-semibold text-gray-700 mb-3" { "Output" }
+        section {
             @if entries.is_empty() {
                 p class="text-sm text-gray-400 italic" { "no output" }
             } @else {
@@ -440,9 +499,10 @@ fn parse_fields(schema: &Schema) -> Option<Vec<FormField>> {
         let format = prop.get("format").and_then(|f| f.as_str());
         let enum_vals = prop.get("enum").and_then(|e| e.as_array());
 
-        let input_type = if type_str == "string" && enum_vals.is_some() {
+        let input_type = if type_str == "string"
+            && let Some(enum_vals) = enum_vals
+        {
             let values: Vec<String> = enum_vals
-                .unwrap()
                 .iter()
                 .filter_map(|val: &serde_json::Value| val.as_str().map(|s| s.to_owned()))
                 .collect();

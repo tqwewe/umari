@@ -1,5 +1,6 @@
 use std::{collections::HashMap, fs, ops::ControlFlow, path::PathBuf, sync::Arc, time::Duration};
 
+use crate::output::ModuleOutput;
 use kameo::{prelude::*, supervision::RestartPolicy};
 use semver::Version;
 use tracing::{debug, error, info, warn};
@@ -8,7 +9,6 @@ use wasmtime::{
     Engine,
     component::{Component, HasSelf, Linker},
 };
-use crate::output::ModuleOutput;
 
 use super::{
     EventHandlerModule, ModuleError,
@@ -158,18 +158,28 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
     ) -> Result<(), ModuleError> {
         let (version, wasm_bytes) = self
             .module_store_ref
-            .ask(GetActiveModule { module_type: A::MODULE_TYPE, name: name.clone() })
+            .ask(GetActiveModule {
+                module_type: A::MODULE_TYPE,
+                name: name.clone(),
+            })
             .await?
             .ok_or(ModuleError::NotActive)?;
         let component = Component::new(&self.engine, wasm_bytes)?;
-        let pending = PendingModule { version, component, reset_db: true };
+        let pending = PendingModule {
+            version,
+            component,
+            reset_db: true,
+        };
         info!(module_type = %A::MODULE_TYPE, %name, "resetting module");
-        if let Some(old) = self.modules.remove(&name) && old.actor_ref.is_alive() {
+        if let Some(old) = self.modules.remove(&name)
+            && old.actor_ref.is_alive()
+        {
             let old_id = old.actor_ref.id();
             let _ = old.actor_ref.stop_gracefully().await;
             self.pending.insert(old_id, (name, pending));
         } else {
-            self.spawn_module(&ctx.actor_ref(), name, pending, false).await?;
+            self.spawn_module(ctx.actor_ref(), name, pending, false)
+                .await?;
         }
         Ok(())
     }
@@ -190,7 +200,11 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
             }
         };
 
-        let pending = PendingModule { version, component, reset_db: false };
+        let pending = PendingModule {
+            version,
+            component,
+            reset_db: false,
+        };
 
         // If a live actor exists, stop it and defer spawning until it fully dies.
         if let Some(old_module) = self.modules.remove(&name)
@@ -216,7 +230,9 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
         startup: bool,
     ) -> Result<(), ModuleError> {
         if pending.reset_db {
-            let db_path = self.data_dir.join(format!("{}-{}.sqlite", A::MODULE_TYPE, &name));
+            let db_path = self
+                .data_dir
+                .join(format!("{}-{}.sqlite", A::MODULE_TYPE, &name));
             let _ = fs::remove_file(&db_path);
             let _ = fs::remove_file(format!("{}-wal", db_path.display()));
             let _ = fs::remove_file(format!("{}-shm", db_path.display()));

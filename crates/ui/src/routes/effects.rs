@@ -18,7 +18,10 @@ use umari_runtime::{
 
 use crate::{
     UiState,
-    components::{ModuleHealth, module_status_card, module_summary_table, output, upload_form, versions_table},
+    components::{
+        ModuleHealth, module_status_card, module_summary_table, output, tabs, upload_form,
+        versions_table,
+    },
     error::HtmlError,
     htmx::respond,
 };
@@ -116,6 +119,12 @@ pub async fn get_effect(
         None => (None, Vec::new()),
     };
 
+    let versions_panel = html! {
+        (versions_table(ModuleType::Effect, &name, versions, active_version.as_ref()))
+        (upload_form(ModuleType::Effect, Some(&name)))
+    };
+    let output_panel = output(&entries);
+
     let content = html! {
         a href="/ui/effects"
             hx-get="/ui/effects"
@@ -125,10 +134,12 @@ pub async fn get_effect(
             { "← Back to Effects" }
         h2 class="text-2xl font-semibold text-gray-900 mb-6" { "Effect: " (name) }
         (module_status_card(ModuleType::Effect, &name, active_version.as_ref(), health.as_ref()))
-        h3 class="text-base font-semibold text-gray-700 mb-3 mt-6" { "Versions" }
-        (versions_table(ModuleType::Effect, &name, versions, active_version.as_ref()))
-        (output(&entries))
-        (upload_form(ModuleType::Effect, Some(&name)))
+        div class="mt-6" {
+            (tabs(&format!("tabs-effect-{name}"), vec![
+                ("Versions", versions_panel),
+                ("Output", output_panel),
+            ]))
+        }
     };
 
     Ok(respond(&headers, &name, content))
