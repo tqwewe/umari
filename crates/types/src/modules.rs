@@ -125,6 +125,20 @@ pub struct DeactivateResponse {
     pub previous_version: Option<String>,
 }
 
+// ========== Replay Response ==========
+
+#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ReplayResponse {
+    /// Type of module
+    #[serde(rename = "module_type")]
+    pub module_type: String,
+    /// Module name
+    pub name: String,
+    /// Always true for successful replay trigger
+    pub replaying: bool,
+}
+
 // ========== Active Modules Response ==========
 
 #[derive(Serialize, Deserialize)]

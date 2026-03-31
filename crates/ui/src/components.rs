@@ -98,6 +98,70 @@ pub fn module_summary_table(
     }
 }
 
+pub fn module_status_card(
+    module_type: ModuleType,
+    name: &str,
+    active_version: Option<&Version>,
+    health: Option<&ModuleHealth>,
+) -> Markup {
+    let type_path = match module_type {
+        ModuleType::Command => "commands",
+        ModuleType::Policy => "policies",
+        ModuleType::Projector => "projectors",
+        ModuleType::Effect => "effects",
+    };
+    let replay_url = format!("/ui/{type_path}/{name}/replay");
+
+    html! {
+        div class="rounded-lg border border-gray-200 bg-white p-4 flex items-start justify-between gap-4" {
+            div class="flex items-center gap-8" {
+                div {
+                    p class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1" { "Status" }
+                    @if active_version.is_none() {
+                        span class="text-gray-400 text-sm" { "Inactive" }
+                    } @else if let Some(h) = health {
+                        @if h.healthy {
+                            span class="text-emerald-600 text-sm font-medium" { "● Running" }
+                        } @else {
+                            @let title = h.shutdown_reason.as_deref().unwrap_or("");
+                            span class="text-red-500 text-sm font-medium" title=(title) { "● Stopped" }
+                        }
+                    } @else {
+                        span class="text-amber-500 text-sm font-medium" { "● Not running" }
+                    }
+                }
+                div {
+                    p class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1" { "Active Version" }
+                    @if let Some(v) = active_version {
+                        span class="text-emerald-600 font-mono text-sm font-medium" { (v) }
+                    } @else {
+                        span class="text-gray-400 text-sm" { "—" }
+                    }
+                }
+                div {
+                    p class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1" { "Position" }
+                    @if let Some(pos) = health.and_then(|h| h.last_position) {
+                        span class="text-gray-700 font-mono text-sm" { (pos) }
+                    } @else {
+                        span class="text-gray-400 text-sm" { "—" }
+                    }
+                }
+            }
+            @if active_version.is_some() {
+                div class="flex flex-col items-end gap-1 shrink-0" {
+                    button
+                        hx-post=(replay_url)
+                        hx-target="#replay-status"
+                        hx-swap="innerHTML"
+                        class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-amber-600 text-white hover:bg-amber-700 transition-colors"
+                        { "↺ Reset & Replay" }
+                    div id="replay-status" class="text-xs text-amber-700" {}
+                }
+            }
+        }
+    }
+}
+
 pub fn versions_table(
     module_type: ModuleType,
     name: &str,

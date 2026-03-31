@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ops::ControlFlow, path::PathBuf, sync::Arc, time::Duration};
+use std::{collections::HashMap, fs, ops::ControlFlow, path::PathBuf, sync::Arc, time::Duration};
 
 use kameo::{prelude::*, supervision::RestartPolicy};
 use semver::Version;
@@ -27,6 +27,7 @@ use crate::{
 struct PendingModule {
     version: Version,
     component: Component,
+    reset_db: bool,
 }
 
 pub struct ModuleSupervisor<A: EventHandlerModule> {
@@ -149,6 +150,30 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
         self.modules.get(&name).cloned()
     }
 
+    #[message(ctx)]
+    pub async fn reset(
+        &mut self,
+        name: Arc<str>,
+        ctx: &mut Context<Self, Result<(), ModuleError>>,
+    ) -> Result<(), ModuleError> {
+        let (version, wasm_bytes) = self
+            .module_store_ref
+            .ask(GetActiveModule { module_type: A::MODULE_TYPE, name: name.clone() })
+            .await?
+            .ok_or(ModuleError::NotActive)?;
+        let component = Component::new(&self.engine, wasm_bytes)?;
+        let pending = PendingModule { version, component, reset_db: true };
+        info!(module_type = %A::MODULE_TYPE, %name, "resetting module");
+        if let Some(old) = self.modules.remove(&name) && old.actor_ref.is_alive() {
+            let old_id = old.actor_ref.id();
+            let _ = old.actor_ref.stop_gracefully().await;
+            self.pending.insert(old_id, (name, pending));
+        } else {
+            self.spawn_module(&ctx.actor_ref(), name, pending, false).await?;
+        }
+        Ok(())
+    }
+
     async fn load_module(
         &mut self,
         supervisor_ref: &ActorRef<Self>,
@@ -165,7 +190,7 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
             }
         };
 
-        let pending = PendingModule { version, component };
+        let pending = PendingModule { version, component, reset_db: false };
 
         // If a live actor exists, stop it and defer spawning until it fully dies.
         if let Some(old_module) = self.modules.remove(&name)
@@ -190,6 +215,13 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
         pending: PendingModule,
         startup: bool,
     ) -> Result<(), ModuleError> {
+        if pending.reset_db {
+            let db_path = self.data_dir.join(format!("{}-{}.sqlite", A::MODULE_TYPE, &name));
+            let _ = fs::remove_file(&db_path);
+            let _ = fs::remove_file(format!("{}-wal", db_path.display()));
+            let _ = fs::remove_file(format!("{}-shm", db_path.display()));
+        }
+
         let output = ModuleOutput::new(1024 * 10);
         let actor_ref = ModuleActor::supervise(
             supervisor_ref,

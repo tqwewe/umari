@@ -4,7 +4,6 @@ use axum::{
     extract::{Path, State},
     http::HeaderMap,
 };
-use umari_runtime::output::LogEntry;
 use maud::{Markup, html};
 use umari_runtime::{
     module::{
@@ -19,7 +18,7 @@ use umari_runtime::{
 
 use crate::{
     UiState,
-    components::{ModuleHealth, module_summary_table, output, upload_form, versions_table},
+    components::{ModuleHealth, module_status_card, module_summary_table, output, upload_form, versions_table},
     error::HtmlError,
     htmx::respond,
 };
@@ -100,9 +99,21 @@ pub async fn get_policy(
         .await?;
     let active_version = active.map(|(v, _)| v);
 
-    let entries: Vec<LogEntry> = match active_module {
-        Some(module) => module.output.entries(),
-        None => Vec::new(),
+    let (health, entries) = match &active_module {
+        Some(module) => {
+            let last_position = module.actor_ref.ask(LastPosition).await.ok().flatten();
+            let shutdown_reason = module.actor_ref.with_shutdown_result(|r| match r {
+                Ok(reason) => reason.to_string(),
+                Err(err) => err.to_string(),
+            });
+            let health = ModuleHealth {
+                healthy: shutdown_reason.is_none(),
+                shutdown_reason,
+                last_position,
+            };
+            (Some(health), module.output.entries())
+        }
+        None => (None, Vec::new()),
     };
 
     let content = html! {
@@ -113,6 +124,7 @@ pub async fn get_policy(
             class="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 mb-6"
             { "← Back to Policies" }
         h2 class="text-2xl font-semibold text-gray-900 mb-6" { "Policy: " (name) }
+        (module_status_card(ModuleType::Policy, &name, active_version.as_ref(), health.as_ref()))
         h3 class="text-base font-semibold text-gray-700 mb-3 mt-6" { "Versions" }
         (versions_table(ModuleType::Policy, &name, versions, active_version.as_ref()))
         (output(&entries))

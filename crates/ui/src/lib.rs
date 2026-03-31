@@ -25,6 +25,7 @@ use crate::routes::{
     index::index,
     policies::{get_policy, list_policies},
     projectors::{get_projector, list_projectors},
+    replay::replay,
     upload::upload_module,
 };
 
@@ -53,5 +54,6 @@ pub fn ui_router(state: UiState) -> Router {
         .route("/ui/{module_type}/{name}/active", put(activate))
         .route("/ui/{module_type}/{name}/active", delete(deactivate))
         .route("/ui/commands/{name}/execute", post(execute_command))
+        .route("/ui/{module_type}/{name}/replay", post(replay))
         .with_state(state)
 }

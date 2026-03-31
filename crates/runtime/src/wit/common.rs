@@ -15,18 +15,18 @@ bindgen!({
 impl Host for CommandComponentState {}
 impl Host for EventHandlerComponentState {}
 
-impl From<EventFilter> for umadb_dcb::DCBQueryItem {
+impl From<EventFilter> for umadb_dcb::DcbQueryItem {
     fn from(item: EventFilter) -> Self {
-        umadb_dcb::DCBQueryItem {
+        umadb_dcb::DcbQueryItem {
             types: item.types,
             tags: item.tags,
         }
     }
 }
 
-impl From<EventQuery> for umadb_dcb::DCBQuery {
+impl From<EventQuery> for umadb_dcb::DcbQuery {
     fn from(query: EventQuery) -> Self {
-        umadb_dcb::DCBQuery {
+        umadb_dcb::DcbQuery {
             items: query.items.into_iter().map(|item| item.into()).collect(),
         }
     }

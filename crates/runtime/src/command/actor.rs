@@ -8,7 +8,7 @@ use serde::Serialize;
 use serde_json::Value;
 use tracing::{debug, error, info, warn};
 use umadb_client::AsyncUmaDBClient;
-use umadb_dcb::{DCBAppendCondition, DCBEvent, DCBEventStoreAsync, DCBQuery};
+use umadb_dcb::{DcbAppendCondition, DcbEvent, DcbEventStoreAsync, DcbQuery};
 use umari_core::{
     emit::encode_with_envelope,
     event::{EventEnvelope, StoredEventData},
@@ -219,7 +219,7 @@ impl CommandActor {
             };
 
             let mut emitted_events = Vec::new();
-            let dcb_events: Vec<DCBEvent> = execute_output
+            let dcb_events: Vec<DcbEvent> = execute_output
                 .events
                 .into_iter()
                 .map(|event| {
@@ -241,7 +241,7 @@ impl CommandActor {
                     let data_value: Value = serde_json::from_str(&event.data)
                         .map_err(CommandError::DeserializeEvent)?;
 
-                    Ok(DCBEvent {
+                    Ok(DcbEvent {
                         event_type: event.event_type,
                         tags,
                         data: encode_with_envelope(envelope, data_value),
@@ -256,7 +256,7 @@ impl CommandActor {
                     event_store
                         .append(
                             dcb_events,
-                            Some(DCBAppendCondition {
+                            Some(DcbAppendCondition {
                                 fail_if_events_match: query,
                                 after: head,
                             }),
@@ -386,7 +386,7 @@ impl InstantiatedModule {
         Ok(Some(schema))
     }
 
-    async fn query(&mut self, input: &String) -> Result<DCBQuery, CommandError> {
+    async fn query(&mut self, input: &String) -> Result<DcbQuery, CommandError> {
         let query = self
             .command
             .call_query(&mut self.store, input)

@@ -8,5 +8,5 @@ pub use execute::{EmittedEventInfo, ExecuteResponse};
 pub use modules::{
     ActivateRequest, ActivateResponse, ActiveModuleInfo, ActiveModuleStatus, ActiveModulesResponse,
     DeactivateResponse, ListModulesResponse, ModuleDetailsResponse, ModuleHealthResponse,
-    ModuleSummary, UploadResponse, VersionDetailsResponse, VersionInfo,
+    ModuleSummary, ReplayResponse, UploadResponse, VersionDetailsResponse, VersionInfo,
 };

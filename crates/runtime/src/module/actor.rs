@@ -14,7 +14,7 @@ use semver::Version;
 use serde_json::Value;
 use tracing::{debug, error, info, warn};
 use umadb_client::AsyncUmaDBClient;
-use umadb_dcb::{DCBError, DCBEventStoreAsync, DCBQuery, DCBReadResponseAsync, DCBSequencedEvent};
+use umadb_dcb::{DcbError, DcbEventStoreAsync, DcbQuery, DcbReadResponseAsync, DcbSequencedEvent};
 use umari_core::event::{StoredEvent, StoredEventData};
 use wasmtime::{
     Engine, Store,
@@ -54,7 +54,7 @@ pub struct ModuleActor<A: EventHandlerModule> {
     handler: ResourceAny,
     name: Arc<str>,
     version: Version,
-    stream: Box<dyn DCBReadResponseAsync + Send + 'static>,
+    stream: Box<dyn DcbReadResponseAsync + Send + 'static>,
     worker_pool: Option<WorkerPool<A>>,
 }
 
@@ -199,7 +199,7 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
         let query = instance
             .query(&mut store, handler)
             .await
-            .map(DCBQuery::from)?;
+            .map(DcbQuery::from)?;
 
         let start = store.data().last_position().map(|n| n + 1);
         let stream = args
@@ -277,7 +277,7 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
                 res = self.stream.next_batch() => {
                     let batch = match res {
                         Ok(batch) => batch,
-                        Err(DCBError::CancelledByUser()) => return Ok(None),
+                        Err(DcbError::CancelledByUser()) => return Ok(None),
                         Err(err) => return Err(err.into()),
                     };
                     self.process_batch(batch).await?;
@@ -315,7 +315,7 @@ impl<A: EventHandlerModule> Message<WorkerAck> for ModuleActor<A> {
 
 impl<A: EventHandlerModule> ModuleActor<A> {
     fn deserialize_event(
-        event: DCBSequencedEvent,
+        event: DcbSequencedEvent,
     ) -> Result<wit::common::StoredEvent, ModuleError> {
         let data: StoredEventData<Value> =
             serde_json::from_slice(&event.event.data).map_err(ModuleError::DeserializeEvent)?;
@@ -334,7 +334,7 @@ impl<A: EventHandlerModule> ModuleActor<A> {
         .into())
     }
 
-    async fn process_batch(&mut self, batch: Vec<DCBSequencedEvent>) -> Result<(), ModuleError> {
+    async fn process_batch(&mut self, batch: Vec<DcbSequencedEvent>) -> Result<(), ModuleError> {
         if A::POOL_SIZE > 0 {
             for event in batch {
                 let position = event.position;

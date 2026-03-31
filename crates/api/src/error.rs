@@ -147,3 +147,16 @@ impl AsErrorCode for umari_runtime::command::CommandError {
 }
 
 impl_into_error!(umari_runtime::command::CommandError);
+
+impl AsErrorCode for umari_runtime::module::ModuleError {
+    fn error_code(&self) -> ErrorCode {
+        use umari_runtime::module::ModuleError;
+        match self {
+            ModuleError::NotActive => ErrorCode::NotFound,
+            ModuleError::ModuleStore(err) => err.error_code(),
+            _ => ErrorCode::Internal,
+        }
+    }
+}
+
+impl_into_error!(umari_runtime::module::ModuleError);

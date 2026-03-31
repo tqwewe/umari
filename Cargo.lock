@@ -1268,6 +1268,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
 
 [[package]]
+name = "humantime"
+version = "2.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "135b12329e5e3ce057a9f972339ea52bc954fe1e9358ef27f95e89716fbc5424"
+
+[[package]]
 name = "hybrid-array"
 version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3291,7 +3297,6 @@ checksum = "562d481066bde0658276a35467c4af00bdc6ee726305698a55b86e61d7ad82bb"
 [[package]]
 name = "umadb-client"
 version = "0.4.0"
-source = "git+https://github.com/tqwewe/umadb?branch=feat%2Fserde#f55886662ab5d504afd80131f20e9e581e233284"
 dependencies = [
  "async-trait",
  "futures",
@@ -3305,7 +3310,6 @@ dependencies = [
 [[package]]
 name = "umadb-dcb"
 version = "0.4.0"
-source = "git+https://github.com/tqwewe/umadb?branch=feat%2Fserde#f55886662ab5d504afd80131f20e9e581e233284"
 dependencies = [
  "async-trait",
  "futures-core",
@@ -3318,7 +3322,6 @@ dependencies = [
 [[package]]
 name = "umadb-proto"
 version = "0.4.0"
-source = "git+https://github.com/tqwewe/umadb?branch=feat%2Fserde#f55886662ab5d504afd80131f20e9e581e233284"
 dependencies = [
  "prost",
  "tonic",
@@ -3432,11 +3435,13 @@ name = "umari-server"
 version = "0.0.0"
 dependencies = [
  "clap",
+ "humantime",
  "kameo",
  "tokio",
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+ "umadb-dcb",
  "umari-api",
  "umari-runtime",
 ]

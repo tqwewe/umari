@@ -172,6 +172,11 @@ enum ProjectorsSubcommand {
         /// module name
         name: String,
     },
+    /// reset and replay a projector module from position 0
+    Replay {
+        /// module name
+        name: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -216,6 +221,11 @@ enum PoliciesSubcommand {
         /// module name
         name: String,
     },
+    /// reset and replay a policy module from position 0
+    Replay {
+        /// module name
+        name: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -257,6 +267,11 @@ enum EffectsSubcommand {
     },
     /// deactivate an effect module
     Deactivate {
+        /// module name
+        name: String,
+    },
+    /// reset and replay an effect module from position 0
+    Replay {
         /// module name
         name: String,
     },
@@ -328,6 +343,7 @@ fn main() -> Result<()> {
             ProjectorsSubcommand::Deactivate { name } => {
                 commands::projectors::deactivate(&client, name)
             }
+            ProjectorsSubcommand::Replay { name } => commands::projectors::replay(&client, name),
         },
         Commands::Policies { command } => match command {
             PoliciesSubcommand::Upload {
@@ -348,6 +364,7 @@ fn main() -> Result<()> {
             PoliciesSubcommand::Deactivate { name } => {
                 commands::policies::deactivate(&client, name)
             }
+            PoliciesSubcommand::Replay { name } => commands::policies::replay(&client, name),
         },
         Commands::Effects { command } => match command {
             EffectsSubcommand::Upload {
@@ -368,6 +385,7 @@ fn main() -> Result<()> {
             EffectsSubcommand::Deactivate { name } => {
                 commands::effects::deactivate(&client, name)
             }
+            EffectsSubcommand::Replay { name } => commands::effects::replay(&client, name),
         },
         Commands::Modules { command } => match command {
             ModulesSubcommand::Active { r#type } => commands::modules::active(&client, r#type),

@@ -24,11 +24,13 @@ pub enum ModuleError {
     #[error("failed to deserialize event: {0}")]
     DeserializeEvent(serde_json::Error),
     #[error("event store error: {0}")]
-    EventStore(#[from] umadb_dcb::DCBError),
+    EventStore(#[from] umadb_dcb::DcbError),
     #[error("missing event id")]
     MissingEventId,
     #[error("module store error: {0}")]
     ModuleStore(SendError<(), ModuleStoreError>),
+    #[error("module not active")]
+    NotActive,
     #[error("worker unavailable")]
     WorkerUnavailable,
     #[error("worker failed: {0}")]

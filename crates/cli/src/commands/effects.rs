@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use anyhow::Result;
 use colored::Colorize;
 use umari_types::{
-    ActivateRequest, ListModulesResponse, ModuleDetailsResponse, VersionDetailsResponse,
+    ActivateRequest, ListModulesResponse, ModuleDetailsResponse, ReplayResponse,
+    VersionDetailsResponse,
 };
 
 use crate::{client::ApiClient, output};
@@ -92,5 +93,12 @@ pub fn deactivate(client: &ApiClient, name: String) -> Result<()> {
         println!("  version was: {prev}");
     }
 
+    Ok(())
+}
+
+pub fn replay(client: &ApiClient, name: String) -> Result<()> {
+    let path = format!("/effects/{name}/replay");
+    let _: ReplayResponse = client.post(&path, &())?;
+    println!("{} replaying {name} from position 0", "✓".green());
     Ok(())
 }

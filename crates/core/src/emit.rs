@@ -1,5 +1,5 @@
 use serde_json::Value;
-use umadb_dcb::DCBEvent;
+use umadb_dcb::DcbEvent;
 use uuid::Uuid;
 
 use crate::{
@@ -101,8 +101,8 @@ impl EmittedEvent {
         }
     }
 
-    pub fn into_dcb_event(self, envelope: EventEnvelope) -> DCBEvent {
-        DCBEvent {
+    pub fn into_dcb_event(self, envelope: EventEnvelope) -> DcbEvent {
+        DcbEvent {
             event_type: self.event_type,
             tags: self
                 .domain_ids

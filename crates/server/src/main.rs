@@ -9,15 +9,16 @@ use std::{
 
 use ::tracing_subscriber::EnvFilter;
 use clap::Parser;
-use kameo::{actor::ActorRef, prelude::Spawn};
-use tokio::signal;
+use kameo::{actor::ActorRef, error::HookError, prelude::Spawn};
+use tokio::{signal, task::JoinHandle};
 use tracing::{error, info, trace};
+use umadb_dcb::DcbError;
 use umari_api::{AppState, start_server};
 use umari_runtime::{
     command::actor::CommandActor,
     module::supervisor::ModuleSupervisor,
     module_store::actor::ModuleStoreActor,
-    supervisor::{RuntimeConfig, RuntimeSupervisor},
+    supervisor::{RuntimeConfig, RuntimeError, RuntimeSupervisor},
     wit::{effect::EffectWorld, policy::PolicyState, projector::ProjectorWorld},
 };
 
@@ -28,28 +29,38 @@ use crate::tracing_subscriber::PrettyNoSpans;
 #[command(about = "Umari runtime and API server", long_about = None)]
 struct Cli {
     /// Path to the runtime database file
-    #[arg(short, long, default_value = "./umari-data")]
+    #[arg(short, long, env = "UMARI_DATA_DIR", default_value = "./umari-data")]
     data_dir: PathBuf,
 
     /// Event store URL
-    #[arg(short, long, default_value = "http://localhost:50051")]
+    #[arg(
+        short,
+        long,
+        env = "UMARI_EVENT_STORE_URL",
+        default_value = "http://localhost:50051"
+    )]
     event_store_url: String,
 
     /// API server bind address
-    #[arg(short, long, default_value = "127.0.0.1:3000")]
+    #[arg(short, long, env = "UMARI_API_ADDR", default_value = "127.0.0.1:3000")]
     api_addr: String,
+
+    /// Hide the welcome banner
+    #[arg(long, env = "UMARI_NO_BANNER")]
+    no_banner: bool,
+
+    /// Graceful shutdown timeout
+    #[arg(long, value_parser = humantime::parse_duration, default_value = "10s", env = "UMARI_SHUTDOWN_TIMEOUT")]
+    shutdown_timeout: Duration,
 }
 
 #[tokio::main]
 async fn main() {
-    let ctrl_c_signal = signal::ctrl_c();
-
-    banner::print_banner();
-
     ::tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::builder()
-                .with_default_directive("info".parse().unwrap())
+                .with_default_directive("umari=info".parse().unwrap())
+                .with_env_var("UMARI_LOG")
                 .from_env_lossy(),
         )
         .event_format(PrettyNoSpans)
@@ -57,23 +68,37 @@ async fn main() {
 
     let cli = Cli::parse();
 
+    if !cli.no_banner {
+        banner::print_banner();
+    }
+
     let start = Instant::now();
     let runtime_ref = RuntimeSupervisor::spawn(RuntimeConfig {
         data_dir: cli.data_dir.into(),
         event_store_url: cli.event_store_url,
     });
 
-    let startup_success = runtime_ref
-        .wait_for_startup_with_result(|res| match res {
-            Ok(()) => true,
-            Err(err) => {
-                error!("runtime failed to startup: {err}");
-                false
+    let startup_fut = runtime_ref.wait_for_startup_with_result(|res| match res {
+        Ok(()) => true,
+        Err(HookError::Error(RuntimeError::EventStore(DcbError::TransportError(msg)))) => {
+            error!("failed to connect to event store: {msg}");
+            false
+        }
+        Err(err) => {
+            error!("runtime failed to startup: {err}");
+            false
+        }
+    });
+    tokio::select! {
+        _ = signal::ctrl_c() => {
+            initiate_shutdown(&runtime_ref, None, cli.shutdown_timeout).await;
+            return;
+        }
+        startup_success = startup_fut => {
+            if !startup_success {
+                process::exit(1);
             }
-        })
-        .await;
-    if !startup_success {
-        process::exit(1);
+        }
     }
 
     info!("runtime started after {:?}", start.elapsed());
@@ -117,25 +142,36 @@ async fn main() {
     info!("API server started on http://{}", cli.api_addr);
 
     tokio::select! {
-        _ = ctrl_c_signal => {
-            info!("received shutdown signal, shutting down gracefully...");
-            api_handle.abort();
-            if let Err(err) = runtime_ref.stop_gracefully().await {
-                error!("failed to gracefully stop runtime: {err}");
-            }
-            let fut = async {
-                tokio::select! {
-                _ = ensure_runtime_shutdown(&runtime_ref) => {}
-                _ = signal::ctrl_c() => {}
-            } };
-            if tokio::time::timeout(Duration::from_secs(15), fut).await.is_err() {
-                error!("timed out waiting for runtime to stop");
-                runtime_ref.kill();
-            }
+        _ = signal::ctrl_c() => {
+            initiate_shutdown(&runtime_ref, Some(&api_handle), cli.shutdown_timeout).await
         }
         _ = ensure_runtime_shutdown(&runtime_ref) => {
             api_handle.abort();
         }
+    }
+}
+
+async fn initiate_shutdown(
+    runtime_ref: &ActorRef<RuntimeSupervisor>,
+    api_handle: Option<&JoinHandle<()>>,
+    shutdown_timeout: Duration,
+) {
+    info!("received shutdown signal, shutting down gracefully...");
+    if let Some(handle) = api_handle {
+        handle.abort();
+    }
+    if let Err(err) = runtime_ref.stop_gracefully().await {
+        error!("failed to gracefully stop runtime: {err}");
+    }
+    let fut = async {
+        tokio::select! {
+            _ = ensure_runtime_shutdown(runtime_ref) => {}
+            _ = signal::ctrl_c() => {}
+        }
+    };
+    if tokio::time::timeout(shutdown_timeout, fut).await.is_err() {
+        error!("timed out waiting for runtime to stop");
+        runtime_ref.kill();
     }
 }
 

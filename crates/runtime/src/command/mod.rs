@@ -14,7 +14,7 @@ pub enum CommandError {
     #[error("failed to deserialize event: {0}")]
     DeserializeEvent(serde_json::Error),
     #[error("event store error: {0}")]
-    EventStore(#[from] umadb_dcb::DCBError),
+    EventStore(#[from] umadb_dcb::DcbError),
     #[error("invalid command input schema: {0}")]
     InvalidSchema(serde_json::Error),
     #[error("missing event id")]

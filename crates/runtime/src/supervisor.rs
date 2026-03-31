@@ -41,7 +41,7 @@ pub enum RuntimeError {
     #[error("module store startup failed: {0}")]
     ModuleStoreStartupFailed(String),
     #[error("event store error: {0}")]
-    EventStore(#[from] umadb_dcb::DCBError),
+    EventStore(#[from] umadb_dcb::DcbError),
     #[error("failed to subscribe to module events")]
     ModulePubSubSendError,
     #[error(transparent)]

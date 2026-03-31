@@ -26,8 +26,8 @@ use crate::routes::{
         get_effect_version_details, get_policy_details, get_policy_health,
         get_policy_version_details, get_projector_details, get_projector_health,
         get_projector_version_details, list_active_modules, list_commands, list_effects,
-        list_policies, list_projectors, upload_command, upload_effect, upload_policy,
-        upload_projector,
+        list_policies, list_projectors, replay_effect, replay_policy, replay_projector,
+        upload_command, upload_effect, upload_policy, upload_projector,
     },
 };
 use umari_types::*;
@@ -59,6 +59,9 @@ use umari_types::*;
         routes::modules::deactivate_projector,
         routes::modules::deactivate_policy,
         routes::modules::deactivate_effect,
+        routes::modules::replay_projector,
+        routes::modules::replay_policy,
+        routes::modules::replay_effect,
         routes::modules::list_active_modules,
         routes::execute::execute,
     ),
@@ -73,6 +76,7 @@ use umari_types::*;
             ActivateRequest,
             ActivateResponse,
             DeactivateResponse,
+            ReplayResponse,
             ActiveModulesResponse,
             ActiveModuleInfo,
             umari_types::ExecuteResponse,
@@ -153,6 +157,7 @@ pub async fn start_server(addr: impl ToSocketAddrs, state: AppState) -> io::Resu
         )
         .route("/projectors/{name}/active", put(activate_projector))
         .route("/projectors/{name}/active", delete(deactivate_projector))
+        .route("/projectors/{name}/replay", post(replay_projector))
         // Policy module management
         .route("/policies/{name}/versions/{version}", post(upload_policy))
         .route("/policies", get(list_policies))
@@ -163,6 +168,7 @@ pub async fn start_server(addr: impl ToSocketAddrs, state: AppState) -> io::Resu
         )
         .route("/policies/{name}/active", put(activate_policy))
         .route("/policies/{name}/active", delete(deactivate_policy))
+        .route("/policies/{name}/replay", post(replay_policy))
         // Effect module management
         .route("/effects/{name}/versions/{version}", post(upload_effect))
         .route("/effects", get(list_effects))
@@ -173,6 +179,7 @@ pub async fn start_server(addr: impl ToSocketAddrs, state: AppState) -> io::Resu
         )
         .route("/effects/{name}/active", put(activate_effect))
         .route("/effects/{name}/active", delete(deactivate_effect))
+        .route("/effects/{name}/replay", post(replay_effect))
         // Cross-module operations
         .route("/modules/active", get(list_active_modules))
         // Runtime health per category

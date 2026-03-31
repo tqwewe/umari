@@ -5,6 +5,7 @@ use axum::{
     extract::{Path, State},
 };
 use semver::Version;
+use umari_runtime::module::supervisor::Reset;
 use umari_runtime::module_store::{
     ModuleType,
     actor::{ActivateModule, DeactivateModule, GetActiveModule},
@@ -15,7 +16,7 @@ use crate::{
     error::{Error, ErrorCode},
 };
 
-use super::types::{ActivateRequest, ActivateResponse, DeactivateResponse};
+use super::types::{ActivateRequest, ActivateResponse, DeactivateResponse, ReplayResponse};
 
 #[utoipa::path(
     put,
@@ -229,6 +230,84 @@ pub async fn deactivate_effect(
     Path(name): Path<String>,
 ) -> Result<Json<DeactivateResponse>, Error> {
     deactivate_module(state, ModuleType::Effect, name).await
+}
+
+#[utoipa::path(
+    post,
+    path = "/projectors/{name}/replay",
+    params(
+        ("name" = String, Path, description = "Module name")
+    ),
+    responses(
+        (status = 200, description = "Module replay triggered successfully", body = ReplayResponse),
+        (status = 404, description = "Module not active", body = crate::error::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::error::ErrorResponse)
+    ),
+    tag = "projectors"
+)]
+pub async fn replay_projector(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> Result<Json<ReplayResponse>, Error> {
+    let name_arc: Arc<str> = name.clone().into();
+    state.projector_supervisor_ref.ask(Reset { name: name_arc }).await?;
+    Ok(Json(ReplayResponse {
+        module_type: ModuleType::Projector.to_string(),
+        name,
+        replaying: true,
+    }))
+}
+
+#[utoipa::path(
+    post,
+    path = "/policies/{name}/replay",
+    params(
+        ("name" = String, Path, description = "Module name")
+    ),
+    responses(
+        (status = 200, description = "Module replay triggered successfully", body = ReplayResponse),
+        (status = 404, description = "Module not active", body = crate::error::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::error::ErrorResponse)
+    ),
+    tag = "policies"
+)]
+pub async fn replay_policy(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> Result<Json<ReplayResponse>, Error> {
+    let name_arc: Arc<str> = name.clone().into();
+    state.policy_supervisor_ref.ask(Reset { name: name_arc }).await?;
+    Ok(Json(ReplayResponse {
+        module_type: ModuleType::Policy.to_string(),
+        name,
+        replaying: true,
+    }))
+}
+
+#[utoipa::path(
+    post,
+    path = "/effects/{name}/replay",
+    params(
+        ("name" = String, Path, description = "Module name")
+    ),
+    responses(
+        (status = 200, description = "Module replay triggered successfully", body = ReplayResponse),
+        (status = 404, description = "Module not active", body = crate::error::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::error::ErrorResponse)
+    ),
+    tag = "effects"
+)]
+pub async fn replay_effect(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> Result<Json<ReplayResponse>, Error> {
+    let name_arc: Arc<str> = name.clone().into();
+    state.effect_supervisor_ref.ask(Reset { name: name_arc }).await?;
+    Ok(Json(ReplayResponse {
+        module_type: ModuleType::Effect.to_string(),
+        name,
+        replaying: true,
+    }))
 }
 
 async fn deactivate_module(

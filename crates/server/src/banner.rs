@@ -2,22 +2,37 @@ use std::io::IsTerminal;
 
 pub fn print_banner() {
     const ART: &[&str] = &[
-        r" _   _  __  __     _     ____   ___ ",
-        r"| | | ||  \/  |   / \   |  _ \ |_ _|",
-        r"| | | || |\/| |  / _ \  | |_) | | | ",
-        r"| |_| || |  | | / ___ \ |  _ <  | | ",
-        r" \___/ |_|  |_|/_/   \_\|_| \_\|___|",
+        r"██╗   ██╗ ███╗   ███╗  █████╗  ██████╗  ██╗",
+        r"██║   ██║ ████╗ ████║ ██╔══██╗ ██╔══██╗ ██║",
+        r"██║   ██║ ██╔████╔██║ ███████║ ██████╔╝ ██║",
+        r"██║   ██║ ██║╚██╔╝██║ ██╔══██║ ██╔══██╗ ██║",
+        r"╚██████╔╝ ██║ ╚═╝ ██║ ██║  ██║ ██║  ██║ ██║",
+        r" ╚═════╝  ╚═╝     ╚═╝ ╚═╝  ╚═╝ ╚═╝  ╚═╝ ╚═╝",
     ];
 
     const PAD: &str = "    ";
-    const SUBTITLE: &str = "  wasm-native event sourcing";
+    const SUBTITLE: &str = "wasm-native event sourcing";
 
     println!();
+    const COLORS: &[&str] = &[
+        "\x1b[38;5;51m",
+        "\x1b[38;5;45m",
+        "\x1b[38;5;39m",
+        "\x1b[38;5;33m",
+        "\x1b[38;5;27m",
+        "\x1b[38;5;21m",
+    ];
+
     if std::io::stdout().is_terminal() {
-        for line in ART {
-            println!("{PAD}\x1b[1m\x1b[36m{line}\x1b[0m");
+        for (line, color) in ART.iter().zip(COLORS) {
+            println!("{PAD}\x1b[1m{color}{line}\x1b[0m");
         }
-        println!("{PAD}\x1b[2m{SUBTITLE}\x1b[0m");
+        let art_width = ART[0].chars().count();
+        let content_width = 3 + 2 + SUBTITLE.len() + 2 + 3;
+        let offset = " ".repeat((art_width.saturating_sub(content_width)) / 2);
+        let tl = "\x1b[38;5;39m╌\x1b[38;5;45m─\x1b[38;5;51m━\x1b[0m";
+        let tr = "\x1b[38;5;51m━\x1b[38;5;45m─\x1b[38;5;39m╌\x1b[0m";
+        println!("{PAD}{offset}{tl}  \x1b[2m{SUBTITLE}\x1b[0m  {tr}");
     } else {
         for line in ART {
             println!("{PAD}{line}");

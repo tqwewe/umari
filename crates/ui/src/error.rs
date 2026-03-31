@@ -77,6 +77,17 @@ where
     }
 }
 
+impl From<umari_runtime::module::ModuleError> for HtmlError {
+    fn from(err: umari_runtime::module::ModuleError) -> Self {
+        use umari_runtime::module::ModuleError;
+        let status = match &err {
+            ModuleError::NotActive => StatusCode::NOT_FOUND,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        HtmlError::new(status, err.to_string())
+    }
+}
+
 impl From<umari_runtime::command::CommandError> for HtmlError {
     fn from(err: umari_runtime::command::CommandError) -> Self {
         use umari_runtime::command::CommandError;

@@ -11,8 +11,10 @@ umari-api.workspace = true
 umari-runtime.workspace = true
 
 clap.workspace = true
+humantime.workspace = true
 kameo.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+umadb-dcb.workspace = true

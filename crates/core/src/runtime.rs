@@ -10,7 +10,7 @@ use std::{collections::HashMap, fmt};
 use chrono::DateTime;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use umadb_dcb::DCBQuery;
+use umadb_dcb::DcbQuery;
 
 use crate::{
     command::{Command, CommandInput, EventMeta},
@@ -82,8 +82,8 @@ pub enum ErrorCode {
     CommandError,
 }
 
-/// Query command to get the DCBQuery for this command input
-pub fn query_input<C: Command>(input: String) -> Result<DCBQuery, ErrorOutput>
+/// Query command to get the DcbQuery for this command input
+pub fn query_input<C: Command>(input: String) -> Result<DcbQuery, ErrorOutput>
 where
     C::Input: for<'de> Deserialize<'de>,
     C::Error: fmt::Display,
@@ -101,7 +101,7 @@ where
     })?;
 
     let domain_id_bindings = input.domain_id_bindings();
-    Ok(DCBQuery {
+    Ok(DcbQuery {
         items: build_query_items::<C::Query>(&domain_id_bindings),
     })
 }

@@ -11,8 +11,8 @@ wit_bindgen::generate!({
     generate_unused_types: true,
 });
 
-impl From<umadb_dcb::DCBQueryItem> for EventFilter {
-    fn from(item: umadb_dcb::DCBQueryItem) -> Self {
+impl From<umadb_dcb::DcbQueryItem> for EventFilter {
+    fn from(item: umadb_dcb::DcbQueryItem) -> Self {
         EventFilter {
             types: item.types,
             tags: item.tags,
@@ -20,26 +20,26 @@ impl From<umadb_dcb::DCBQueryItem> for EventFilter {
     }
 }
 
-impl From<EventFilter> for umadb_dcb::DCBQueryItem {
+impl From<EventFilter> for umadb_dcb::DcbQueryItem {
     fn from(item: EventFilter) -> Self {
-        umadb_dcb::DCBQueryItem {
+        umadb_dcb::DcbQueryItem {
             types: item.types,
             tags: item.tags,
         }
     }
 }
 
-impl From<umadb_dcb::DCBQuery> for EventQuery {
-    fn from(query: umadb_dcb::DCBQuery) -> Self {
+impl From<umadb_dcb::DcbQuery> for EventQuery {
+    fn from(query: umadb_dcb::DcbQuery) -> Self {
         EventQuery {
             items: query.items.into_iter().map(|item| item.into()).collect(),
         }
     }
 }
 
-impl From<EventQuery> for umadb_dcb::DCBQuery {
+impl From<EventQuery> for umadb_dcb::DcbQuery {
     fn from(query: EventQuery) -> Self {
-        umadb_dcb::DCBQuery {
+        umadb_dcb::DcbQuery {
             items: query.items.into_iter().map(|item| item.into()).collect(),
         }
     }
@@ -71,16 +71,14 @@ impl From<StoredEvent> for crate::event::StoredEvent<serde_json::Value> {
             .causation_id
             .parse::<uuid::Uuid>()
             .expect("host guaranteed valid uuid for causation_id");
-        let triggering_event_id = event
-            .triggering_event_id
-            .map(|triggering_event_id| {
-                triggering_event_id
-                    .parse::<uuid::Uuid>()
-                    .expect("host guaranteed valid uuid for triggering_event_id")
-            });
+        let triggering_event_id = event.triggering_event_id.map(|triggering_event_id| {
+            triggering_event_id
+                .parse::<uuid::Uuid>()
+                .expect("host guaranteed valid uuid for triggering_event_id")
+        });
 
-        let data: serde_json::Value = serde_json::from_str(&event.data)
-            .expect("host guaranteed valid json for event data");
+        let data: serde_json::Value =
+            serde_json::from_str(&event.data).expect("host guaranteed valid json for event data");
 
         crate::event::StoredEvent {
             id,

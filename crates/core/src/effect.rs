@@ -1,6 +1,6 @@
 use std::fmt;
 
-use umadb_dcb::{DCBQuery, DCBQueryItem};
+use umadb_dcb::{DcbQuery, DcbQueryItem};
 
 use crate::event::{EventSet, StoredEvent};
 
@@ -9,8 +9,8 @@ pub trait Effect: Default {
     type Error: fmt::Display;
 
     /// Query describing what events this effect should receive
-    fn query(&self) -> DCBQuery {
-        DCBQuery::new().item(DCBQueryItem::new().types(Self::Query::EVENT_TYPES.iter().copied()))
+    fn query(&self) -> DcbQuery {
+        DcbQuery::new().item(DcbQueryItem::new().types(Self::Query::EVENT_TYPES.iter().copied()))
     }
 
     /// TODO Docs

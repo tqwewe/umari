@@ -1,4 +1,4 @@
-use umadb_dcb::{DCBQuery, DCBQueryItem};
+use umadb_dcb::{DcbQuery, DcbQueryItem};
 
 use crate::{
     error::SqliteError,
@@ -14,8 +14,8 @@ pub trait Projector: Sized {
     fn init() -> Result<Self, SqliteError>;
 
     /// The initial query to process events with.
-    fn query(&self) -> DCBQuery {
-        DCBQuery::new().item(DCBQueryItem::new().types(Self::Query::EVENT_TYPES.iter().copied()))
+    fn query(&self) -> DcbQuery {
+        DcbQuery::new().item(DcbQueryItem::new().types(Self::Query::EVENT_TYPES.iter().copied()))
     }
 
     /// Handle a single event, updating the projector.

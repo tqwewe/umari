@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use schemars::Schema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use umadb_dcb::{DCBEvent, DCBQuery, DCBQueryItem};
+use umadb_dcb::{DcbEvent, DcbQuery, DcbQueryItem};
 use uuid::Uuid;
 
 use crate::{
@@ -123,9 +123,9 @@ pub trait Command: Default + Send {
     /// Domain IDs query.
     ///
     /// Defaults to filtering domain ids in the input.
-    fn query(input: &Self::Input) -> DCBQuery {
+    fn query(input: &Self::Input) -> DcbQuery {
         let items = build_query_items::<Self::Query>(&input.domain_id_bindings());
-        DCBQuery::with_items(items)
+        DcbQuery::with_items(items)
     }
 
     /// Apply a historical event to rebuild state.
@@ -257,10 +257,10 @@ pub struct EventMeta {
 #[derive(Clone, Debug)]
 pub struct ExecuteResult {
     pub position: Option<u64>,
-    pub events: Vec<DCBEvent>,
+    pub events: Vec<DcbEvent>,
 }
 
-pub fn build_query_items<Q: EventSet>(bindings: &DomainIdBindings) -> Vec<DCBQueryItem> {
+pub fn build_query_items<Q: EventSet>(bindings: &DomainIdBindings) -> Vec<DcbQueryItem> {
     // Group event types by their domain ID field signature
     // { ["user_id"] => ["UserRegistered", "UserCompletedOnboarding"],
     //   ["bet_id", "user_id"] => ["BetTracked"] }
@@ -284,7 +284,7 @@ pub fn build_query_items<Q: EventSet>(bindings: &DomainIdBindings) -> Vec<DCBQue
     for (fields, event_types) in groups {
         if fields.is_empty() {
             // No matching domain IDs - query by type only
-            items.push(DCBQueryItem::new().types(event_types.iter().copied()));
+            items.push(DcbQueryItem::new().types(event_types.iter().copied()));
             continue;
         }
 
@@ -298,7 +298,7 @@ pub fn build_query_items<Q: EventSet>(bindings: &DomainIdBindings) -> Vec<DCBQue
 
         for tags in tag_combinations {
             items.push(
-                DCBQueryItem::new()
+                DcbQueryItem::new()
                     .tags(tags)
                     .types(event_types.iter().copied()),
             );
@@ -336,6 +336,7 @@ fn cartesian_product(bindings: &DomainIdBindings) -> Vec<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use serde_json::Value;
+    use umadb_dcb::DcbQueryItem;
 
     use crate::error::SerializationError;
 
@@ -349,7 +350,7 @@ mod tests {
     }
 
     /// Extract tags and types from query items for easier assertion
-    fn extract(items: &[DCBQueryItem]) -> Vec<(Vec<String>, Vec<String>)> {
+    fn extract(items: &[DcbQueryItem]) -> Vec<(Vec<String>, Vec<String>)> {
         items
             .iter()
             .map(|item| {
