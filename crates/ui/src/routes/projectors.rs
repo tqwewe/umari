@@ -210,6 +210,22 @@ pub async fn query_projector(
     State(state): State<UiState>,
     Path(name): Path<String>,
     Form(form): Form<SqlQueryForm>,
+) -> Markup {
+    match query_projector_inner(state, name, form).await {
+        Ok(markup) => markup,
+        Err(err) => html! {
+            div class="rounded-md bg-red-50 border border-red-200 p-4 text-sm text-red-800" {
+                p class="font-semibold mb-1" { "Error" }
+                p { (err.message) }
+            }
+        },
+    }
+}
+
+async fn query_projector_inner(
+    state: UiState,
+    name: String,
+    form: SqlQueryForm,
 ) -> Result<Markup, HtmlError> {
     let sql = form.sql.trim().to_string();
     if !sql.to_ascii_lowercase().starts_with("select") {

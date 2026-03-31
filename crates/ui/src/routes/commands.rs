@@ -16,7 +16,7 @@ use umari_runtime::{
 
 use crate::{
     UiState,
-    components::{ModuleHealth, execute_form, module_summary_table, output, upload_form, versions_table},
+    components::{ModuleHealth, execute_form, module_summary_table, output, tabs, upload_form, versions_table},
     error::HtmlError,
     htmx::respond,
 };
@@ -94,6 +94,15 @@ pub async fn get_command(
         .map(|m| m.output.entries())
         .unwrap_or_default();
 
+    let versions_panel = html! {
+        (versions_table(ModuleType::Command, &name, versions, active_version.as_ref()))
+        (upload_form(ModuleType::Command, Some(&name)))
+    };
+    let execute_panel = html! {
+        (execute_form(&name, schema.as_ref()))
+        (output(&entries))
+    };
+
     let content = html! {
         a href="/ui/commands"
             hx-get="/ui/commands"
@@ -102,11 +111,12 @@ pub async fn get_command(
             class="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 mb-6"
             { "← Back to Commands" }
         h2 class="text-2xl font-semibold text-gray-900 mb-6" { "Command: " (name) }
-        h3 class="text-base font-semibold text-gray-700 mb-3 mt-6" { "Versions" }
-        (versions_table(ModuleType::Command, &name, versions, active_version.as_ref()))
-        (output(&entries))
-        (upload_form(ModuleType::Command, Some(&name)))
-        (execute_form(&name, schema.as_ref()))
+        div class="mt-6" {
+            (tabs(&format!("tabs-command-{name}"), vec![
+                ("Versions", versions_panel),
+                ("Execute", execute_panel),
+            ]))
+        }
     };
 
     Ok(respond(&headers, &name, content))

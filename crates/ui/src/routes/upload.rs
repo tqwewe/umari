@@ -20,6 +20,23 @@ pub async fn upload_module(
     Path(module_type_str): Path<String>,
     _headers: HeaderMap,
     mut multipart: Multipart,
+) -> Response {
+    match upload_module_inner(state, module_type_str, multipart).await {
+        Ok(response) => response,
+        Err(err) => html! {
+            div class="rounded-md bg-red-50 border border-red-200 p-4 text-sm text-red-800" {
+                p class="font-semibold mb-1" { "Error" }
+                p { (err.message) }
+            }
+        }
+        .into_response(),
+    }
+}
+
+async fn upload_module_inner(
+    state: UiState,
+    module_type_str: String,
+    mut multipart: Multipart,
 ) -> Result<Response, HtmlError> {
     let module_type = match module_type_str.as_str() {
         "commands" => ModuleType::Command,

@@ -149,10 +149,37 @@ pub fn module_status_card(
             }
             @if active_version.is_some() {
                 div class="flex flex-col items-end gap-1 shrink-0" {
+                    dialog
+                        id="confirm-reset-replay"
+                        onclick="if(event.target===this)this.close()"
+                        class="rounded-lg border border-gray-200 shadow-xl backdrop:bg-black/40 p-0 w-full max-w-md"
+                    {
+                        div class="p-6" {
+                            h3 class="text-lg font-semibold text-gray-900 mb-2" { "Reset & Replay" }
+                            p class="text-sm text-gray-600 mb-4" {
+                                "This will reset the module database and replay all events from position 0. "
+                                "Any state built up by this module will be lost."
+                            }
+                            div class="flex justify-end gap-2" {
+                                button
+                                    type="button"
+                                    onclick="document.getElementById('confirm-reset-replay').close()"
+                                    class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+                                    { "Cancel" }
+                                button
+                                    type="button"
+                                    hx-post=(replay_url)
+                                    hx-target="#replay-status"
+                                    hx-swap="innerHTML"
+                                    onclick="document.getElementById('confirm-reset-replay').close()"
+                                    class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-amber-600 text-white hover:bg-amber-700 transition-colors"
+                                    { "↺ Reset & Replay" }
+                            }
+                        }
+                    }
                     button
-                        hx-post=(replay_url)
-                        hx-target="#replay-status"
-                        hx-swap="innerHTML"
+                        type="button"
+                        onclick="document.getElementById('confirm-reset-replay').showModal()"
                         class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-amber-600 text-white hover:bg-amber-700 transition-colors"
                         { "↺ Reset & Replay" }
                     div id="replay-status" class="text-xs text-amber-700" {}
@@ -178,6 +205,43 @@ pub fn versions_table(
     let table_id = format!("versions-table-{name}");
 
     html! {
+        // Confirmation modals for major version changes
+        @for info in &versions {
+            @let is_active = active_version.is_some_and(|v| v == &info.version);
+            @if !is_active && active_version.is_some_and(|av| av.major != info.version.major) {
+                @let modal_id = format!("confirm-activate-{name}-{}", info.version);
+                @let active_ver_str = active_version.map(|v| v.to_string()).unwrap_or_default();
+                dialog
+                    id=(modal_id)
+                    onclick="if(event.target===this)this.close()"
+                    class="rounded-lg border border-gray-200 shadow-xl backdrop:bg-black/40 p-0 w-full max-w-md"
+                {
+                    div class="p-6" {
+                        h3 class="text-lg font-semibold text-gray-900 mb-2" { "Major Version Change" }
+                        p class="text-sm text-gray-600 mb-4" {
+                            "Activating version " strong { (info.version) } " will reset the module database, "
+                            "as it has a different major version to the currently active version " strong { (active_ver_str) } "."
+                        }
+                        div class="flex justify-end gap-2" {
+                            button
+                                type="button"
+                                onclick={"document.getElementById('" (modal_id) "').close()"}
+                                class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+                                { "Cancel" }
+                            button
+                                type="button"
+                                hx-put={"/ui/" (module_type_str) "/" (name) "/active"}
+                                hx-vals={"{\"version\":\"" (info.version) "\"}"}
+                                hx-target={"#" (table_id)}
+                                hx-swap="outerHTML"
+                                onclick={"document.getElementById('" (modal_id) "').close()"}
+                                class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-red-600 text-white hover:bg-red-700 transition-colors"
+                                { "Confirm Activation" }
+                        }
+                    }
+                }
+            }
+        }
         div class="overflow-hidden rounded-lg border border-gray-200 bg-white" {
             table id=(table_id) class="w-full text-sm" {
                 thead {
@@ -194,8 +258,9 @@ pub fn versions_table(
                             td colspan="4" class="px-4 py-3 text-sm text-gray-500" { "No versions uploaded yet." }
                         }
                     }
-                    @for info in versions {
+                    @for info in &versions {
                         @let is_active = active_version.is_some_and(|v| v == &info.version);
+                        @let major_differs = !is_active && active_version.is_some_and(|av| av.major != info.version.major);
                         @let sha_short = &info.sha256[..12.min(info.sha256.len())];
                         tr class="border-b border-gray-100 last:border-0 hover:bg-gray-50" {
                             td class="px-4 py-3 text-gray-700 font-mono text-xs" { (info.version) }
@@ -205,7 +270,15 @@ pub fn versions_table(
                                 }
                             }
                             td class="px-4 py-3 text-gray-500 font-mono text-xs" {
-                                span title=(info.sha256) { (sha_short) "…" }
+                                span class="inline-flex items-center gap-1.5" {
+                                    span title=(info.sha256) { (sha_short) "…" }
+                                    button
+                                        type="button"
+                                        title="Copy full SHA256"
+                                        onclick={"navigator.clipboard.writeText('" (info.sha256) "').then(() => { const el = this; el.textContent = '✓'; setTimeout(() => el.textContent = '⧉', 1500); })"}
+                                        class="text-gray-400 hover:text-gray-600 transition-colors"
+                                        { "⧉" }
+                                }
                             }
                             td class="px-4 py-3 text-right" {
                                 @if is_active {
@@ -215,6 +288,13 @@ pub fn versions_table(
                                         hx-swap="outerHTML"
                                         class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
                                         { "Deactivate" }
+                                } @else if major_differs {
+                                    @let modal_id = format!("confirm-activate-{name}-{}", info.version);
+                                    button
+                                        type="button"
+                                        onclick={"document.getElementById('" (modal_id) "').showModal()"}
+                                        class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+                                        { "Activate" }
                                 } @else {
                                     button
                                         hx-put={"/ui/" (module_type_str) "/" (name) "/active"}
@@ -362,6 +442,8 @@ pub fn upload_form(module_type: ModuleType, name: Option<&str>) -> Markup {
             form
                 hx-post={"/ui/upload/" (module_type_str)}
                 hx-encoding="multipart/form-data"
+                hx-target={"#" (modal_id) "-status"}
+                hx-swap="innerHTML"
                 class="flex flex-col gap-4 px-5 py-5"
             {
                 @if let Some(n) = name {
@@ -398,6 +480,7 @@ pub fn upload_form(module_type: ModuleType, name: Option<&str>) -> Markup {
                     { "Upload" }
                 }
             }
+            div id={"" (modal_id) "-status"} class="px-5 pb-4 empty:hidden" {}
         }
     }
 }

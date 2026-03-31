@@ -4,7 +4,7 @@ use axum::{
     Form,
     extract::{Path, State},
 };
-use maud::Markup;
+use maud::{Markup, html};
 use semver::Version;
 use serde::Deserialize;
 use umari_runtime::module_store::{
@@ -23,45 +23,65 @@ pub async fn activate(
     State(state): State<UiState>,
     Path((module_type_str, name)): Path<(String, String)>,
     Form(form): Form<ActivateForm>,
-) -> Result<Markup, HtmlError> {
-    let module_type = parse_module_type(&module_type_str)?;
-    let name_arc: Arc<str> = name.clone().into();
+) -> Markup {
+    let result = async {
+        let module_type = parse_module_type(&module_type_str)?;
+        let name_arc: Arc<str> = name.clone().into();
 
-    let version = form
-        .version
-        .parse::<Version>()
-        .map_err(|_| HtmlError::bad_request("invalid version"))?;
+        let version = form
+            .version
+            .parse::<Version>()
+            .map_err(|_| HtmlError::bad_request("invalid version"))?;
 
-    state
-        .module_store_ref
-        .ask(ActivateModule {
-            module_type,
-            name: name_arc.clone(),
-            version,
-        })
-        .await
-        .map_err(HtmlError::from)?;
+        state
+            .module_store_ref
+            .ask(ActivateModule {
+                module_type,
+                name: name_arc.clone(),
+                version,
+            })
+            .await
+            .map_err(HtmlError::from)?;
 
-    render_versions_table(&state, module_type, name_arc, &name).await
+        render_versions_table(&state, module_type, name_arc, &name).await
+    }
+    .await;
+
+    result.unwrap_or_else(|err| error_table(&name, &err.message))
 }
 
 pub async fn deactivate(
     State(state): State<UiState>,
     Path((module_type_str, name)): Path<(String, String)>,
-) -> Result<Markup, HtmlError> {
-    let module_type = parse_module_type(&module_type_str)?;
-    let name_arc: Arc<str> = name.clone().into();
+) -> Markup {
+    let result = async {
+        let module_type = parse_module_type(&module_type_str)?;
+        let name_arc: Arc<str> = name.clone().into();
 
-    state
-        .module_store_ref
-        .ask(umari_runtime::module_store::actor::DeactivateModule {
-            module_type,
-            name: name_arc.clone(),
-        })
-        .await
-        .map_err(HtmlError::from)?;
+        state
+            .module_store_ref
+            .ask(umari_runtime::module_store::actor::DeactivateModule {
+                module_type,
+                name: name_arc.clone(),
+            })
+            .await
+            .map_err(HtmlError::from)?;
 
-    render_versions_table(&state, module_type, name_arc, &name).await
+        render_versions_table(&state, module_type, name_arc, &name).await
+    }
+    .await;
+
+    result.unwrap_or_else(|err| error_table(&name, &err.message))
+}
+
+fn error_table(name: &str, message: &str) -> Markup {
+    let table_id = format!("versions-table-{name}");
+    html! {
+        div id=(table_id) class="rounded-md bg-red-50 border border-red-200 p-4 text-sm text-red-800" {
+            p class="font-semibold mb-1" { "Error" }
+            p { (message) }
+        }
+    }
 }
 
 fn parse_module_type(s: &str) -> Result<ModuleType, HtmlError> {
