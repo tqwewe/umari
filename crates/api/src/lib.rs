@@ -1,6 +1,8 @@
 pub mod error;
 mod routes;
 
+use std::{path::PathBuf, sync::Arc};
+
 use axum::{
     Router,
     routing::{delete, get, post, put},
@@ -107,6 +109,7 @@ struct ApiDoc;
 
 #[derive(Clone, Debug)]
 pub struct AppState {
+    pub data_dir: Arc<PathBuf>,
     pub module_store_ref: ActorRef<ModuleStoreActor>,
     pub command_ref: ActorRef<CommandActor>,
     pub projector_supervisor_ref: ActorRef<ModuleSupervisor<ProjectorWorld>>,
@@ -121,6 +124,7 @@ pub async fn start_server(addr: impl ToSocketAddrs, state: AppState) -> io::Resu
 
     // Create UI router
     let ui_state = UiState {
+        data_dir: state.data_dir.clone(),
         module_store_ref: state.module_store_ref.clone(),
         command_ref: state.command_ref.clone(),
         projector_supervisor_ref: state.projector_supervisor_ref.clone(),

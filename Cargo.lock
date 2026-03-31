@@ -3464,6 +3464,7 @@ dependencies = [
  "hex",
  "kameo",
  "maud",
+ "rusqlite",
  "schemars",
  "semver",
  "serde",

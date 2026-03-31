@@ -4,6 +4,7 @@ mod tracing_subscriber;
 use std::{
     path::PathBuf,
     process,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -72,9 +73,11 @@ async fn main() {
         banner::print_banner();
     }
 
+    let data_dir: Arc<PathBuf> = cli.data_dir.into();
+
     let start = Instant::now();
     let runtime_ref = RuntimeSupervisor::spawn(RuntimeConfig {
-        data_dir: cli.data_dir.into(),
+        data_dir: data_dir.clone(),
         event_store_url: cli.event_store_url,
     });
 
@@ -127,6 +130,7 @@ async fn main() {
         async move {
             trace!("starting API server on {api_addr}");
             let state = AppState {
+                data_dir,
                 module_store_ref,
                 command_ref,
                 projector_supervisor_ref,

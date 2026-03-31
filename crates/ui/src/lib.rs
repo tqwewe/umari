@@ -4,6 +4,8 @@ pub mod htmx;
 pub mod layout;
 mod routes;
 
+use std::{path::PathBuf, sync::Arc};
+
 use axum::{
     Router,
     routing::{delete, get, post, put},
@@ -24,13 +26,14 @@ use crate::routes::{
     execute::execute_command,
     index::index,
     policies::{get_policy, list_policies},
-    projectors::{get_projector, list_projectors},
+    projectors::{get_projector, list_projectors, query_projector},
     replay::replay,
     upload::upload_module,
 };
 
 #[derive(Clone)]
 pub struct UiState {
+    pub data_dir: Arc<PathBuf>,
     pub module_store_ref: ActorRef<ModuleStoreActor>,
     pub command_ref: ActorRef<CommandActor>,
     pub projector_supervisor_ref: ActorRef<ModuleSupervisor<ProjectorWorld>>,
@@ -45,6 +48,7 @@ pub fn ui_router(state: UiState) -> Router {
         .route("/ui/commands/{name}", get(get_command))
         .route("/ui/projectors", get(list_projectors))
         .route("/ui/projectors/{name}", get(get_projector))
+        .route("/ui/projectors/{name}/query", post(query_projector))
         .route("/ui/policies", get(list_policies))
         .route("/ui/policies/{name}", get(get_policy))
         .route("/ui/effects", get(list_effects))
