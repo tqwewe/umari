@@ -6,6 +6,7 @@ edition = "2024"
 umari-macros.workspace = true
 
 chrono.workspace = true
+garde.workspace = true
 indexmap.workspace = true
 libc.workspace = true
 schemars.workspace = true

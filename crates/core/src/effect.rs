@@ -10,14 +10,14 @@ pub trait Effect: Default {
 
     /// Query describing what events this effect should receive
     fn query(&self) -> DcbQuery {
-        DcbQuery::new().item(DcbQueryItem::new().types(Self::Query::EVENT_TYPES.iter().copied()))
+        DcbQuery::new().item(DcbQueryItem::new().types(Self::Query::event_types().into_iter()))
     }
 
     /// Partition key for parallel effects
-    fn partition_key(&self, _event: StoredEvent<Self::Query>) -> Option<String> {
+    fn partition_key(&self, _event: StoredEvent<<Self::Query as EventSet>::Item>) -> Option<String> {
         None
     }
 
     /// Handle a single event and perform external actions
-    fn handle(&mut self, event: StoredEvent<Self::Query>) -> Result<(), Self::Error>;
+    fn handle(&mut self, event: StoredEvent<<Self::Query as EventSet>::Item>) -> Result<(), Self::Error>;
 }

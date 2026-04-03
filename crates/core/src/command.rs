@@ -1,16 +1,17 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
-use schemars::Schema;
+use garde::Validate;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use umadb_dcb::{DcbEvent, DcbQuery, DcbQueryItem};
+use umadb_dcb::{DcbEvent, DcbQueryItem};
 use uuid::Uuid;
 
 use crate::{
     domain_id::DomainIdBindings,
     emit::Emit,
-    error::CommandError,
+    error::SerializationError,
     event::{EventSet, StoredEvent},
 };
 
@@ -96,47 +97,239 @@ pub trait CommandInput {
 ///     }
 /// }
 /// ```
-pub trait Command: Default + Send {
-    /// The set of event types this handler reads.
-    /// Defines the event type filter for the query.
-    type Query: EventSet;
-
+pub trait Command {
     /// The input type for this command.
     /// Defines the domain ID bindings for the query.
-    type Input: CommandInput + Send;
+    type Input: CommandInput + Validate + JsonSchema;
 
-    /// An optional json schema for the command input.
-    fn schema() -> Option<Schema> {
-        None
+    type State: FoldSet;
+    type Rules: RuleSet;
+
+    fn rules(input: &Self::Input) -> Self::Rules;
+
+    fn is_idempotent(_state: &Self::State) -> bool {
+        false
     }
 
-    /// Validate the input before querying anything.
-    #[allow(unused_variables)]
-    fn validate(input: &Self::Input) -> Result<(), CommandError> {
+    fn emit(state: Self::State, input: Self::Input) -> Emit;
+}
+
+pub trait Fold: Default {
+    type Events: EventSet;
+
+    fn apply(&mut self, event: &<Self::Events as EventSet>::Item, meta: EventMeta);
+}
+
+macro_rules! impl_tuple_folds {
+    ($( $t:ident:$n:tt ),*) => {
+        impl<$($t,)*> Fold for ($($t,)*)
+        where
+            $(
+                $t: Fold,
+            )*
+        {
+            type Events = ($($t::Events,)*);
+
+            fn apply(&mut self, event: &<Self::Events as EventSet>::Item, meta: EventMeta) {
+                $(
+                    if let Some(ref e) = event.$n {
+                        self.$n.apply(e, meta);
+                    }
+                )*
+            }
+        }
+    };
+}
+
+impl_tuple_folds!(A:0, B:1);
+impl_tuple_folds!(A:0, B:1, C:2);
+impl_tuple_folds!(A:0, B:1, C:2, D:3);
+impl_tuple_folds!(A:0, B:1, C:2, D:3, E:4);
+impl_tuple_folds!(A:0, B:1, C:2, D:3, E:4, F:5);
+impl_tuple_folds!(A:0, B:1, C:2, D:3, E:4, F:5, G:6);
+impl_tuple_folds!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7);
+impl_tuple_folds!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8);
+impl_tuple_folds!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9);
+impl_tuple_folds!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10);
+impl_tuple_folds!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10, L:11);
+
+pub trait Rule {
+    type State: Fold;
+
+    fn check(&self, state: &Self::State) -> Result<(), String>;
+}
+
+pub trait FoldSet: Default {
+    fn event_types() -> Vec<&'static str>;
+    fn event_domain_ids() -> Vec<(&'static str, &'static [&'static str])>;
+
+    fn apply(
+        &mut self,
+        event_type: &str,
+        data: Value,
+        tags: &[String],
+        bindings: &DomainIdBindings,
+        meta: EventMeta,
+    ) -> Result<(), SerializationError>;
+}
+
+pub trait RuleSet {
+    type States: FoldSet;
+
+    fn check(&self, states: &Self::States) -> Result<(), String>;
+}
+
+impl FoldSet for () {
+    fn event_types() -> Vec<&'static str> {
+        vec![]
+    }
+
+    fn event_domain_ids() -> Vec<(&'static str, &'static [&'static str])> {
+        vec![]
+    }
+
+    fn apply(
+        &mut self,
+        _event_type: &str,
+        _data: Value,
+        _tags: &[String],
+        _bindings: &DomainIdBindings,
+        _meta: EventMeta,
+    ) -> Result<(), SerializationError> {
         Ok(())
     }
+}
 
-    /// Domain IDs query.
-    ///
-    /// Defaults to filtering domain ids in the input.
-    fn query(input: &Self::Input) -> DcbQuery {
-        let items = build_query_items::<Self::Query>(&input.domain_id_bindings());
-        DcbQuery::with_items(items)
+macro_rules! impl_tuple_fold_sets {
+    ($( $t:ident:$n:tt ),+) => {
+        impl<$($t,)+> FoldSet for ($($t,)+)
+        where
+            $(
+                $t: Fold,
+            )+
+        {
+            fn event_types() -> Vec<&'static str> {
+                let mut types = Vec::new();
+                $(
+                    types.extend_from_slice(&$t::Events::event_types());
+                )+
+                types
+            }
+
+            fn event_domain_ids() -> Vec<(&'static str, &'static [&'static str])> {
+                let mut ids = Vec::new();
+                $(
+                    ids.extend_from_slice(&$t::Events::event_domain_ids());
+                )+
+                ids
+            }
+
+            fn apply(
+                &mut self,
+                event_type: &str,
+                data: Value,
+                tags: &[String],
+                bindings: &DomainIdBindings,
+                meta: EventMeta,
+            ) -> Result<(), SerializationError> {
+                $(
+                    if matches_invariant::<$t>(event_type, tags, bindings)
+                        && let Some(event) = $t::Events::from_event(event_type, data.clone()).transpose()?
+                    {
+                        self.$n.apply(&event, meta);
+                    }
+                )+
+                Ok(())
+            }
+        }
+    };
+}
+
+impl_tuple_fold_sets!(A:0);
+impl_tuple_fold_sets!(A:0, B:1);
+impl_tuple_fold_sets!(A:0, B:1, C:2);
+impl_tuple_fold_sets!(A:0, B:1, C:2, D:3);
+impl_tuple_fold_sets!(A:0, B:1, C:2, D:3, E:4);
+impl_tuple_fold_sets!(A:0, B:1, C:2, D:3, E:4, F:5);
+impl_tuple_fold_sets!(A:0, B:1, C:2, D:3, E:4, F:5, G:6);
+impl_tuple_fold_sets!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7);
+impl_tuple_fold_sets!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8);
+impl_tuple_fold_sets!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9);
+impl_tuple_fold_sets!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10);
+
+impl RuleSet for () {
+    type States = ();
+
+    fn check(&self, _: &Self::States) -> Result<(), String> {
+        Ok(())
     }
+}
 
-    /// Apply a historical event to rebuild state.
-    ///
-    /// Called once for each event matching the query, in order.
-    /// The handler should update its internal state based on the event.
-    fn apply(&mut self, event: Self::Query, meta: EventMeta);
+macro_rules! impl_tuple_rule_sets {
+    ($( $t:ident:$n:tt ),+) => {
+        impl<$($t,)+> RuleSet for ($($t,)+)
+        where
+            $(
+                $t: Rule,
+            )+
+        {
+            type States = ($($t::State,)+);
 
-    /// Handle the command and produce new events.
-    ///
-    /// Called after all historical events have been applied.
-    /// Should validate the command against current state and either:
-    /// - Return new events to persist
-    /// - Return an error rejecting the command
-    fn handle(&self, input: Self::Input) -> Result<Emit, CommandError>;
+            fn check(&self, states: &Self::States) -> Result<(), String> {
+                $(
+                    self.$n.check(&states.$n)?;
+                )+
+                Ok(())
+            }
+        }
+    };
+}
+
+impl_tuple_rule_sets!(A:0);
+impl_tuple_rule_sets!(A:0, B:1);
+impl_tuple_rule_sets!(A:0, B:1, C:2);
+impl_tuple_rule_sets!(A:0, B:1, C:2, D:3);
+impl_tuple_rule_sets!(A:0, B:1, C:2, D:3, E:4);
+impl_tuple_rule_sets!(A:0, B:1, C:2, D:3, E:4, F:5);
+impl_tuple_rule_sets!(A:0, B:1, C:2, D:3, E:4, F:5, G:6);
+impl_tuple_rule_sets!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7);
+impl_tuple_rule_sets!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8);
+impl_tuple_rule_sets!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9);
+impl_tuple_rule_sets!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10);
+
+fn matches_invariant<I: Fold>(
+    event_type: &str,
+    tags: &[String],
+    bindings: &DomainIdBindings,
+) -> bool {
+    let domain_ids = I::Events::event_domain_ids();
+    let required_fields = domain_ids
+        .iter()
+        .find(|(et, _)| *et == event_type)
+        .map(|(_, fields)| *fields)
+        .unwrap_or(&[]);
+
+    required_fields.iter().all(|field| {
+        bindings
+            .get(field)
+            .map(|values| {
+                // same as tags.contains(&format!("{field}:{v}"))), but avoids allocation
+                values.iter().any(|v| {
+                    tags.iter().any(|tag| {
+                        let Some(rest) = tag.strip_prefix(field) else {
+                            return false;
+                        };
+
+                        let Some(rest) = rest.strip_prefix(':') else {
+                            return false;
+                        };
+
+                        rest == v
+                    })
+                })
+            })
+            .unwrap_or(true)
+    })
 }
 
 pub trait CommandExecute: Command {
@@ -253,13 +446,16 @@ pub struct ExecuteResult {
     pub events: Vec<DcbEvent>,
 }
 
-pub fn build_query_items<Q: EventSet>(bindings: &DomainIdBindings) -> Vec<DcbQueryItem> {
+pub fn build_query_items(
+    event_domain_ids: &[(&str, &[&'static str])],
+    bindings: &DomainIdBindings,
+) -> Vec<DcbQueryItem> {
     // Group event types by their domain ID field signature
     // { ["user_id"] => ["UserRegistered", "UserCompletedOnboarding"],
     //   ["bet_id", "user_id"] => ["BetTracked"] }
     let mut groups: HashMap<Vec<&str>, Vec<&str>> = HashMap::new();
 
-    for (event_type, fields) in Q::EVENT_DOMAIN_IDS {
+    for (event_type, fields) in event_domain_ids {
         // Only include fields that are in our input bindings
         let mut relevant_fields: Vec<&str> = fields
             .iter()

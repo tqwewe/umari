@@ -62,7 +62,7 @@ impl<T: Projector + 'static> GuestProjector for ProjectorState<T> {
             None => return, // Event type not in query set, skip
         };
 
-        let event = crate::event::StoredEvent {
+        let event: crate::event::StoredEvent<<T::Query as EventSet>::Item> = crate::event::StoredEvent {
             id: event.id,
             position: event.position,
             event_type: event.event_type,

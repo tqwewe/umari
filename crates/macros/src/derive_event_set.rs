@@ -137,10 +137,17 @@ impl DeriveEventSet {
         quote! {
             #[automatically_derived]
             impl ::umari_core::event::EventSet for #ident {
-                const EVENT_TYPES: &'static [&'static str] = &[ #( <#event_types as ::umari_core::event::Event>::EVENT_TYPE, )* ];
-                const EVENT_DOMAIN_IDS: &'static [(&'static str, &'static [&'static str])] = &[ #( #event_domain_ids , )* ];
+                type Item = Self;
 
-                fn from_event(event_type: &str, data: ::umari_core::__private::serde_json::Value) -> ::std::option::Option<::std::result::Result<Self, ::umari_core::error::SerializationError>> {
+                fn event_types() -> ::std::vec::Vec<&'static str> {
+                    ::std::vec![ #( <#event_types as ::umari_core::event::Event>::EVENT_TYPE, )* ]
+                }
+
+                fn event_domain_ids() -> ::std::vec::Vec<(&'static str, &'static [&'static str])> {
+                    ::std::vec![ #( #event_domain_ids , )* ]
+                }
+
+                fn from_event(event_type: &str, data: ::umari_core::__private::serde_json::Value) -> ::std::option::Option<::std::result::Result<Self::Item, ::umari_core::error::SerializationError>> {
                     match event_type {
                         #( #match_arms )*
                         _ => ::std::option::Option::None

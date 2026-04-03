@@ -104,17 +104,19 @@ pub trait Event: Serialize + DeserializeOwned + Sized {
 /// }
 /// ```
 pub trait EventSet: Sized {
+    type Item;
+
     /// Returns the event type names this set can contain.
     /// Used to build the query to the event store.
-    const EVENT_TYPES: &'static [&'static str];
+    fn event_types() -> Vec<&'static str>;
     /// List of event domain ids in the query per event type.
-    const EVENT_DOMAIN_IDS: &'static [(&'static str, &'static [&'static str])];
+    fn event_domain_ids() -> Vec<(&'static str, &'static [&'static str])>;
 
     /// Attempt to deserialize an event into this set.
     ///
     /// Returns `None` if the event type is not part of this set,
     /// or `Some(Err(...))` if deserialization fails.
-    fn from_event(event_type: &str, data: Value) -> Option<Result<Self, SerializationError>>;
+    fn from_event(event_type: &str, data: Value) -> Option<Result<Self::Item, SerializationError>>;
 }
 
 /// Used to obtain a reference to a specific event type.
@@ -132,3 +134,87 @@ pub trait IntoEvent<E> {
     /// Converts this type to an owned event `E`, or `None` if the type does not hold the event.
     fn into_event(self) -> Option<E>;
 }
+
+impl<A> EventSet for (A,)
+where
+    A: EventSet,
+{
+    type Item = (Option<A::Item>,);
+
+    fn event_types() -> Vec<&'static str> {
+        A::event_types()
+    }
+
+    fn event_domain_ids() -> Vec<(&'static str, &'static [&'static str])> {
+        A::event_domain_ids()
+    }
+
+    fn from_event(event_type: &str, data: Value) -> Option<Result<Self::Item, SerializationError>> {
+        if A::event_types().contains(&event_type) {
+            return Some(A::from_event(event_type, data)?.map(|a| (Some(a),)));
+        }
+        None
+    }
+}
+
+macro_rules! impl_tuple_event_set {
+    ($( $t:ident:$n:tt ),*) => {
+        impl<$($t,)*> EventSet for ($($t,)*)
+        where
+            $(
+                $t: EventSet,
+            )*
+        {
+            type Item = ($(Option<$t::Item>,)*);
+
+            fn event_types() -> Vec<&'static str> {
+                let mut types = Vec::new();
+                $(
+                    types.extend_from_slice(&$t::event_types());
+                )*
+                types
+            }
+
+            fn event_domain_ids() -> Vec<(&'static str, &'static [&'static str])> {
+                let mut ids = Vec::new();
+                $(
+                    ids.extend_from_slice(&$t::event_domain_ids());
+                )*
+                ids
+            }
+
+            #[allow(non_snake_case)]
+            fn from_event(event_type: &str, data: Value) -> Option<Result<Self::Item, SerializationError>> {
+                $(
+                    let $t = $t::from_event(event_type, data.clone());
+                )*
+
+                if $( $t.is_none() )&&* {
+                    return None;
+                }
+
+                $(
+                    let $t = match $t {
+                        None => None,
+                        Some(Ok(v)) => Some(v),
+                        Some(Err(e)) => return Some(Err(e)),
+                    };
+                )*
+
+                Some(Ok(($($t,)*)))
+            }
+        }
+    };
+}
+
+impl_tuple_event_set!(A:0, B:1);
+impl_tuple_event_set!(A:0, B:1, C:2);
+impl_tuple_event_set!(A:0, B:1, C:2, D:3);
+impl_tuple_event_set!(A:0, B:1, C:2, D:3, E:4);
+impl_tuple_event_set!(A:0, B:1, C:2, D:3, E:4, F:5);
+impl_tuple_event_set!(A:0, B:1, C:2, D:3, E:4, F:5, G:6);
+impl_tuple_event_set!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7);
+impl_tuple_event_set!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8);
+impl_tuple_event_set!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9);
+impl_tuple_event_set!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10);
+impl_tuple_event_set!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10, L:11);

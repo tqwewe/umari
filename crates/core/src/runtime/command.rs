@@ -1,9 +1,10 @@
 use std::marker::PhantomData;
 
+use garde::Validate;
 use serde::de::DeserializeOwned;
+use umadb_dcb::DcbQuery;
 
-use crate::command::{Command, EventMeta};
-use crate::event::EventSet;
+use crate::command::{Command, CommandInput, EventMeta, FoldSet, RuleSet, build_query_items};
 
 pub use self::umari::command::types::*;
 
@@ -31,70 +32,92 @@ impl<T: Command> Guest for CommandExport<T>
 where
     T: Command,
     T::Input: DeserializeOwned,
+    <<T as Command>::Input as Validate>::Context: Default,
 {
     fn schema() -> Option<Json> {
-        T::schema().map(|schema| {
-            serde_json::to_string(&schema).unwrap_or_else(|_| panic!("invalid json schema"))
-        })
+        let schema = schemars::schema_for!(T::Input);
+        Some(serde_json::to_string(&schema).unwrap_or_else(|_| panic!("invalid json schema")))
     }
 
     fn query(input: Json) -> Result<EventQuery, Error> {
         let input: T::Input =
             serde_json::from_str(&input).map_err(|err| Error::InvalidInput(err.to_string()))?;
 
-        T::validate(&input).map_err(|err| Error::Rejected(err.to_string()))?;
+        input
+            .validate()
+            .map_err(|err| Error::Rejected(err.to_string()))?;
 
-        Ok(T::query(&input).into())
+        let mut event_domain_ids = <T::State as FoldSet>::event_domain_ids();
+        event_domain_ids.extend(<<T::Rules as RuleSet>::States as FoldSet>::event_domain_ids());
+        let items = build_query_items(
+            &event_domain_ids,
+            &<T::Input as CommandInput>::domain_id_bindings(&input),
+        );
+
+        Ok(DcbQuery::with_items(items).into())
     }
 
     fn execute(input: Json, events: Vec<StoredEvent>) -> Result<ExecuteOutput, Error> {
         let input: T::Input =
             serde_json::from_str(&input).map_err(|err| Error::InvalidInput(err.to_string()))?;
 
-        let mut handler = T::default();
+        let rules = T::rules(&input);
+        let bindings = <T::Input as CommandInput>::domain_id_bindings(&input);
+        let mut state = T::State::default();
+        let mut rule_states = <<T::Rules as RuleSet>::States as Default>::default();
 
         for stored_event in events {
             let event: crate::event::StoredEvent<serde_json::Value> = stored_event.into();
-
-            let data = match T::Query::from_event(&event.event_type, event.data) {
-                Some(Ok(event)) => event,
-                Some(Err(err)) => {
-                    panic!("failed to deserialize event data: {err}");
-                }
-                None => continue, // Event type not in query set, skip
-            };
 
             let meta = EventMeta {
                 timestamp: event.timestamp,
             };
 
-            handler.apply(data, meta);
+            <T::State as FoldSet>::apply(
+                &mut state,
+                &event.event_type,
+                event.data.clone(),
+                &event.tags,
+                &bindings,
+                meta,
+            )
+            .unwrap_or_else(|err| panic!("failed to deserialize event data: {}", err.message));
+            <<T::Rules as RuleSet>::States as FoldSet>::apply(
+                &mut rule_states,
+                &event.event_type,
+                event.data,
+                &event.tags,
+                &bindings,
+                meta,
+            )
+            .unwrap_or_else(|err| panic!("failed to deserialize event data: {}", err.message));
         }
 
-        let emit = handler
-            .handle(input)
-            .map_err(|err| Error::Rejected(err.to_string()))?;
-
-        let emitted_events = emit
-            .into_events()
-            .into_iter()
-            .map(|event| {
-                let data = serde_json::to_string(&event.data)
-                    .unwrap_or_else(|err| panic!("failed to serialize event data: {err}"));
-                EmittedEvent {
-                    event_type: event.event_type,
-                    data,
-                    domain_ids: event
-                        .domain_ids
-                        .into_iter()
-                        .map(|(k, v)| DomainId {
-                            name: k.to_string(),
-                            id: v.into_option(),
-                        })
-                        .collect(),
-                }
-            })
-            .collect();
+        rules.check(&rule_states).map_err(Error::Rejected)?;
+        let emitted_events = if T::is_idempotent(&state) {
+            vec![]
+        } else {
+            T::emit(state, input)
+                .into_events()
+                .into_iter()
+                .map(|event| {
+                    let data = serde_json::to_string(&event.data)
+                        .unwrap_or_else(|err| panic!("failed to serialize event data: {err}"));
+                    EmittedEvent {
+                        event_type: event.event_type,
+                        data,
+                        domain_ids: event
+                            .domain_ids
+                            .into_iter()
+                            .map(|(k, v)| DomainId {
+                                name: k.to_string(),
+                                id: v.into_option(),
+                            })
+                            .collect(),
+                    }
+                })
+                .collect()
+        };
 
         Ok(ExecuteOutput {
             events: emitted_events,

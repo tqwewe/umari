@@ -70,7 +70,7 @@ where
 
 fn transform_stored_event<T: Policy>(
     stored_event: StoredEvent,
-) -> Option<crate::event::StoredEvent<T::Query>> {
+) -> Option<crate::event::StoredEvent<<T::Query as EventSet>::Item>> {
     let event: crate::event::StoredEvent<serde_json::Value> = stored_event.into();
 
     let data = match T::Query::from_event(&event.event_type, event.data) {

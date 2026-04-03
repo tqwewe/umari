@@ -11,12 +11,12 @@ pub trait Policy: Default {
 
     /// Query describing what events this effect should receive
     fn query(&self) -> DcbQuery {
-        DcbQuery::new().item(DcbQueryItem::new().types(Self::Query::EVENT_TYPES.iter().copied()))
+        DcbQuery::new().item(DcbQueryItem::new().types(Self::Query::event_types().into_iter()))
     }
 
     /// Handle a single event and perform external actions
     fn handle(
         &mut self,
-        event: StoredEvent<Self::Query>,
+        event: StoredEvent<<Self::Query as EventSet>::Item>,
     ) -> Result<Vec<CommandSubmission>, SqliteError>;
 }

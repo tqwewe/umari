@@ -7,16 +7,9 @@ pub mod sqlite;
 
 use std::collections::HashMap;
 
-use chrono::DateTime;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use umadb_dcb::DcbQuery;
 
-use crate::{
-    command::{Command, CommandInput, EventMeta},
-    domain_id::DomainIdValue,
-    event::EventSet,
-};
+use crate::domain_id::DomainIdValue;
 
 /// Input data for executing a command
 #[derive(Serialize, Deserialize)]
@@ -82,98 +75,98 @@ pub enum ErrorCode {
     CommandError,
 }
 
-/// Query command to get the DcbQuery for this command input
-pub fn query_input<C: Command>(input: String) -> Result<DcbQuery, ErrorOutput>
-where
-    C::Input: for<'de> Deserialize<'de>,
-{
-    use crate::command::build_query_items;
+// /// Query command to get the DcbQuery for this command input
+// pub fn query_input<C: Command>(input: String) -> Result<DcbQuery, ErrorOutput>
+// where
+//     C::Input: for<'de> Deserialize<'de>,
+// {
+//     use crate::command::build_query_items;
 
-    let input: C::Input = serde_json::from_str(&input).map_err(|err| ErrorOutput {
-        code: ErrorCode::InputDeserialization,
-        message: err.to_string(),
-    })?;
+//     let input: C::Input = serde_json::from_str(&input).map_err(|err| ErrorOutput {
+//         code: ErrorCode::InputDeserialization,
+//         message: err.to_string(),
+//     })?;
 
-    C::validate(&input).map_err(|err| ErrorOutput {
-        code: ErrorCode::ValidationError,
-        message: err.to_string(),
-    })?;
+//     C::validate(&input).map_err(|err| ErrorOutput {
+//         code: ErrorCode::ValidationError,
+//         message: err.to_string(),
+//     })?;
 
-    let domain_id_bindings = input.domain_id_bindings();
-    Ok(DcbQuery {
-        items: build_query_items::<C::Query>(&domain_id_bindings),
-    })
-}
+//     let domain_id_bindings = input.domain_id_bindings();
+//     Ok(DcbQuery {
+//         items: build_query_items::<C::Query>(&domain_id_bindings),
+//     })
+// }
 
-/// Execute command with input and events, returning new events to emit
-pub fn execute_with_events<C: Command>(
-    execute_input: ExecuteInput,
-) -> Result<ExecuteOutput, ErrorOutput>
-where
-    C::Input: for<'de> Deserialize<'de>,
-{
-    let input: C::Input =
-        serde_json::from_str(&execute_input.input).map_err(|err| ErrorOutput {
-            code: ErrorCode::InputDeserialization,
-            message: err.to_string(),
-        })?;
+// /// Execute command with input and events, returning new events to emit
+// pub fn execute_with_events<C: Command>(
+//     execute_input: ExecuteInput,
+// ) -> Result<ExecuteOutput, ErrorOutput>
+// where
+//     C::Input: for<'de> Deserialize<'de>,
+// {
+//     let input: C::Input =
+//         serde_json::from_str(&execute_input.input).map_err(|err| ErrorOutput {
+//             code: ErrorCode::InputDeserialization,
+//             message: err.to_string(),
+//         })?;
 
-    let mut handler = C::default();
+//     let mut handler = C::default();
 
-    for event_data in execute_input.events {
-        let data_value: Value =
-            serde_json::from_str(&event_data.data).map_err(|err| ErrorOutput {
-                code: ErrorCode::EventDeserialization,
-                message: format!(
-                    "failed to parse event '{}' data: {err}",
-                    event_data.event_type
-                ),
-            })?;
+//     for event_data in execute_input.events {
+//         let data_value: Value =
+//             serde_json::from_str(&event_data.data).map_err(|err| ErrorOutput {
+//                 code: ErrorCode::EventDeserialization,
+//                 message: format!(
+//                     "failed to parse event '{}' data: {err}",
+//                     event_data.event_type
+//                 ),
+//             })?;
 
-        let event = match C::Query::from_event(&event_data.event_type, data_value) {
-            Some(Ok(event)) => event,
-            Some(Err(err)) => {
-                return Err(ErrorOutput {
-                    code: ErrorCode::EventDeserialization,
-                    message: format!(
-                        "failed to deserialize event '{}': {err}",
-                        event_data.event_type
-                    ),
-                });
-            }
-            None => continue, // Event type not in query set, skip
-        };
+//         let event = match C::Query::from_event(&event_data.event_type, data_value) {
+//             Some(Ok(event)) => event,
+//             Some(Err(err)) => {
+//                 return Err(ErrorOutput {
+//                     code: ErrorCode::EventDeserialization,
+//                     message: format!(
+//                         "failed to deserialize event '{}': {err}",
+//                         event_data.event_type
+//                     ),
+//                 });
+//             }
+//             None => continue, // Event type not in query set, skip
+//         };
 
-        let timestamp =
-            DateTime::from_timestamp_millis(event_data.timestamp).ok_or_else(|| ErrorOutput {
-                code: ErrorCode::EventDeserialization,
-                message: format!("invalid timestamp: {}", event_data.timestamp),
-            })?;
+//         let timestamp =
+//             DateTime::from_timestamp_millis(event_data.timestamp).ok_or_else(|| ErrorOutput {
+//                 code: ErrorCode::EventDeserialization,
+//                 message: format!("invalid timestamp: {}", event_data.timestamp),
+//             })?;
 
-        let meta = EventMeta { timestamp };
-        handler.apply(event, meta);
-    }
+//         let meta = EventMeta { timestamp };
+//         handler.apply(event, meta);
+//     }
 
-    let emit = handler.handle(input).map_err(|err| ErrorOutput {
-        code: ErrorCode::CommandError,
-        message: err.to_string(),
-    })?;
+//     let emit = handler.handle(input).map_err(|err| ErrorOutput {
+//         code: ErrorCode::CommandError,
+//         message: err.to_string(),
+//     })?;
 
-    let serializable_events: Vec<SerializableEmittedEvent> = emit
-        .into_events()
-        .into_iter()
-        .map(|event| SerializableEmittedEvent {
-            event_type: event.event_type,
-            data: serde_json::to_string(&event.data).unwrap(),
-            domain_ids: event
-                .domain_ids
-                .into_iter()
-                .map(|(k, v)| (k.to_string(), v))
-                .collect(),
-        })
-        .collect();
+//     let serializable_events: Vec<SerializableEmittedEvent> = emit
+//         .into_events()
+//         .into_iter()
+//         .map(|event| SerializableEmittedEvent {
+//             event_type: event.event_type,
+//             data: serde_json::to_string(&event.data).unwrap(),
+//             domain_ids: event
+//                 .domain_ids
+//                 .into_iter()
+//                 .map(|(k, v)| (k.to_string(), v))
+//                 .collect(),
+//         })
+//         .collect();
 
-    Ok(ExecuteOutput {
-        events: serializable_events,
-    })
-}
+//     Ok(ExecuteOutput {
+//         events: serializable_events,
+//     })
+// }

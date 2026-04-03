@@ -504,6 +504,9 @@ struct FormField {
     placeholder: Option<&'static str>,
     min: Option<f64>,
     max: Option<f64>,
+    min_length: Option<u64>,
+    max_length: Option<u64>,
+    pattern: Option<String>,
 }
 
 fn to_title_case(s: &str) -> String {
@@ -564,6 +567,8 @@ fn parse_fields(schema: &Schema) -> Option<Vec<FormField>> {
                 .collect();
             if non_null.len() == 1 {
                 non_null[0]
+            } else if non_null.contains(&"string") && non_null.contains(&"number") {
+                "string"
             } else {
                 if required {
                     return None;
@@ -620,6 +625,19 @@ fn parse_fields(schema: &Schema) -> Option<Vec<FormField>> {
             .map(|s| s.to_owned());
         let min = prop.get("minimum").and_then(|m| m.as_f64());
         let max = prop.get("maximum").and_then(|m| m.as_f64());
+        let min_length = prop.get("minLength").and_then(|m| m.as_u64());
+        let max_length = prop.get("maxLength").and_then(|m| m.as_u64());
+        let pattern = prop
+            .get("pattern")
+            .and_then(|p| p.as_str())
+            .map(|s| s.to_owned())
+            .or_else(|| {
+                if format == Some("uuid") {
+                    Some("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}".to_owned())
+                } else {
+                    None
+                }
+            });
         let placeholder = match format {
             Some("uuid") => Some("xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"),
             Some("email") => Some("user@example.com"),
@@ -640,6 +658,9 @@ fn parse_fields(schema: &Schema) -> Option<Vec<FormField>> {
             placeholder,
             min,
             max,
+            min_length,
+            max_length,
+            pattern,
         });
     }
 
@@ -672,22 +693,30 @@ pub fn execute_form(name: &str, schema: Option<&Schema>) -> Markup {
                             @match &field.input_type {
                                 InputType::Text => {
                                     input type="text"
+                                        name=(field.key)
                                         data-field=(field.key)
                                         data-type="string"
                                         placeholder=[field.placeholder]
                                         required[field.required]
+                                        minlength=[field.min_length]
+                                        maxlength=[field.max_length]
+                                        pattern=[field.pattern.as_deref()]
                                         class="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
                                 }
                                 InputType::Email => {
                                     input type="email"
+                                        name=(field.key)
                                         data-field=(field.key)
                                         data-type="string"
                                         placeholder="user@example.com"
                                         required[field.required]
+                                        minlength=[field.min_length]
+                                        maxlength=[field.max_length]
                                         class="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
                                 }
                                 InputType::Date => {
                                     input type="date"
+                                        name=(field.key)
                                         data-field=(field.key)
                                         data-type="string"
                                         required[field.required]
@@ -695,6 +724,7 @@ pub fn execute_form(name: &str, schema: Option<&Schema>) -> Markup {
                                 }
                                 InputType::DateTime => {
                                     input type="datetime-local"
+                                        name=(field.key)
                                         data-field=(field.key)
                                         data-type="string"
                                         required[field.required]
@@ -702,6 +732,7 @@ pub fn execute_form(name: &str, schema: Option<&Schema>) -> Markup {
                                 }
                                 InputType::Number { integer } => {
                                     input type="number"
+                                        name=(field.key)
                                         data-field=(field.key)
                                         data-type=(if *integer { "integer" } else { "number" })
                                         step=(if *integer { "1" } else { "any" })
@@ -713,12 +744,14 @@ pub fn execute_form(name: &str, schema: Option<&Schema>) -> Markup {
                                 }
                                 InputType::Checkbox => {
                                     input type="checkbox"
+                                        name=(field.key)
                                         data-field=(field.key)
                                         data-type="boolean"
                                         class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500";
                                 }
                                 InputType::Select(options) => {
-                                    select data-field=(field.key)
+                                    select name=(field.key)
+                                        data-field=(field.key)
                                         data-type="string"
                                         required[field.required]
                                         class="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
@@ -734,18 +767,27 @@ pub fn execute_form(name: &str, schema: Option<&Schema>) -> Markup {
                             }
                         }
                     }
-                    button type="button"
-                        onclick={
-                            "umariExec_" (fn_name) "(this)"
+                    div class="flex items-center justify-between" {
+                        button type="button"
+                            onclick={
+                                "umariExec_" (fn_name) "(this)"
+                            }
+                            class="self-start inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+                            { "Execute" }
+                        label class="flex items-center gap-2 text-xs text-gray-400 font-normal cursor-pointer" {
+                            input type="checkbox" data-bypass-validation
+                                class="h-3.5 w-3.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500";
+                            "Bypass validation"
                         }
-                        class="self-start inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
-                        { "Execute" }
+                    }
                 }
                 div #execute-result {}
                 script {
                     (PreEscaped(format!(
                         r#"function umariExec_{fn_name}(btn) {{
   const form = btn.closest('form');
+  const bypass = form.querySelector('[data-bypass-validation]')?.checked;
+  if (!bypass && !form.reportValidity()) return;
   const obj = {{}};
   form.querySelectorAll('[data-field]').forEach(el => {{
     const key = el.dataset.field;
