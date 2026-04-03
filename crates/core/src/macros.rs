@@ -39,7 +39,10 @@ macro_rules! emit {
 
 #[macro_export]
 macro_rules! reject {
-    ($($t:tt)*) => {{
-        return Err($crate::error::CommandError::reject(format!($($t)*)))
+    ($s:literal, $($t:tt)*) => {{
+        return Err($crate::error::CommandError::reject(format!($s, $($t)*)))
+    }};
+    ($e:expr) => {{
+        return Err($crate::error::CommandError::reject($e.to_string()))
     }};
 }

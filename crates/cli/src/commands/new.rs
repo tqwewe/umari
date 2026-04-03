@@ -56,7 +56,7 @@ fn cargo_toml_content(module_type: &str, name: &str) -> String {
 fn lib_rs_content(module_type: &str, type_name: &str) -> String {
     match module_type {
         "command" => format!(
-            "use serde::Deserialize;\nuse umari_core::prelude::*;\n\nexport_command!({type_name});\n\n#[derive(EventSet)]\nenum Query {{\n    // TODO: add event variants, e.g.: MyEvent(MyEvent),\n}}\n\n#[derive(CommandInput, Deserialize)]\nstruct Input {{\n    // TODO: add input fields; use #[domain_id] to tag domain ID fields\n}}\n\n#[derive(Default)]\nstruct {type_name} {{}}\n\nimpl Command for {type_name} {{\n    type Query = Query;\n    type Input = Input;\n    type Error = CommandError;\n\n    fn apply(&mut self, event: Query, _meta: EventMeta) {{\n        match event {{}}\n    }}\n\n    fn handle(&self, input: Input) -> Result<Emit, CommandError> {{\n        Ok(emit![])\n    }}\n}}\n"
+            "use serde::Deserialize;\nuse umari_core::prelude::*;\n\nexport_command!({type_name});\n\n#[derive(EventSet)]\nenum Query {{\n    // TODO: add event variants, e.g.: MyEvent(MyEvent),\n}}\n\n#[derive(CommandInput, Deserialize)]\nstruct Input {{\n    // TODO: add input fields; use #[domain_id] to tag domain ID fields\n}}\n\n#[derive(Default)]\nstruct {type_name} {{}}\n\nimpl Command for {type_name} {{\n    type Query = Query;\n    type Input = Input;\n\n    fn apply(&mut self, event: Query, _meta: EventMeta) {{\n        match event {{}}\n    }}\n\n    fn handle(&self, input: Input) -> Result<Emit, CommandError> {{\n        Ok(emit![])\n    }}\n}}\n"
         ),
         "projector" => format!(
             "use umari_core::prelude::*;\n\nexport_projector!({type_name});\n\n#[derive(EventSet)]\nenum Query {{\n    // TODO: add event variants, e.g.: MyEvent(MyEvent),\n}}\n\nstruct {type_name} {{}}\n\nimpl Projector for {type_name} {{\n    type Query = Query;\n\n    fn init() -> Result<Self, ProjectorError> {{\n        // TODO: run CREATE TABLE IF NOT EXISTS statements here\n        Ok({type_name} {{}})\n    }}\n\n    fn handle(&mut self, event: StoredEvent<Self::Query>) -> Result<(), ProjectorError> {{\n        match event.data {{}}\n    }}\n}}\n"
@@ -65,7 +65,7 @@ fn lib_rs_content(module_type: &str, type_name: &str) -> String {
             "use umari_core::prelude::*;\n\nexport_policy!({type_name});\n\n#[derive(EventSet)]\nenum Query {{\n    // TODO: add event variants, e.g.: MyEvent(MyEvent),\n}}\n\n#[derive(Default)]\nstruct {type_name} {{}}\n\nimpl Policy for {type_name} {{\n    type Query = Query;\n\n    fn partition_key(&self, event: StoredEvent<Self::Query>) -> Option<String> {{\n        None\n    }}\n\n    fn handle(&mut self, event: StoredEvent<Self::Query>) -> Result<Vec<CommandSubmission>, SqliteError> {{\n        Ok(vec![])\n    }}\n}}\n"
         ),
         "effect" => format!(
-            "use umari_core::prelude::*;\n\nexport_effect!({type_name});\n\n#[derive(EventSet)]\nenum Query {{\n    // TODO: add event variants, e.g.: MyEvent(MyEvent),\n}}\n\n#[derive(Default)]\nstruct {type_name} {{}}\n\nimpl Effect for {type_name} {{\n    type Query = Query;\n    type Error = String;\n\n    fn partition_key(&self, _event: StoredEvent<Self::Query>) -> Option<String> {{\n        None\n    }}\n\n    fn handle(&mut self, event: StoredEvent<Self::Query>) -> Result<(), Self::Error> {{\n        Ok(())\n    }}\n}}\n"
+            "use umari_core::prelude::*;\n\nexport_effect!({type_name});\n\n#[derive(EventSet)]\nenum Query {{\n    // TODO: add event variants, e.g.: MyEvent(MyEvent),\n}}\n\n#[derive(Default)]\nstruct {type_name} {{}}\n\nimpl Effect for {type_name} {{\n    type Query = Query;\n    type Error = String;\n\n    fn partition_key(&self, _event: StoredEvent<Self::Query>) -> Option<String> {{\n        None\n    }}\n\n    fn handle(&mut self, event: StoredEvent<Self::Query>) -> Result<(), CommandError> {{\n        Ok(())\n    }}\n}}\n"
         ),
         _ => unreachable!(),
     }
@@ -85,13 +85,20 @@ pub fn generate(module_type: &str, name: &str) -> Result<()> {
 
     let type_name = kebab_to_pascal(name);
 
-    fs::write(crate_dir.join("Cargo.toml"), cargo_toml_content(module_type, name))?;
-    fs::write(src_dir.join("lib.rs"), lib_rs_content(module_type, &type_name))?;
+    fs::write(
+        crate_dir.join("Cargo.toml"),
+        cargo_toml_content(module_type, name),
+    )?;
+    fs::write(
+        src_dir.join("lib.rs"),
+        lib_rs_content(module_type, &type_name),
+    )?;
 
     // register in workspace Cargo.toml
     let workspace_toml_path = std::path::Path::new(&root).join("Cargo.toml");
     let content = fs::read_to_string(&workspace_toml_path)?;
-    let mut doc = content.parse::<toml_edit::DocumentMut>()
+    let mut doc = content
+        .parse::<toml_edit::DocumentMut>()
         .map_err(|err| anyhow!("failed to parse workspace Cargo.toml: {err}"))?;
 
     let members = doc["workspace"]["members"]

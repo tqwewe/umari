@@ -33,8 +33,8 @@ impl executor::Host for wit::CommandComponentState {
         _command: String,
         _input: String,
         _context: executor::CommandContext,
-    ) -> wasmtime::Result<Result<Vec<StoredEvent>, executor::Error>> {
-        panic!("executor not available in basic component state")
+    ) -> wasmtime::Result<Result<Vec<StoredEvent>, String>> {
+        panic!("executor not available in commands")
     }
 }
 
@@ -44,7 +44,7 @@ impl executor::Host for wit::EventHandlerComponentState {
         command: String,
         input: String,
         context: executor::CommandContext,
-    ) -> wasmtime::Result<Result<Vec<StoredEvent>, executor::Error>> {
+    ) -> wasmtime::Result<Result<Vec<StoredEvent>, String>> {
         let input = serde_json::from_str(&input).context("invalid json input")?; // trap
         let context = context.try_into()?; // trap
         let msg = Execute {
@@ -55,9 +55,7 @@ impl executor::Host for wit::EventHandlerComponentState {
         let result = self.command_ref.ask(msg).await;
         match result {
             Ok(_) => todo!(),
-            Err(SendError::HandlerError(err)) => {
-                Ok(Err(executor::Error::Rejected(err.to_string())))
-            }
+            Err(SendError::HandlerError(err)) => Ok(Err(err.to_string())),
             Err(err) => Err(wasmtime::Error::msg(err.to_string())),
         }
     }

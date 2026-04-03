@@ -5,7 +5,7 @@ pub mod policy;
 pub mod projector;
 pub mod sqlite;
 
-use std::{collections::HashMap, fmt};
+use std::collections::HashMap;
 
 use chrono::DateTime;
 use serde::{Deserialize, Serialize};
@@ -86,7 +86,6 @@ pub enum ErrorCode {
 pub fn query_input<C: Command>(input: String) -> Result<DcbQuery, ErrorOutput>
 where
     C::Input: for<'de> Deserialize<'de>,
-    C::Error: fmt::Display,
 {
     use crate::command::build_query_items;
 
@@ -112,7 +111,6 @@ pub fn execute_with_events<C: Command>(
 ) -> Result<ExecuteOutput, ErrorOutput>
 where
     C::Input: for<'de> Deserialize<'de>,
-    C::Error: fmt::Display,
 {
     let input: C::Input =
         serde_json::from_str(&execute_input.input).map_err(|err| ErrorOutput {

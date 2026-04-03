@@ -19,7 +19,7 @@ pub async fn upload_module(
     State(state): State<UiState>,
     Path(module_type_str): Path<String>,
     _headers: HeaderMap,
-    mut multipart: Multipart,
+    multipart: Multipart,
 ) -> Response {
     match upload_module_inner(state, module_type_str, multipart).await {
         Ok(response) => response,

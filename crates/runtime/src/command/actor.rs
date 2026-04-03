@@ -1,7 +1,8 @@
 use std::{collections::HashMap, ops::ControlFlow, sync::Arc, time::Duration};
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use kameo::prelude::*;
+use rand::{SeedableRng, rngs::StdRng};
 use schemars::Schema;
 use semver::Version;
 use serde::Serialize;
@@ -19,7 +20,7 @@ use wasmtime::{
     Engine, Store,
     component::{Component, HasSelf, Linker},
 };
-use wasmtime_wasi::{ResourceTable, WasiCtx};
+use wasmtime_wasi::{ResourceTable, WasiCtx, p2::pipe::ClosedInputStream};
 
 use super::CommandError;
 use crate::{
@@ -149,7 +150,8 @@ impl CommandActor {
         command: CommandPayload,
         ctx: &mut Context<CommandActor, DelegatedReply<Result<ExecuteResult, CommandError>>>,
     ) -> DelegatedReply<Result<ExecuteResult, CommandError>> {
-        let mut module = match self.instantiate_module(&name).await {
+        let timestamp = Utc::now();
+        let mut module = match self.instantiate_module(&name, timestamp).await {
             Ok(module) => module,
             Err(err) => return ctx.reply(Err(err)),
         };
@@ -208,7 +210,6 @@ impl CommandActor {
             let execute_output = module.execute(&command.input, mapped_events).await?;
 
             // Convert emitted events to DCBEvents and persist to event store
-            let timestamp = Utc::now();
             let causation_id = Uuid::new_v4();
             let context = command.context;
             let envelope = EventEnvelope {
@@ -278,6 +279,7 @@ impl CommandActor {
     async fn instantiate_module(
         &self,
         name: &Arc<str>,
+        timestamp: DateTime<Utc>,
     ) -> Result<InstantiatedModule, CommandError> {
         let versioned_component = self
             .components
@@ -285,8 +287,18 @@ impl CommandActor {
             .ok_or_else(|| CommandError::ModuleNotFound { name: name.clone() })?;
 
         let wasi_ctx = WasiCtx::builder()
+            .stdin(ClosedInputStream)
             .stdout(versioned_component.output.stdout_pipe())
             .stderr(versioned_component.output.stderr_pipe())
+            .allow_blocking_current_thread(true)
+            .secure_random(StdRng::from_seed([0u8; 32]))
+            .insecure_random(StdRng::from_seed([0u8; 32]))
+            .insecure_random_seed(0)
+            .wall_clock(FixedClock(timestamp))
+            .monotonic_clock(ZeroMonotonicClock)
+            .allow_ip_name_lookup(false)
+            .allow_tcp(false)
+            .allow_udp(false)
             .build();
         let state = CommandComponentState {
             wasi_ctx,
@@ -334,8 +346,18 @@ impl CommandActor {
 
         let schema_output = ModuleOutput::new(1024);
         let wasi_ctx = WasiCtx::builder()
+            .stdin(ClosedInputStream)
             .stdout(schema_output.stdout_pipe())
             .stderr(schema_output.stderr_pipe())
+            .allow_blocking_current_thread(true)
+            .secure_random(StdRng::from_seed([0u8; 32]))
+            .insecure_random(StdRng::from_seed([0u8; 32]))
+            .insecure_random_seed(0)
+            .wall_clock(FixedClock(DateTime::<Utc>::MIN_UTC))
+            .monotonic_clock(ZeroMonotonicClock)
+            .allow_ip_name_lookup(false)
+            .allow_tcp(false)
+            .allow_udp(false)
             .build();
         let state = CommandComponentState {
             wasi_ctx,
@@ -454,5 +476,29 @@ impl Message<ModuleEvent> for CommandActor {
         }
 
         Ok(())
+    }
+}
+
+struct FixedClock(chrono::DateTime<Utc>);
+
+impl wasmtime_wasi::HostWallClock for FixedClock {
+    fn resolution(&self) -> Duration {
+        Duration::from_secs(1)
+    }
+
+    fn now(&self) -> Duration {
+        Duration::from_secs(self.0.timestamp() as u64)
+    }
+}
+
+struct ZeroMonotonicClock;
+
+impl wasmtime_wasi::HostMonotonicClock for ZeroMonotonicClock {
+    fn resolution(&self) -> u64 {
+        1
+    }
+
+    fn now(&self) -> u64 {
+        0
     }
 }

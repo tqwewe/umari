@@ -10,5 +10,5 @@ interface executor {
         triggering-event-id: option<uuid>,
     }
 
-    execute: func(command: string, input: json, context: command-context) -> result<list<stored-event>, error>;
+    execute: func(command: string, input: json, context: command-context) -> result<list<stored-event>, string>;
 }

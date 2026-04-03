@@ -3407,6 +3407,7 @@ dependencies = [
  "hex",
  "kameo",
  "kameo_actors",
+ "rand",
  "rusqlite",
  "schemars",
  "semver",

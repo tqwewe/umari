@@ -1,4 +1,3 @@
-use std::fmt;
 use std::marker::PhantomData;
 
 use serde::de::DeserializeOwned;
@@ -32,7 +31,6 @@ impl<T: Command> Guest for CommandExport<T>
 where
     T: Command,
     T::Input: DeserializeOwned,
-    T::Error: fmt::Display,
 {
     fn schema() -> Option<Json> {
         T::schema().map(|schema| {

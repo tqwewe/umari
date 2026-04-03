@@ -75,7 +75,6 @@ pub trait CommandInput {
 /// impl Command for Withdraw {
 ///     type Query = Query;
 ///     type Input = Input;
-///     type Error = CommandError;
 ///
 ///     fn apply(&mut self, event: Query) {
 ///         match event {
@@ -106,9 +105,6 @@ pub trait Command: Default + Send {
     /// Defines the domain ID bindings for the query.
     type Input: CommandInput + Send;
 
-    /// The error type returned when handling the command.
-    type Error;
-
     /// An optional json schema for the command input.
     fn schema() -> Option<Schema> {
         None
@@ -116,7 +112,7 @@ pub trait Command: Default + Send {
 
     /// Validate the input before querying anything.
     #[allow(unused_variables)]
-    fn validate(input: &Self::Input) -> Result<(), Self::Error> {
+    fn validate(input: &Self::Input) -> Result<(), CommandError> {
         Ok(())
     }
 
@@ -140,24 +136,25 @@ pub trait Command: Default + Send {
     /// Should validate the command against current state and either:
     /// - Return new events to persist
     /// - Return an error rejecting the command
-    fn handle(&self, input: Self::Input) -> Result<Emit, Self::Error>;
+    fn handle(&self, input: Self::Input) -> Result<Emit, CommandError>;
 }
 
 pub trait CommandExecute: Command {
-    fn execute(name: &str, input: &Self::Input) -> Result<Vec<StoredEvent<Value>>, CommandError>;
+    fn execute(name: &str, input: &Self::Input) -> Result<Vec<StoredEvent<Value>>, String>;
 
     fn execute_with(
         name: &str,
         input: &Self::Input,
         ctx: CommandContext,
-    ) -> Result<Vec<StoredEvent<Value>>, CommandError>;
+    ) -> Result<Vec<StoredEvent<Value>>, String>;
 }
 
 impl<T: Command> CommandExecute for T
 where
     T::Input: Serialize,
 {
-    fn execute(name: &str, input: &Self::Input) -> Result<Vec<StoredEvent<Value>>, CommandError> {
+    #[inline(always)]
+    fn execute(name: &str, input: &Self::Input) -> Result<Vec<StoredEvent<Value>>, String> {
         use crate::runtime::command::umari::command::executor::CommandContext;
 
         execute_inner::<T>(
@@ -170,11 +167,12 @@ where
         )
     }
 
+    #[inline(always)]
     fn execute_with(
         name: &str,
         input: &Self::Input,
         ctx: CommandContext,
-    ) -> Result<Vec<StoredEvent<Value>>, CommandError> {
+    ) -> Result<Vec<StoredEvent<Value>>, String> {
         use crate::runtime::command::umari::command::executor::CommandContext;
 
         execute_inner::<T>(
@@ -192,24 +190,19 @@ fn execute_inner<T>(
     name: &str,
     input: &T::Input,
     ctx: &crate::runtime::command::umari::command::executor::CommandContext,
-) -> Result<Vec<StoredEvent<Value>>, CommandError>
+) -> Result<Vec<StoredEvent<Value>>, String>
 where
     T: Command,
     T::Input: Serialize,
 {
-    use crate::runtime::command::umari::command::executor::{Error, execute};
+    use crate::runtime::command::umari::command::executor::execute;
 
     let result = execute(
         name,
-        &serde_json::to_string(input).map_err(|err| {
-            CommandError::invalid_input(format!("failed to serialize input: {err}"))
-        })?,
+        &serde_json::to_string(input)
+            .unwrap_or_else(|err| panic!("failed to serialize input: {err}")),
         ctx,
-    )
-    .map_err(|err| match err {
-        Error::Rejected(msg) => CommandError::reject(msg),
-        Error::InvalidInput(msg) => CommandError::invalid_input(msg),
-    })?;
+    )?;
 
     Ok(result.into_iter().map(|event| event.into()).collect())
 }

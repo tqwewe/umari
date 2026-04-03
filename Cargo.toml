@@ -40,6 +40,7 @@ libc = "0.2"
 maud = { version = "0.27", features = ["axum"] }
 proc-macro2 = "1.0"
 quote = "1.0"
+rand = "0.8"
 rusqlite = "0.39"
 schemars = "1.2"
 semver = "1.0"
