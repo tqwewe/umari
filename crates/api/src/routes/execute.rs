@@ -56,9 +56,22 @@ pub async fn execute(
                 })
         })
         .transpose()?;
+    let idempotency_key = headers
+        .get("idempotency-key")
+        .map(|value| {
+            value
+                .to_str()
+                .ok()
+                .and_then(|s| Uuid::parse_str(s).ok())
+                .ok_or_else(|| {
+                    Error::new(ErrorCode::InvalidInput).with_message("invalid idempotency key")
+                })
+        })
+        .transpose()?;
     let context = CommandContext {
         correlation_id,
         triggering_event_id,
+        idempotency_key,
     };
 
     let result = state

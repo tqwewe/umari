@@ -79,6 +79,12 @@ impl TryFrom<executor::CommandContext> for CommandContext {
                 .map(Uuid::parse_str)
                 .transpose()
                 .context("invalid causation id")?,
+            idempotency_key: ctx
+                .idempotency_key
+                .as_deref()
+                .map(Uuid::parse_str)
+                .transpose()
+                .context("invalid indempotency key")?,
         })
     }
 }

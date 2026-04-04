@@ -8,6 +8,7 @@ interface executor {
     record command-context {
         correlation-id: option<uuid>,
         triggering-event-id: option<uuid>,
+        idempotency-key: option<uuid>,
     }
 
     execute: func(command: string, input: json, context: command-context) -> result<list<stored-event>, string>;

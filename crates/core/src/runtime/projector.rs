@@ -62,17 +62,19 @@ impl<T: Projector + 'static> GuestProjector for ProjectorState<T> {
             None => return, // Event type not in query set, skip
         };
 
-        let event: crate::event::StoredEvent<<T::Query as EventSet>::Item> = crate::event::StoredEvent {
-            id: event.id,
-            position: event.position,
-            event_type: event.event_type,
-            tags: event.tags,
-            timestamp: event.timestamp,
-            correlation_id: event.correlation_id,
-            causation_id: event.causation_id,
-            triggering_event_id: event.triggering_event_id,
-            data,
-        };
+        let event: crate::event::StoredEvent<<T::Query as EventSet>::Item> =
+            crate::event::StoredEvent {
+                id: event.id,
+                position: event.position,
+                event_type: event.event_type,
+                tags: event.tags,
+                timestamp: event.timestamp,
+                correlation_id: event.correlation_id,
+                causation_id: event.causation_id,
+                triggering_event_id: event.triggering_event_id,
+                idempotency_key: event.idempotency_key,
+                data,
+            };
 
         self.inner
             .borrow_mut()

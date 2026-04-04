@@ -3510,6 +3510,7 @@ dependencies = [
  "umari-core",
  "umari-runtime",
  "umari-types",
+ "uuid",
 ]
 
 [[package]]

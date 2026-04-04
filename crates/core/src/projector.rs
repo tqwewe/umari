@@ -15,9 +15,12 @@ pub trait Projector: Sized {
 
     /// The initial query to process events with.
     fn query(&self) -> DcbQuery {
-        DcbQuery::new().item(DcbQueryItem::new().types(Self::Query::event_types().into_iter()))
+        DcbQuery::new().item(DcbQueryItem::new().types(Self::Query::event_types()))
     }
 
     /// Handle a single event, updating the projector.
-    fn handle(&mut self, event: StoredEvent<<Self::Query as EventSet>::Item>) -> Result<(), SqliteError>;
+    fn handle(
+        &mut self,
+        event: StoredEvent<<Self::Query as EventSet>::Item>,
+    ) -> Result<(), SqliteError>;
 }

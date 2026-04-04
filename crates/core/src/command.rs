@@ -107,7 +107,7 @@ pub trait Command {
 
     fn rules(input: &Self::Input) -> Self::Rules;
 
-    fn is_idempotent(_state: &Self::State) -> bool {
+    fn is_idempotent(_state: &Self::State, _input: &Self::Input) -> bool {
         false
     }
 
@@ -233,7 +233,7 @@ macro_rules! impl_tuple_fold_sets {
                 meta: EventMeta,
             ) -> Result<(), SerializationError> {
                 $(
-                    if matches_invariant::<$t>(event_type, tags, bindings)
+                    if matches_fold_query::<$t>(event_type, tags, bindings)
                         && let Some(event) = $t::Events::from_event(event_type, data.clone()).transpose()?
                     {
                         self.$n.apply(&event, meta);
@@ -297,7 +297,7 @@ impl_tuple_rule_sets!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8);
 impl_tuple_rule_sets!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9);
 impl_tuple_rule_sets!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10);
 
-fn matches_invariant<I: Fold>(
+fn matches_fold_query<I: Fold>(
     event_type: &str,
     tags: &[String],
     bindings: &DomainIdBindings,
@@ -356,6 +356,7 @@ where
             &CommandContext {
                 correlation_id: None,
                 triggering_event_id: None,
+                idempotency_key: None,
             },
         )
     }
@@ -374,6 +375,7 @@ where
             &CommandContext {
                 correlation_id: Some(ctx.correlation_id.to_string()),
                 triggering_event_id: ctx.triggering_event_id.as_ref().map(ToString::to_string),
+                idempotency_key: ctx.idempotency_key.as_ref().map(ToString::to_string),
             },
         )
     }
@@ -406,33 +408,8 @@ pub struct CommandContext {
     pub correlation_id: Uuid,
     /// Event ID that triggered this command (for sagas)
     pub triggering_event_id: Option<Uuid>,
-}
-
-impl CommandContext {
-    /// User-initiated command (HTTP request, CLI, etc.)
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
-        Self {
-            correlation_id: Uuid::new_v4(),
-            triggering_event_id: None,
-        }
-    }
-
-    /// Continue from existing correlation (HTTP request with header)
-    pub fn with_correlation_id(correlation_id: Uuid) -> Self {
-        Self {
-            correlation_id,
-            triggering_event_id: None,
-        }
-    }
-
-    /// Triggered by an event (saga/process manager)
-    pub fn triggered_by_event(event_id: Uuid, correlation_id: Uuid) -> Self {
-        Self {
-            correlation_id,
-            triggering_event_id: Some(event_id),
-        }
-    }
+    /// Client-supplied key for deduplicating retried command executions.
+    pub idempotency_key: Option<Uuid>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -446,7 +423,11 @@ pub struct ExecuteResult {
     pub events: Vec<DcbEvent>,
 }
 
-pub fn build_query_items(
+pub fn build_query_items<E: EventSet>(bindings: &DomainIdBindings) -> Vec<DcbQueryItem> {
+    build_query_items_from_domain_ids(&E::event_domain_ids(), bindings)
+}
+
+pub fn build_query_items_from_domain_ids(
     event_domain_ids: &[(&str, &[&'static str])],
     bindings: &DomainIdBindings,
 ) -> Vec<DcbQueryItem> {
@@ -563,61 +544,92 @@ mod tests {
 
     struct SingleFieldEvents;
     impl EventSet for SingleFieldEvents {
-        const EVENT_TYPES: &'static [&'static str] = &["EventA", "EventB"];
-        const EVENT_DOMAIN_IDS: &'static [(&'static str, &'static [&'static str])] =
-            &[("EventA", &["user_id"]), ("EventB", &["user_id"])];
+        type Item = Self;
 
-        fn from_event(_: &str, _: Value) -> Option<Result<Self, SerializationError>> {
+        fn event_types() -> Vec<&'static str> {
+            vec!["EventA", "EventB"]
+        }
+
+        fn event_domain_ids() -> Vec<(&'static str, &'static [&'static str])> {
+            vec![("EventA", &["user_id"]), ("EventB", &["user_id"])]
+        }
+
+        fn from_event(_: &str, _: Value) -> Option<Result<Self::Item, SerializationError>> {
             None
         }
     }
 
     struct MixedFieldEvents;
     impl EventSet for MixedFieldEvents {
-        const EVENT_TYPES: &'static [&'static str] =
-            &["UserRegistered", "UserCompletedOnboarding", "BetTracked"];
-        const EVENT_DOMAIN_IDS: &'static [(&'static str, &'static [&'static str])] = &[
-            ("UserRegistered", &["user_id"]),
-            ("UserCompletedOnboarding", &["user_id"]),
-            ("BetTracked", &["bet_id", "user_id"]),
-        ];
+        type Item = Self;
 
-        fn from_event(_: &str, _: Value) -> Option<Result<Self, SerializationError>> {
+        fn event_types() -> Vec<&'static str> {
+            vec!["UserRegistered", "UserCompletedOnboarding", "BetTracked"]
+        }
+
+        fn event_domain_ids() -> Vec<(&'static str, &'static [&'static str])> {
+            vec![
+                ("UserRegistered", &["user_id"]),
+                ("UserCompletedOnboarding", &["user_id"]),
+                ("BetTracked", &["bet_id", "user_id"]),
+            ]
+        }
+
+        fn from_event(_: &str, _: Value) -> Option<Result<Self::Item, SerializationError>> {
             None
         }
     }
 
     struct MultipleFieldsAllShared;
     impl EventSet for MultipleFieldsAllShared {
-        const EVENT_TYPES: &'static [&'static str] = &["TransferSent", "TransferReceived"];
-        const EVENT_DOMAIN_IDS: &'static [(&'static str, &'static [&'static str])] = &[
-            ("TransferSent", &["account_id", "region_id"]),
-            ("TransferReceived", &["account_id", "region_id"]),
-        ];
+        type Item = Self;
 
-        fn from_event(_: &str, _: Value) -> Option<Result<Self, SerializationError>> {
+        fn event_types() -> Vec<&'static str> {
+            vec!["TransferSent", "TransferReceived"]
+        }
+
+        fn event_domain_ids() -> Vec<(&'static str, &'static [&'static str])> {
+            vec![
+                ("TransferSent", &["account_id", "region_id"]),
+                ("TransferReceived", &["account_id", "region_id"]),
+            ]
+        }
+
+        fn from_event(_: &str, _: Value) -> Option<Result<Self::Item, SerializationError>> {
             None
         }
     }
 
     struct DisjointFieldEvents;
     impl EventSet for DisjointFieldEvents {
-        const EVENT_TYPES: &'static [&'static str] = &["UserEvent", "OrderEvent"];
-        const EVENT_DOMAIN_IDS: &'static [(&'static str, &'static [&'static str])] =
-            &[("UserEvent", &["user_id"]), ("OrderEvent", &["order_id"])];
+        type Item = Self;
 
-        fn from_event(_: &str, _: Value) -> Option<Result<Self, SerializationError>> {
+        fn event_types() -> Vec<&'static str> {
+            vec!["UserEvent", "OrderEvent"]
+        }
+
+        fn event_domain_ids() -> Vec<(&'static str, &'static [&'static str])> {
+            vec![("UserEvent", &["user_id"]), ("OrderEvent", &["order_id"])]
+        }
+
+        fn from_event(_: &str, _: Value) -> Option<Result<Self::Item, SerializationError>> {
             None
         }
     }
 
     struct NoDomainsEvent;
     impl EventSet for NoDomainsEvent {
-        const EVENT_TYPES: &'static [&'static str] = &["GlobalEvent"];
-        const EVENT_DOMAIN_IDS: &'static [(&'static str, &'static [&'static str])] =
-            &[("GlobalEvent", &[])];
+        type Item = Self;
 
-        fn from_event(_: &str, _: Value) -> Option<Result<Self, SerializationError>> {
+        fn event_types() -> Vec<&'static str> {
+            vec!["GlobalEvent"]
+        }
+
+        fn event_domain_ids() -> Vec<(&'static str, &'static [&'static str])> {
+            vec![("GlobalEvent", &[])]
+        }
+
+        fn from_event(_: &str, _: Value) -> Option<Result<Self::Item, SerializationError>> {
             None
         }
     }

@@ -329,6 +329,7 @@ impl<A: EventHandlerModule> ModuleActor<A> {
             correlation_id: data.correlation_id,
             causation_id: data.causation_id,
             triggering_event_id: data.triggering_event_id,
+            idempotency_key: data.idempotency_key,
             data: data.data,
         }
         .into())

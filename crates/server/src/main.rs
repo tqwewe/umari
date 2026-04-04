@@ -53,21 +53,26 @@ struct Cli {
     /// Graceful shutdown timeout
     #[arg(long, value_parser = humantime::parse_duration, default_value = "10s", env = "UMARI_SHUTDOWN_TIMEOUT")]
     shutdown_timeout: Duration,
+
+    /// Verbose logging
+    #[arg(short, long, env = "UMARI_VERBOSE")]
+    verbose: bool,
 }
 
 #[tokio::main]
 async fn main() {
+    let cli = Cli::parse();
+
+    let default_directive_level = if cli.verbose { "trace" } else { "info" };
     ::tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::builder()
-                .with_default_directive("umari=info".parse().unwrap())
+                .with_default_directive(format!("umari={default_directive_level}").parse().unwrap())
                 .with_env_var("UMARI_LOG")
                 .from_env_lossy(),
         )
         .event_format(PrettyNoSpans)
         .init();
-
-    let cli = Cli::parse();
 
     if !cli.no_banner {
         banner::print_banner();

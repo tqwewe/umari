@@ -151,7 +151,7 @@ impl CommandActor {
         ctx: &mut Context<CommandActor, DelegatedReply<Result<ExecuteResult, CommandError>>>,
     ) -> DelegatedReply<Result<ExecuteResult, CommandError>> {
         let timestamp = Utc::now();
-        let mut module = match self.instantiate_module(&name, timestamp).await {
+        let (module_version, mut module) = match self.instantiate_module(&name, timestamp).await {
             Ok(module) => module,
             Err(err) => return ctx.reply(Err(err)),
         };
@@ -168,6 +168,7 @@ impl CommandActor {
                 .await?;
 
             let triggering_event_id = command.context.triggering_event_id;
+            let idempotency_key = command.context.idempotency_key;
             let mut mapped_events = Vec::with_capacity(events.len());
 
             for sequenced_event in events {
@@ -183,9 +184,13 @@ impl CommandActor {
                 let data = serde_json::to_string(&stored.data)
                     .expect("serde value should never fail to serialize");
 
-                if let Some(triggering_event_id) = triggering_event_id
-                    && Some(triggering_event_id) == stored.triggering_event_id
-                {
+                let is_triggering_event_id_idempotent = triggering_event_id
+                    .zip(stored.triggering_event_id)
+                    .is_some_and(|(a, b)| a == b);
+                let is_idempotentcy_key_idempotent = idempotency_key
+                    .zip(stored.idempotency_key)
+                    .is_some_and(|(a, b)| a == b);
+                if is_triggering_event_id_idempotent || is_idempotentcy_key_idempotent {
                     return Ok(ExecuteResult {
                         position: head,
                         events: vec![],
@@ -203,6 +208,9 @@ impl CommandActor {
                     triggering_event_id: stored
                         .triggering_event_id
                         .map(|triggering_event_id| triggering_event_id.to_string()),
+                    idempotency_key: stored
+                        .idempotency_key
+                        .map(|idempotency_key| idempotency_key.to_string()),
                     data,
                 })
             }
@@ -217,6 +225,7 @@ impl CommandActor {
                 correlation_id: context.correlation_id,
                 causation_id,
                 triggering_event_id: context.triggering_event_id,
+                idempotency_key: context.idempotency_key,
             };
 
             let mut emitted_events = Vec::new();
@@ -269,6 +278,15 @@ impl CommandActor {
                 head
             };
 
+            debug!(
+                module_type = %ModuleType::Command,
+                %name,
+                version = %module_version,
+                position = position.unwrap_or_default(),
+                events = emitted_events.len(),
+                "executed command"
+            );
+
             Ok(ExecuteResult {
                 position,
                 events: emitted_events,
@@ -280,7 +298,7 @@ impl CommandActor {
         &self,
         name: &Arc<str>,
         timestamp: DateTime<Utc>,
-    ) -> Result<InstantiatedModule, CommandError> {
+    ) -> Result<(Version, InstantiatedModule), CommandError> {
         let versioned_component = self
             .components
             .get(name)
@@ -312,7 +330,10 @@ impl CommandActor {
             .instantiate_async(&mut store)
             .await?;
 
-        Ok(InstantiatedModule { store, command })
+        Ok((
+            versioned_component.version.clone(),
+            InstantiatedModule { store, command },
+        ))
     }
 
     async fn load_module_gracefully(

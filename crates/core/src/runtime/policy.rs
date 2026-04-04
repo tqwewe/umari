@@ -90,6 +90,7 @@ fn transform_stored_event<T: Policy>(
         correlation_id: event.correlation_id,
         causation_id: event.causation_id,
         triggering_event_id: event.triggering_event_id,
+        idempotency_key: event.idempotency_key,
         data,
     })
 }

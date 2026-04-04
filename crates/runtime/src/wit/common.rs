@@ -45,6 +45,9 @@ impl From<umari_core::event::StoredEvent<serde_json::Value>> for StoredEvent {
             triggering_event_id: event
                 .triggering_event_id
                 .map(|triggering_event_id| triggering_event_id.to_string()),
+            idempotency_key: event
+                .idempotency_key
+                .map(|idempotency_key| idempotency_key.to_string()),
             data: serde_json::to_string(&event.data).unwrap(),
         }
     }

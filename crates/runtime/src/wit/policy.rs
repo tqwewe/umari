@@ -114,7 +114,11 @@ impl EventHandlerModule for PolicyState {
                     name: cmd.command_type.into(),
                     command: CommandPayload {
                         input: cmd.input,
-                        context: CommandContext::triggered_by_event(event_id, correlation_id),
+                        context: CommandContext {
+                            correlation_id,
+                            triggering_event_id: Some(event_id),
+                            idempotency_key: None,
+                        },
                     },
                 })
                 .await?;

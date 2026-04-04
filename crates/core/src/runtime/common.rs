@@ -76,6 +76,11 @@ impl From<StoredEvent> for crate::event::StoredEvent<serde_json::Value> {
                 .parse::<uuid::Uuid>()
                 .expect("host guaranteed valid uuid for triggering_event_id")
         });
+        let idempotency_key = event.idempotency_key.map(|idempotency_key| {
+            idempotency_key
+                .parse::<uuid::Uuid>()
+                .expect("host guaranteed valid uuid for idempotency_key")
+        });
 
         let data: serde_json::Value =
             serde_json::from_str(&event.data).expect("host guaranteed valid json for event data");
@@ -89,6 +94,7 @@ impl From<StoredEvent> for crate::event::StoredEvent<serde_json::Value> {
             correlation_id,
             causation_id,
             triggering_event_id,
+            idempotency_key,
             data,
         }
     }

@@ -11,7 +11,7 @@ pub trait Policy: Default {
 
     /// Query describing what events this effect should receive
     fn query(&self) -> DcbQuery {
-        DcbQuery::new().item(DcbQueryItem::new().types(Self::Query::event_types().into_iter()))
+        DcbQuery::new().item(DcbQueryItem::new().types(Self::Query::event_types()))
     }
 
     /// Handle a single event and perform external actions

@@ -34,6 +34,7 @@ interface types {
         correlation-id: uuid,
         causation-id: uuid,
         triggering-event-id: option<uuid>,
+        idempotency-key: option<uuid>,
         data: json,
     }
 }

@@ -4,7 +4,9 @@ use garde::Validate;
 use serde::de::DeserializeOwned;
 use umadb_dcb::DcbQuery;
 
-use crate::command::{Command, CommandInput, EventMeta, FoldSet, RuleSet, build_query_items};
+use crate::command::{
+    Command, CommandInput, EventMeta, FoldSet, RuleSet, build_query_items_from_domain_ids,
+};
 
 pub use self::umari::command::types::*;
 
@@ -49,7 +51,7 @@ where
 
         let mut event_domain_ids = <T::State as FoldSet>::event_domain_ids();
         event_domain_ids.extend(<<T::Rules as RuleSet>::States as FoldSet>::event_domain_ids());
-        let items = build_query_items(
+        let items = build_query_items_from_domain_ids(
             &event_domain_ids,
             &<T::Input as CommandInput>::domain_id_bindings(&input),
         );
@@ -94,7 +96,7 @@ where
         }
 
         rules.check(&rule_states).map_err(Error::Rejected)?;
-        let emitted_events = if T::is_idempotent(&state) {
+        let emitted_events = if T::is_idempotent(&state, &input) {
             vec![]
         } else {
             T::emit(state, input)

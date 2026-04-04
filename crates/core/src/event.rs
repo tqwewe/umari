@@ -16,6 +16,11 @@ pub struct EventEnvelope {
     /// the event that caused a policy to submit this command, `None` for commands originating from HTTP/direct calls
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub triggering_event_id: Option<Uuid>,
+    /// Client-supplied key for deduplicating retried command executions.
+    /// If present, any prior events with this key in the query scope
+    /// will cause the command to be skipped as already executed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub idempotency_key: Option<Uuid>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -28,6 +33,7 @@ pub struct StoredEvent<T> {
     pub correlation_id: Uuid,
     pub causation_id: Uuid,
     pub triggering_event_id: Option<Uuid>,
+    pub idempotency_key: Option<Uuid>,
     pub data: T,
 }
 
@@ -42,6 +48,7 @@ impl<T> StoredEvent<T> {
             correlation_id: self.correlation_id,
             causation_id: self.causation_id,
             triggering_event_id: self.triggering_event_id,
+            idempotency_key: self.idempotency_key,
             data,
         }
     }
@@ -53,6 +60,7 @@ pub struct StoredEventData<T> {
     pub correlation_id: Uuid,
     pub causation_id: Uuid,
     pub triggering_event_id: Option<Uuid>,
+    pub idempotency_key: Option<Uuid>,
     pub data: T,
 }
 
