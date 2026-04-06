@@ -108,9 +108,8 @@ pub trait Command {
     type Input: CommandInput + Validate + JsonSchema;
 
     type State: FoldSet;
-    type Rules: RuleSet;
 
-    fn rules(input: &Self::Input) -> Self::Rules;
+    fn rules(_input: &Self::Input) -> impl RuleSet {}
 
     fn emit(state: Self::State, input: Self::Input) -> Emit;
 }
@@ -142,6 +141,7 @@ macro_rules! impl_tuple_folds {
     };
 }
 
+impl_tuple_folds!(A:0);
 impl_tuple_folds!(A:0, B:1);
 impl_tuple_folds!(A:0, B:1, C:2);
 impl_tuple_folds!(A:0, B:1, C:2, D:3);
@@ -157,8 +157,39 @@ impl_tuple_folds!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10, L:11);
 pub trait Rule {
     type State: Fold;
 
-    fn check(&self, state: &Self::State) -> Result<(), String>;
+    fn check(self, state: &Self::State) -> anyhow::Result<()>;
 }
+
+macro_rules! impl_rule_fns {
+    ($( $t:ident ),*) => {
+        impl<$($t),*> Rule for fn($(&$t),*) -> anyhow::Result<()>
+        where
+            $(
+              $t: Fold,
+            )*
+        {
+            type State = ($($t,)*);
+
+            #[allow(non_snake_case)]
+            fn check(self, ($($t,)*): &Self::State) -> anyhow::Result<()> {
+                self($($t),*)
+            }
+        }
+    };
+}
+
+impl_rule_fns!(A);
+impl_rule_fns!(A, B);
+impl_rule_fns!(A, B, C);
+impl_rule_fns!(A, B, C, D);
+impl_rule_fns!(A, B, C, D, E);
+impl_rule_fns!(A, B, C, D, E, F);
+impl_rule_fns!(A, B, C, D, E, F, G);
+impl_rule_fns!(A, B, C, D, E, F, G, H);
+impl_rule_fns!(A, B, C, D, E, F, G, H, I);
+impl_rule_fns!(A, B, C, D, E, F, G, H, I, J);
+impl_rule_fns!(A, B, C, D, E, F, G, H, I, J, K);
+impl_rule_fns!(A, B, C, D, E, F, G, H, I, J, K, L);
 
 pub trait FoldSet: Default {
     fn event_types() -> Vec<&'static str>;
@@ -175,9 +206,29 @@ pub trait FoldSet: Default {
 }
 
 pub trait RuleSet {
-    type States: FoldSet;
+    type Runner: RuleSetRunner;
 
-    fn check(&self, states: &Self::States) -> Result<(), String>;
+    fn into_runner(self) -> Self::Runner;
+}
+
+pub trait RuleSetRunner {
+    fn event_domain_ids(&self) -> Vec<(&'static str, &'static [&'static str])>;
+
+    fn apply_event(
+        &mut self,
+        event_type: &str,
+        data: Value,
+        tags: &[String],
+        bindings: &DomainIdBindings,
+        meta: EventMeta,
+    ) -> Result<(), SerializationError>;
+
+    fn check(self) -> anyhow::Result<()>;
+}
+
+pub struct RuleRunner<R, S> {
+    pub rules: R,
+    pub states: S,
 }
 
 impl FoldSet for () {
@@ -259,9 +310,28 @@ impl_tuple_fold_sets!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9);
 impl_tuple_fold_sets!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10);
 
 impl RuleSet for () {
-    type States = ();
+    type Runner = ();
 
-    fn check(&self, _: &Self::States) -> Result<(), String> {
+    fn into_runner(self) {}
+}
+
+impl RuleSetRunner for () {
+    fn event_domain_ids(&self) -> Vec<(&'static str, &'static [&'static str])> {
+        vec![]
+    }
+
+    fn apply_event(
+        &mut self,
+        _event_type: &str,
+        _data: Value,
+        _tags: &[String],
+        _bindings: &DomainIdBindings,
+        _meta: EventMeta,
+    ) -> Result<(), SerializationError> {
+        Ok(())
+    }
+
+    fn check(self) -> anyhow::Result<()> {
         Ok(())
     }
 }
@@ -274,11 +344,52 @@ macro_rules! impl_tuple_rule_sets {
                 $t: Rule,
             )+
         {
-            type States = ($($t::State,)+);
+            type Runner = RuleRunner<($($t,)+), ($($t::State,)+)>;
 
-            fn check(&self, states: &Self::States) -> Result<(), String> {
+            fn into_runner(self) -> Self::Runner {
+                RuleRunner {
+                    rules: self,
+                    states: Default::default(),
+                }
+            }
+        }
+
+        impl<$($t,)+> RuleSetRunner for RuleRunner<($($t,)+), ($($t::State,)+)>
+        where
+            $(
+                $t: Rule,
+            )+
+        {
+            fn event_domain_ids(&self) -> Vec<(&'static str, &'static [&'static str])> {
+                let mut ids = Vec::new();
                 $(
-                    self.$n.check(&states.$n)?;
+                    ids.extend_from_slice(&<<$t as Rule>::State as Fold>::Events::event_domain_ids());
+                )+
+                ids
+            }
+
+            fn apply_event(
+                &mut self,
+                event_type: &str,
+                data: Value,
+                tags: &[String],
+                bindings: &DomainIdBindings,
+                meta: EventMeta,
+            ) -> Result<(), SerializationError> {
+                $(
+                    if matches_fold_query::<<$t as Rule>::State>(event_type, tags, bindings)
+                        && let Some(event) = <<$t as Rule>::State as Fold>::Events::from_event(event_type, data.clone()).transpose()?
+                    {
+                        self.states.$n.apply(&event, meta);
+                    }
+                )+
+                Ok(())
+            }
+
+            fn check(self) -> anyhow::Result<()> {
+                let Self { rules, states } = self;
+                $(
+                    rules.$n.check(&states.$n)?;
                 )+
                 Ok(())
             }

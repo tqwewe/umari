@@ -383,18 +383,28 @@ pub fn output(entries: &[LogEntry]) -> Markup {
                     table class="w-full text-xs font-mono" {
                         tbody {
                             @for entry in entries {
-                                @let ts = entry.timestamp.format("%H:%M:%S%.3f").to_string();
-                                @let is_stderr = matches!(entry.stream, LogStream::Stderr);
-                                tr class="border-b border-gray-100 last:border-0" {
-                                    td class="px-3 py-1 text-gray-400 whitespace-nowrap w-28" { (ts) }
-                                    td class="px-2 py-1 whitespace-nowrap w-16" {
-                                        @if is_stderr {
-                                            span class="text-red-500 font-semibold" { "stderr" }
-                                        } @else {
-                                            span class="text-gray-400" { "stdout" }
+                                @if matches!(entry.stream, LogStream::System) {
+                                    tr class="border-b border-gray-100 last:border-0 bg-gray-50" {
+                                        td colspan="3" class="px-3 py-1.5 text-center text-xs text-gray-400 italic" {
+                                            (entry.timestamp.format("%H:%M:%S%.3f").to_string())
+                                            " — "
+                                            (entry.message)
                                         }
                                     }
-                                    td class="px-3 py-1 text-gray-800 break-all" { (entry.message) }
+                                } @else {
+                                    @let ts = entry.timestamp.format("%H:%M:%S%.3f").to_string();
+                                    @let is_stderr = matches!(entry.stream, LogStream::Stderr);
+                                    tr class="border-b border-gray-100 last:border-0" {
+                                        td class="px-3 py-1 text-gray-400 whitespace-nowrap w-28" { (ts) }
+                                        td class="px-2 py-1 whitespace-nowrap w-16" {
+                                            @if is_stderr {
+                                                span class="text-red-500 font-semibold" { "stderr" }
+                                            } @else {
+                                                span class="text-gray-400" { "stdout" }
+                                            }
+                                        }
+                                        td class="px-3 py-1 text-gray-800 break-all" { (entry.message) }
+                                    }
                                 }
                             }
                         }

@@ -5,6 +5,7 @@ edition = "2024"
 [dependencies]
 umari-macros.workspace = true
 
+anyhow.workspace = true
 chrono.workspace = true
 garde.workspace = true
 indexmap.workspace = true

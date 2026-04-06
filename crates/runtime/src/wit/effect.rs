@@ -18,7 +18,7 @@ bindgen!({
     },
     exports: { default: async },
     with: {
-        "umari:command/executor@0.1.0": crate::wit::command,
+        "umari:command/executor": crate::wit::command::executor,
         "umari:common": crate::wit::common,
         "umari:sqlite": crate::wit::sqlite,
         "wasi:http": wasmtime_wasi_http::p2::bindings::http,

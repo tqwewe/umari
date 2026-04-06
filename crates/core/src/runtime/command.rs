@@ -5,7 +5,8 @@ use serde::de::DeserializeOwned;
 use umadb_dcb::DcbQuery;
 
 use crate::command::{
-    Command, CommandInput, EventMeta, FoldSet, RuleSet, build_query_items_from_domain_ids,
+    Command, CommandInput, EventMeta, FoldSet, RuleSet, RuleSetRunner,
+    build_query_items_from_domain_ids,
 };
 
 pub use self::umari::command::types::*;
@@ -53,8 +54,9 @@ where
             .validate()
             .map_err(|err| Error::Rejected(err.to_string()))?;
 
+        let runner = T::rules(&input).into_runner();
         let mut event_domain_ids = <T::State as FoldSet>::event_domain_ids();
-        event_domain_ids.extend(<<T::Rules as RuleSet>::States as FoldSet>::event_domain_ids());
+        event_domain_ids.extend(runner.event_domain_ids());
         let items = build_query_items_from_domain_ids(
             &event_domain_ids,
             &<T::Input as CommandInput>::domain_id_bindings(&input),
@@ -67,10 +69,9 @@ where
         let input: T::Input =
             serde_json::from_str(&input).map_err(|err| Error::InvalidInput(err.to_string()))?;
 
-        let rules = T::rules(&input);
         let bindings = <T::Input as CommandInput>::domain_id_bindings(&input);
         let mut state = T::State::default();
-        let mut rule_states = <<T::Rules as RuleSet>::States as Default>::default();
+        let mut runner = T::rules(&input).into_runner();
 
         for stored_event in events {
             let event: crate::event::StoredEvent<serde_json::Value> = stored_event.into();
@@ -88,18 +89,14 @@ where
                 meta,
             )
             .unwrap_or_else(|err| panic!("failed to deserialize event data: {}", err.message));
-            <<T::Rules as RuleSet>::States as FoldSet>::apply(
-                &mut rule_states,
-                &event.event_type,
-                event.data,
-                &event.tags,
-                &bindings,
-                meta,
-            )
-            .unwrap_or_else(|err| panic!("failed to deserialize event data: {}", err.message));
+            runner
+                .apply_event(&event.event_type, event.data, &event.tags, &bindings, meta)
+                .unwrap_or_else(|err| panic!("failed to deserialize event data: {}", err.message));
         }
 
-        rules.check(&rule_states).map_err(Error::Rejected)?;
+        runner
+            .check()
+            .map_err(|err| Error::Rejected(err.to_string()))?;
         let emitted_events = T::emit(state, input)
             .into_events()
             .into_iter()

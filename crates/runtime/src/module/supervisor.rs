@@ -29,11 +29,13 @@ struct PendingModule {
     version: Version,
     component: Component,
     reset_db: bool,
+    output: ModuleOutput,
 }
 
 struct ModuleBackoffState {
     delay: Duration,
     last_failed_position: Option<u64>,
+    attempt: u32,
 }
 
 pub struct ModuleSupervisor<A: EventHandlerModule> {
@@ -150,8 +152,6 @@ impl<A: EventHandlerModule> Actor for ModuleSupervisor<A> {
                 .find(|(_, m)| m.actor_ref.id() == id)
                 .map(|(n, m)| (n.clone(), m.clone()))
         {
-            self.modules.remove(&name);
-
             let current_pos = self.read_last_position(&name);
             let state = self
                 .backoff
@@ -159,6 +159,7 @@ impl<A: EventHandlerModule> Actor for ModuleSupervisor<A> {
                 .or_insert(ModuleBackoffState {
                     delay: Duration::from_secs(1),
                     last_failed_position: None,
+                    attempt: 0,
                 });
 
             if state.last_failed_position == current_pos {
@@ -167,7 +168,9 @@ impl<A: EventHandlerModule> Actor for ModuleSupervisor<A> {
                 state.delay = Duration::from_secs(1);
             }
             state.last_failed_position = current_pos;
+            state.attempt += 1;
             let delay = state.delay;
+            let attempt = state.attempt;
 
             warn!(
                 module_type = %A::MODULE_TYPE,
@@ -175,6 +178,10 @@ impl<A: EventHandlerModule> Actor for ModuleSupervisor<A> {
                 ?delay,
                 "module failed, retrying with backoff"
             );
+
+            module.output.push_system(format!(
+                "restarting (attempt {attempt}, delay {delay:?})"
+            ));
 
             if let Some(supervisor_ref) = actor_ref.upgrade() {
                 let name = name.clone();
@@ -225,6 +232,7 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
             version,
             component,
             reset_db: true,
+            output: ModuleOutput::new(500),
         };
         self.backoff.remove(&name);
         info!(module_type = %A::MODULE_TYPE, %name, "resetting module");
@@ -273,14 +281,15 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
             }
         };
 
+        // If a live actor exists, stop it and defer spawning until it fully dies.
+        self.backoff.remove(&name);
+
         let pending = PendingModule {
             version,
             component,
             reset_db: false,
+            output: ModuleOutput::new(500),
         };
-
-        // If a live actor exists, stop it and defer spawning until it fully dies.
-        self.backoff.remove(&name);
 
         if let Some(old_module) = self.modules.remove(&name)
             && old_module.actor_ref.is_alive()
@@ -308,13 +317,23 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
         if !self.backoff.contains_key(&name) {
             return Ok(());
         }
-        if self.modules.contains_key(&name) {
+        if self
+            .modules
+            .get(&name)
+            .is_some_and(|m| m.actor_ref.is_alive())
+        {
             return Ok(());
         }
+        let output = self
+            .modules
+            .get(&name)
+            .map(|m| m.output.clone())
+            .unwrap_or_else(|| ModuleOutput::new(500));
         let pending = PendingModule {
             version,
             component,
             reset_db: false,
+            output,
         };
         self.spawn_module(ctx.actor_ref(), name, pending, false)
             .await
@@ -336,7 +355,7 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
             let _ = fs::remove_file(format!("{}-shm", db_path.display()));
         }
 
-        let output = ModuleOutput::new(1024 * 10);
+        let output = pending.output.clone();
         let actor_ref = ModuleActor::supervise(
             supervisor_ref,
             ModuleActorArgs {

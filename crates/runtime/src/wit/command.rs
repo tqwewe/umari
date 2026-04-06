@@ -54,7 +54,7 @@ impl executor::Host for wit::EventHandlerComponentState {
 
         let result = self.command_ref.ask(msg).await;
         match result {
-            Ok(_) => todo!(),
+            Ok(_) => todo!("NOT DONE YET"),
             Err(SendError::HandlerError(err)) => Ok(Err(err.to_string())),
             Err(err) => Err(wasmtime::Error::msg(err.to_string())),
         }

@@ -188,11 +188,23 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
         );
         let mut store = Store::new(&args.engine, state);
 
-        let instance = A::instantiate(&mut store, &args.component, &args.linker, args.args).await?;
+        let instance = match A::instantiate(&mut store, &args.component, &args.linker, args.args).await {
+            Ok(instance) => instance,
+            Err(err) => {
+                args.output.push_stderr(format!("{err:#}"));
+                return Err(ModuleError::Wasmtime(err));
+            }
+        };
 
         store.data().conn().execute("BEGIN", [])?;
 
-        let handler = instance.construct(&mut store).await?;
+        let handler = match instance.construct(&mut store).await {
+            Ok(handler) => handler,
+            Err(err) => {
+                args.output.push_stderr(format!("{err:#}"));
+                return Err(ModuleError::Wasmtime(err));
+            }
+        };
 
         store.data().conn().execute_batch("COMMIT; BEGIN")?;
 
