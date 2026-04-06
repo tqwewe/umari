@@ -20,3 +20,6 @@ sha2.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 uuid.workspace = true
+chrono = { workspace = true }
+umadb-client.workspace = true
+umadb-dcb.workspace = true

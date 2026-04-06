@@ -207,7 +207,13 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
             .read(Some(query), start, false, None, true)
             .await?;
 
-        debug!(module_type = %A::MODULE_TYPE, name = %args.name, version = %args.version, ?start, "subscribed to event store");
+        debug!(
+            module_type = %A::MODULE_TYPE,
+            name = %args.name,
+            version = %args.version,
+            start = start.unwrap_or_default(),
+            "subscribed to event store"
+        );
 
         // Spawn worker pool
         let worker_pool = if let Some(worker_args) = args_for_workers {
@@ -418,7 +424,7 @@ impl<A: EventHandlerModule> ModuleActor<A> {
                 debug!(
                     name = %self.name,
                     version = %self.version,
-                    last_position = ?expected_position,
+                    last_position = expected_position.unwrap_or_default(),
                     new_position,
                     "committed batch"
                 );

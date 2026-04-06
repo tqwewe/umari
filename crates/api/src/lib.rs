@@ -9,6 +9,7 @@ use axum::{
 };
 use kameo::actor::ActorRef;
 use tokio::{io, net::ToSocketAddrs};
+use umadb_client::AsyncUmaDBClient;
 use umari_runtime::{
     command::actor::CommandActor,
     module::supervisor::ModuleSupervisor,
@@ -107,7 +108,7 @@ use umari_types::*;
 )]
 struct ApiDoc;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct AppState {
     pub data_dir: Arc<PathBuf>,
     pub module_store_ref: ActorRef<ModuleStoreActor>,
@@ -115,6 +116,7 @@ pub struct AppState {
     pub projector_supervisor_ref: ActorRef<ModuleSupervisor<ProjectorWorld>>,
     pub policy_supervisor_ref: ActorRef<ModuleSupervisor<PolicyState>>,
     pub effect_supervisor_ref: ActorRef<ModuleSupervisor<EffectWorld>>,
+    pub event_store: Arc<AsyncUmaDBClient>,
 }
 
 pub async fn start_server(addr: impl ToSocketAddrs, state: AppState) -> io::Result<()> {
@@ -130,6 +132,7 @@ pub async fn start_server(addr: impl ToSocketAddrs, state: AppState) -> io::Resu
         projector_supervisor_ref: state.projector_supervisor_ref.clone(),
         policy_supervisor_ref: state.policy_supervisor_ref.clone(),
         effect_supervisor_ref: state.effect_supervisor_ref.clone(),
+        event_store: state.event_store.clone(),
     };
 
     // Create API routes with state

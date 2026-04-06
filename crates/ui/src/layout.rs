@@ -1,6 +1,22 @@
 use maud::{DOCTYPE, Markup, html};
 
 pub fn page(title: &str, content: Markup) -> Markup {
+    page_inner(title, content, false)
+}
+
+pub fn wide_page(title: &str, content: Markup) -> Markup {
+    page_inner(title, content, true)
+}
+
+pub fn width_wrapper(content: Markup, wide: bool) -> Markup {
+    if wide {
+        html! { div class="max-w-7xl mx-auto" { (content) } }
+    } else {
+        html! { div class="max-w-4xl mx-auto" { (content) } }
+    }
+}
+
+fn page_inner(title: &str, content: Markup, wide: bool) -> Markup {
     html! {
         (DOCTYPE)
         html lang="en" {
@@ -46,12 +62,20 @@ pub fn page(title: &str, content: Markup) -> Markup {
                             data-nav="/ui/effects"
                             class="nav-link flex items-center px-3 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
                             { "Effects" }
+                        p class="text-xs font-semibold text-gray-400 uppercase tracking-wider px-2 mt-4 mb-2" { "Observability" }
+                        a href="/ui/events"
+                            hx-get="/ui/events"
+                            hx-target="#content"
+                            hx-push-url="/ui/events"
+                            data-nav="/ui/events"
+                            class="nav-link flex items-center px-3 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                            { "Events" }
                     }
                 }
                 div class="ml-52 flex-1 min-h-screen" {
-                    main class="max-w-4xl mx-auto px-8 py-8" {
+                    main class="px-8 py-8" {
                         div #content {
-                            (content)
+                            (width_wrapper(content, wide))
                         }
                     }
                 }

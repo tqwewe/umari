@@ -11,7 +11,7 @@ use uuid::Uuid;
 use crate::{
     domain_id::DomainIdBindings,
     emit::Emit,
-    error::SerializationError,
+    error::{CommandExecuteError, SerializationError},
     event::{EventSet, StoredEvent},
 };
 
@@ -40,6 +40,11 @@ pub trait CommandInput {
     ///
     /// Maps domain ID field names to the values to query for.
     fn domain_id_bindings(&self) -> DomainIdBindings;
+}
+
+/// A trait implemented when using the `export_command!` macro, with the command name matching the crate name.
+pub trait CommandName {
+    const COMMAND_NAME: &'static str;
 }
 
 /// The main trait for implementing command handlers.
@@ -106,10 +111,6 @@ pub trait Command {
     type Rules: RuleSet;
 
     fn rules(input: &Self::Input) -> Self::Rules;
-
-    fn is_idempotent(_state: &Self::State, _input: &Self::Input) -> bool {
-        false
-    }
 
     fn emit(state: Self::State, input: Self::Input) -> Emit;
 }
@@ -332,26 +333,26 @@ fn matches_fold_query<I: Fold>(
     })
 }
 
-pub trait CommandExecute: Command {
-    fn execute(name: &str, input: &Self::Input) -> Result<Vec<StoredEvent<Value>>, String>;
+pub trait CommandExecute: Command + CommandName {
+    fn execute(input: &Self::Input) -> Result<Vec<StoredEvent<Value>>, CommandExecuteError>;
 
     fn execute_with(
-        name: &str,
         input: &Self::Input,
         ctx: CommandContext,
-    ) -> Result<Vec<StoredEvent<Value>>, String>;
+    ) -> Result<Vec<StoredEvent<Value>>, CommandExecuteError>;
 }
 
-impl<T: Command> CommandExecute for T
+impl<T> CommandExecute for T
 where
+    T: Command + CommandName,
     T::Input: Serialize,
 {
     #[inline(always)]
-    fn execute(name: &str, input: &Self::Input) -> Result<Vec<StoredEvent<Value>>, String> {
+    fn execute(input: &Self::Input) -> Result<Vec<StoredEvent<Value>>, CommandExecuteError> {
         use crate::runtime::command::umari::command::executor::CommandContext;
 
         execute_inner::<T>(
-            name,
+            T::COMMAND_NAME,
             input,
             &CommandContext {
                 correlation_id: None,
@@ -363,14 +364,13 @@ where
 
     #[inline(always)]
     fn execute_with(
-        name: &str,
         input: &Self::Input,
         ctx: CommandContext,
-    ) -> Result<Vec<StoredEvent<Value>>, String> {
+    ) -> Result<Vec<StoredEvent<Value>>, CommandExecuteError> {
         use crate::runtime::command::umari::command::executor::CommandContext;
 
         execute_inner::<T>(
-            name,
+            T::COMMAND_NAME,
             input,
             &CommandContext {
                 correlation_id: Some(ctx.correlation_id.to_string()),
@@ -385,7 +385,7 @@ fn execute_inner<T>(
     name: &str,
     input: &T::Input,
     ctx: &crate::runtime::command::umari::command::executor::CommandContext,
-) -> Result<Vec<StoredEvent<Value>>, String>
+) -> Result<Vec<StoredEvent<Value>>, CommandExecuteError>
 where
     T: Command,
     T::Input: Serialize,
@@ -397,7 +397,8 @@ where
         &serde_json::to_string(input)
             .unwrap_or_else(|err| panic!("failed to serialize input: {err}")),
         ctx,
-    )?;
+    )
+    .map_err(CommandExecuteError)?;
 
     Ok(result.into_iter().map(|event| event.into()).collect())
 }
@@ -410,6 +411,37 @@ pub struct CommandContext {
     pub triggering_event_id: Option<Uuid>,
     /// Client-supplied key for deduplicating retried command executions.
     pub idempotency_key: Option<Uuid>,
+}
+
+impl CommandContext {
+    pub fn new() -> Self {
+        CommandContext {
+            correlation_id: Uuid::new_v4(),
+            triggering_event_id: None,
+            idempotency_key: None,
+        }
+    }
+
+    pub fn with_correlation_id(mut self, correlation_id: Uuid) -> Self {
+        self.correlation_id = correlation_id;
+        self
+    }
+
+    pub fn with_triggering_event_id(mut self, triggering_event_id: Uuid) -> Self {
+        self.triggering_event_id = Some(triggering_event_id);
+        self
+    }
+
+    pub fn with_idempotency_key(mut self, idempotency_key: Uuid) -> Self {
+        self.idempotency_key = Some(idempotency_key);
+        self
+    }
+}
+
+impl Default for CommandContext {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

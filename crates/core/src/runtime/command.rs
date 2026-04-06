@@ -24,6 +24,10 @@ wit_bindgen::generate!({
 #[macro_export]
 macro_rules! export_command {
     ($ty:path) => {
+        impl $crate::command::CommandName for $ty {
+            const COMMAND_NAME: &'static str = env!("CARGO_PKG_NAME");
+        }
+
         $crate::runtime::command::export!($crate::runtime::command::CommandExport<$ty>, with_types_in $crate::runtime::command);
     };
 }
@@ -96,30 +100,26 @@ where
         }
 
         rules.check(&rule_states).map_err(Error::Rejected)?;
-        let emitted_events = if T::is_idempotent(&state, &input) {
-            vec![]
-        } else {
-            T::emit(state, input)
-                .into_events()
-                .into_iter()
-                .map(|event| {
-                    let data = serde_json::to_string(&event.data)
-                        .unwrap_or_else(|err| panic!("failed to serialize event data: {err}"));
-                    EmittedEvent {
-                        event_type: event.event_type,
-                        data,
-                        domain_ids: event
-                            .domain_ids
-                            .into_iter()
-                            .map(|(k, v)| DomainId {
-                                name: k.to_string(),
-                                id: v.into_option(),
-                            })
-                            .collect(),
-                    }
-                })
-                .collect()
-        };
+        let emitted_events = T::emit(state, input)
+            .into_events()
+            .into_iter()
+            .map(|event| {
+                let data = serde_json::to_string(&event.data)
+                    .unwrap_or_else(|err| panic!("failed to serialize event data: {err}"));
+                EmittedEvent {
+                    event_type: event.event_type,
+                    data,
+                    domain_ids: event
+                        .domain_ids
+                        .into_iter()
+                        .map(|(k, v)| DomainId {
+                            name: k.to_string(),
+                            id: v.into_option(),
+                        })
+                        .collect(),
+                }
+            })
+            .collect();
 
         Ok(ExecuteOutput {
             events: emitted_events,

@@ -17,4 +17,5 @@ tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+umadb-client.workspace = true
 umadb-dcb.workspace = true

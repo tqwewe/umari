@@ -13,6 +13,7 @@ use clap::Parser;
 use kameo::{actor::ActorRef, error::HookError, prelude::Spawn};
 use tokio::{signal, task::JoinHandle};
 use tracing::{error, info, trace};
+use umadb_client::AsyncUmaDBClient;
 use umadb_dcb::DcbError;
 use umari_api::{AppState, start_server};
 use umari_runtime::{
@@ -81,6 +82,7 @@ async fn main() {
     let data_dir: Arc<PathBuf> = cli.data_dir.into();
 
     let start = Instant::now();
+    let event_store_url = cli.event_store_url.clone();
     let runtime_ref = RuntimeSupervisor::spawn(RuntimeConfig {
         data_dir: data_dir.clone(),
         event_store_url: cli.event_store_url,
@@ -110,6 +112,13 @@ async fn main() {
     }
 
     info!("runtime started after {:?}", start.elapsed());
+
+    let event_store: Arc<AsyncUmaDBClient> = Arc::new(
+        umadb_client::UmaDBClient::new(event_store_url)
+            .connect_async()
+            .await
+            .expect("failed to connect event store for UI"),
+    );
 
     // Get actor refs from registry
     let module_store_ref = ActorRef::<ModuleStoreActor>::lookup("module_store")
@@ -141,6 +150,7 @@ async fn main() {
                 projector_supervisor_ref,
                 policy_supervisor_ref,
                 effect_supervisor_ref,
+                event_store,
             };
             if let Err(err) = start_server(&api_addr, state).await {
                 error!("API server error: {err}");

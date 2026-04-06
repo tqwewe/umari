@@ -2,6 +2,10 @@ use thiserror::Error;
 
 pub use crate::runtime::sqlite::SqliteError;
 
+#[derive(Clone, Debug, Error)]
+#[error("command rejected: {0}")]
+pub struct CommandExecuteError(pub String);
+
 /// Error returned when a command is rejected or fails.
 #[derive(Clone, Debug, Error)]
 #[error("{code}: {message}")]

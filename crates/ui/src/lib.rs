@@ -11,6 +11,7 @@ use axum::{
     routing::{delete, get, post, put},
 };
 use kameo::actor::ActorRef;
+use umadb_client::AsyncUmaDBClient;
 use umari_runtime::{
     command::actor::CommandActor,
     module::supervisor::ModuleSupervisor,
@@ -23,6 +24,7 @@ use crate::routes::{
     active::list_active,
     commands::{get_command, list_commands},
     effects::{get_effect, list_effects},
+    events::list_events,
     execute::execute_command,
     index::index,
     policies::{get_policy, list_policies},
@@ -39,6 +41,7 @@ pub struct UiState {
     pub projector_supervisor_ref: ActorRef<ModuleSupervisor<ProjectorWorld>>,
     pub policy_supervisor_ref: ActorRef<ModuleSupervisor<PolicyState>>,
     pub effect_supervisor_ref: ActorRef<ModuleSupervisor<EffectWorld>>,
+    pub event_store: Arc<AsyncUmaDBClient>,
 }
 
 pub fn ui_router(state: UiState) -> Router {
@@ -59,5 +62,6 @@ pub fn ui_router(state: UiState) -> Router {
         .route("/ui/{module_type}/{name}/active", delete(deactivate))
         .route("/ui/commands/{name}/execute", post(execute_command))
         .route("/ui/{module_type}/{name}/replay", post(replay))
+        .route("/ui/events", get(list_events))
         .with_state(state)
 }

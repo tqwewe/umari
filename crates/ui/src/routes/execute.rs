@@ -6,7 +6,6 @@ use maud::{Markup, html};
 use serde::Deserialize;
 use umari_core::prelude::CommandContext;
 use umari_runtime::command::actor::{CommandPayload, Execute};
-use uuid::Uuid;
 
 use crate::{UiState, error::HtmlError};
 
@@ -26,11 +25,7 @@ pub async fn execute_command(
             name: name.into(),
             command: CommandPayload {
                 input: form.payload,
-                context: CommandContext {
-                    correlation_id: Uuid::new_v4(),
-                    triggering_event_id: None,
-                    idempotency_key: None,
-                },
+                context: CommandContext::new(),
             },
         })
         .await
