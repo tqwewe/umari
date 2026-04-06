@@ -12,7 +12,8 @@ use crate::{
     domain_id::DomainIdBindings,
     emit::Emit,
     error::{CommandExecuteError, SerializationError},
-    event::{EventSet, StoredEvent},
+    event::EventSet,
+    runtime::command::umari::command::executor::CommandReceipt,
 };
 
 /// Trait for command input structs that declare domain ID bindings.
@@ -445,12 +446,12 @@ fn matches_fold_query<I: Fold>(
 }
 
 pub trait CommandExecute: Command + CommandName {
-    fn execute(input: &Self::Input) -> Result<Vec<StoredEvent<Value>>, CommandExecuteError>;
+    fn execute(input: &Self::Input) -> Result<CommandReceipt, CommandExecuteError>;
 
     fn execute_with(
         input: &Self::Input,
         ctx: CommandContext,
-    ) -> Result<Vec<StoredEvent<Value>>, CommandExecuteError>;
+    ) -> Result<CommandReceipt, CommandExecuteError>;
 }
 
 impl<T> CommandExecute for T
@@ -459,7 +460,7 @@ where
     T::Input: Serialize,
 {
     #[inline(always)]
-    fn execute(input: &Self::Input) -> Result<Vec<StoredEvent<Value>>, CommandExecuteError> {
+    fn execute(input: &Self::Input) -> Result<CommandReceipt, CommandExecuteError> {
         use crate::runtime::command::umari::command::executor::CommandContext;
 
         execute_inner::<T>(
@@ -477,7 +478,7 @@ where
     fn execute_with(
         input: &Self::Input,
         ctx: CommandContext,
-    ) -> Result<Vec<StoredEvent<Value>>, CommandExecuteError> {
+    ) -> Result<CommandReceipt, CommandExecuteError> {
         use crate::runtime::command::umari::command::executor::CommandContext;
 
         execute_inner::<T>(
@@ -496,7 +497,7 @@ fn execute_inner<T>(
     name: &str,
     input: &T::Input,
     ctx: &crate::runtime::command::umari::command::executor::CommandContext,
-) -> Result<Vec<StoredEvent<Value>>, CommandExecuteError>
+) -> Result<CommandReceipt, CommandExecuteError>
 where
     T: Command,
     T::Input: Serialize,
@@ -511,7 +512,7 @@ where
     )
     .map_err(CommandExecuteError)?;
 
-    Ok(result.into_iter().map(|event| event.into()).collect())
+    Ok(result)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

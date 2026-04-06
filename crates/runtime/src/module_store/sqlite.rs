@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use rusqlite::{
     Connection, ErrorCode, OptionalExtension, Row, ToSql, params,
     types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, Type, ValueRef},
@@ -38,6 +40,14 @@ impl SqliteModuleStore {
                 name TEXT NOT NULL,
                 module_id INTEGER NOT NULL,
                 PRIMARY KEY(module_type, name)
+            );
+
+            CREATE TABLE IF NOT EXISTS module_env_vars (
+                module_type TEXT NOT NULL,
+                name        TEXT NOT NULL,
+                key         TEXT NOT NULL,
+                value       TEXT NOT NULL,
+                PRIMARY KEY (module_type, name, key)
             );
             "#,
         )?;
@@ -278,6 +288,51 @@ impl ModuleStore for SqliteModuleStore {
             .collect::<Result<Vec<_>, _>>();
 
         rows.map_err(ModuleStoreError::Database)
+    }
+}
+
+impl SqliteModuleStore {
+    pub fn get_env_vars(
+        &self,
+        module_type: ModuleType,
+        name: &str,
+    ) -> Result<HashMap<String, String>, ModuleStoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT key, value FROM module_env_vars WHERE module_type = ?1 AND name = ?2",
+        )?;
+        let rows = stmt
+            .query_map(params![module_type, name], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?
+            .collect::<Result<HashMap<_, _>, _>>();
+        rows.map_err(ModuleStoreError::Database)
+    }
+
+    pub fn set_env_var(
+        &self,
+        module_type: ModuleType,
+        name: &str,
+        key: &str,
+        value: &str,
+    ) -> Result<(), ModuleStoreError> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO module_env_vars (module_type, name, key, value) VALUES (?1, ?2, ?3, ?4)",
+            params![module_type, name, key, value],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_env_var(
+        &self,
+        module_type: ModuleType,
+        name: &str,
+        key: &str,
+    ) -> Result<bool, ModuleStoreError> {
+        let rows_affected = self.conn.execute(
+            "DELETE FROM module_env_vars WHERE module_type = ?1 AND name = ?2 AND key = ?3",
+            params![module_type, name, key],
+        )?;
+        Ok(rows_affected > 0)
     }
 }
 

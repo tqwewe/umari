@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 // Note: ModuleType comes from umari-runtime, not defined here
@@ -158,6 +160,33 @@ pub struct ActiveModuleInfo {
     pub name: String,
     /// Active version
     pub version: String,
+}
+
+// ========== Env Vars ==========
+
+#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct GetEnvVarsResponse {
+    pub vars: HashMap<String, String>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SetEnvVarRequest {
+    pub value: String,
+}
+
+#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SetEnvVarResponse {
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DeleteEnvVarResponse {
+    pub deleted: bool,
 }
 
 // ========== Module Health Status ==========

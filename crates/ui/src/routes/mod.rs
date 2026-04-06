@@ -2,6 +2,7 @@ pub mod activate;
 pub mod active;
 pub mod commands;
 pub mod effects;
+pub mod env_vars;
 pub mod events;
 pub mod execute;
 pub mod index;

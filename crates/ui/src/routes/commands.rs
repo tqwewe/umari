@@ -9,14 +9,17 @@ use umari_runtime::{
     command::actor::ActiveCommands,
     module_store::{
         ModuleType,
-        actor::{GetActiveModule, GetAllActiveModules, GetAllModuleNames, GetModuleVersions},
+        actor::{GetActiveModule, GetAllActiveModules, GetAllModuleNames, GetEnvVars, GetModuleVersions},
     },
     output::LogEntry,
 };
 
 use crate::{
     UiState,
-    components::{ModuleHealth, execute_form, module_summary_table, output, tabs, upload_form, versions_table},
+    components::{
+        ModuleHealth, env_vars_panel, execute_form, module_summary_table, output, tabs, upload_form,
+        versions_table,
+    },
     error::HtmlError,
     htmx::respond,
 };
@@ -94,6 +97,14 @@ pub async fn get_command(
         .map(|m| m.output.entries())
         .unwrap_or_default();
 
+    let env_vars = state
+        .module_store_ref
+        .ask(GetEnvVars {
+            module_type: ModuleType::Command,
+            name: name_arc.clone(),
+        })
+        .await?;
+
     let versions_panel = html! {
         (versions_table(ModuleType::Command, &name, versions, active_version.as_ref()))
         (upload_form(ModuleType::Command, Some(&name)))
@@ -102,6 +113,7 @@ pub async fn get_command(
         (execute_form(&name, schema.as_ref()))
         (output(&entries))
     };
+    let env_panel = env_vars_panel(ModuleType::Command, &name, &env_vars);
 
     let content = html! {
         a href="/ui/commands"
@@ -115,6 +127,7 @@ pub async fn get_command(
             (tabs(&format!("tabs-command-{name}"), vec![
                 ("Versions", versions_panel),
                 ("Execute", execute_panel),
+                ("Environment", env_panel),
             ]))
         }
     };

@@ -128,6 +128,13 @@ enum CommandsSubcommand {
         /// module name
         name: String,
     },
+    /// manage environment variables for a command module
+    Env {
+        /// module name
+        name: String,
+        #[command(subcommand)]
+        action: EnvAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -176,6 +183,13 @@ enum ProjectorsSubcommand {
     Replay {
         /// module name
         name: String,
+    },
+    /// manage environment variables for a projector module
+    Env {
+        /// module name
+        name: String,
+        #[command(subcommand)]
+        action: EnvAction,
     },
 }
 
@@ -226,6 +240,13 @@ enum PoliciesSubcommand {
         /// module name
         name: String,
     },
+    /// manage environment variables for a policy module
+    Env {
+        /// module name
+        name: String,
+        #[command(subcommand)]
+        action: EnvAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -275,6 +296,31 @@ enum EffectsSubcommand {
         /// module name
         name: String,
     },
+    /// manage environment variables for an effect module
+    Env {
+        /// module name
+        name: String,
+        #[command(subcommand)]
+        action: EnvAction,
+    },
+}
+
+#[derive(Subcommand, Clone)]
+enum EnvAction {
+    /// list all environment variables
+    List,
+    /// set an environment variable
+    Set {
+        /// variable key
+        key: String,
+        /// variable value
+        value: String,
+    },
+    /// unset an environment variable
+    Unset {
+        /// variable key
+        key: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -323,6 +369,15 @@ fn main() -> Result<()> {
             CommandsSubcommand::Deactivate { name } => {
                 commands::commands::deactivate(&client, name)
             }
+            CommandsSubcommand::Env { name, action } => match action {
+                EnvAction::List => commands::env_vars::list(&client, "commands", &name),
+                EnvAction::Set { key, value } => {
+                    commands::env_vars::set(&client, "commands", &name, &key, &value)
+                }
+                EnvAction::Unset { key } => {
+                    commands::env_vars::unset(&client, "commands", &name, &key)
+                }
+            },
         },
         Commands::Projectors { command } => match command {
             ProjectorsSubcommand::Upload {
@@ -344,6 +399,15 @@ fn main() -> Result<()> {
                 commands::projectors::deactivate(&client, name)
             }
             ProjectorsSubcommand::Replay { name } => commands::projectors::replay(&client, name),
+            ProjectorsSubcommand::Env { name, action } => match action {
+                EnvAction::List => commands::env_vars::list(&client, "projectors", &name),
+                EnvAction::Set { key, value } => {
+                    commands::env_vars::set(&client, "projectors", &name, &key, &value)
+                }
+                EnvAction::Unset { key } => {
+                    commands::env_vars::unset(&client, "projectors", &name, &key)
+                }
+            },
         },
         Commands::Policies { command } => match command {
             PoliciesSubcommand::Upload {
@@ -365,6 +429,15 @@ fn main() -> Result<()> {
                 commands::policies::deactivate(&client, name)
             }
             PoliciesSubcommand::Replay { name } => commands::policies::replay(&client, name),
+            PoliciesSubcommand::Env { name, action } => match action {
+                EnvAction::List => commands::env_vars::list(&client, "policies", &name),
+                EnvAction::Set { key, value } => {
+                    commands::env_vars::set(&client, "policies", &name, &key, &value)
+                }
+                EnvAction::Unset { key } => {
+                    commands::env_vars::unset(&client, "policies", &name, &key)
+                }
+            },
         },
         Commands::Effects { command } => match command {
             EffectsSubcommand::Upload {
@@ -386,6 +459,15 @@ fn main() -> Result<()> {
                 commands::effects::deactivate(&client, name)
             }
             EffectsSubcommand::Replay { name } => commands::effects::replay(&client, name),
+            EffectsSubcommand::Env { name, action } => match action {
+                EnvAction::List => commands::env_vars::list(&client, "effects", &name),
+                EnvAction::Set { key, value } => {
+                    commands::env_vars::set(&client, "effects", &name, &key, &value)
+                }
+                EnvAction::Unset { key } => {
+                    commands::env_vars::unset(&client, "effects", &name, &key)
+                }
+            },
         },
         Commands::Modules { command } => match command {
             ModulesSubcommand::Active { r#type } => commands::modules::active(&client, r#type),

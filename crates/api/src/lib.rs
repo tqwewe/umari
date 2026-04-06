@@ -24,12 +24,15 @@ use crate::routes::{
     execute::execute,
     modules::{
         activate_command, activate_effect, activate_policy, activate_projector, deactivate_command,
-        deactivate_effect, deactivate_policy, deactivate_projector, get_command_details,
-        get_command_health, get_command_version_details, get_effect_details, get_effect_health,
-        get_effect_version_details, get_policy_details, get_policy_health,
-        get_policy_version_details, get_projector_details, get_projector_health,
+        deactivate_effect, deactivate_policy, deactivate_projector, delete_command_env_var,
+        delete_effect_env_var, delete_policy_env_var, delete_projector_env_var,
+        get_command_details, get_command_env_vars, get_command_health, get_command_version_details,
+        get_effect_details, get_effect_env_vars, get_effect_health, get_effect_version_details,
+        get_policy_details, get_policy_env_vars, get_policy_health, get_policy_version_details,
+        get_projector_details, get_projector_env_vars, get_projector_health,
         get_projector_version_details, list_active_modules, list_commands, list_effects,
         list_policies, list_projectors, replay_effect, replay_policy, replay_projector,
+        set_command_env_var, set_effect_env_var, set_policy_env_var, set_projector_env_var,
         upload_command, upload_effect, upload_policy, upload_projector,
     },
 };
@@ -66,6 +69,18 @@ use umari_types::*;
         routes::modules::replay_policy,
         routes::modules::replay_effect,
         routes::modules::list_active_modules,
+        routes::modules::get_command_env_vars,
+        routes::modules::get_projector_env_vars,
+        routes::modules::get_policy_env_vars,
+        routes::modules::get_effect_env_vars,
+        routes::modules::set_command_env_var,
+        routes::modules::set_projector_env_var,
+        routes::modules::set_policy_env_var,
+        routes::modules::set_effect_env_var,
+        routes::modules::delete_command_env_var,
+        routes::modules::delete_projector_env_var,
+        routes::modules::delete_policy_env_var,
+        routes::modules::delete_effect_env_var,
         routes::execute::execute,
     ),
     components(
@@ -82,6 +97,10 @@ use umari_types::*;
             ReplayResponse,
             ActiveModulesResponse,
             ActiveModuleInfo,
+            GetEnvVarsResponse,
+            SetEnvVarRequest,
+            SetEnvVarResponse,
+            DeleteEnvVarResponse,
             umari_types::ExecuteResponse,
             umari_types::EmittedEventInfo,
             umari_types::ErrorResponse,
@@ -187,6 +206,25 @@ pub async fn start_server(addr: impl ToSocketAddrs, state: AppState) -> io::Resu
         .route("/effects/{name}/active", put(activate_effect))
         .route("/effects/{name}/active", delete(deactivate_effect))
         .route("/effects/{name}/replay", post(replay_effect))
+        // Command env vars
+        .route("/commands/{name}/env", get(get_command_env_vars))
+        .route("/commands/{name}/env/{key}", put(set_command_env_var))
+        .route("/commands/{name}/env/{key}", delete(delete_command_env_var))
+        // Projector env vars
+        .route("/projectors/{name}/env", get(get_projector_env_vars))
+        .route("/projectors/{name}/env/{key}", put(set_projector_env_var))
+        .route(
+            "/projectors/{name}/env/{key}",
+            delete(delete_projector_env_var),
+        )
+        // Policy env vars
+        .route("/policies/{name}/env", get(get_policy_env_vars))
+        .route("/policies/{name}/env/{key}", put(set_policy_env_var))
+        .route("/policies/{name}/env/{key}", delete(delete_policy_env_var))
+        // Effect env vars
+        .route("/effects/{name}/env", get(get_effect_env_vars))
+        .route("/effects/{name}/env/{key}", put(set_effect_env_var))
+        .route("/effects/{name}/env/{key}", delete(delete_effect_env_var))
         // Cross-module operations
         .route("/modules/active", get(list_active_modules))
         // Runtime health per category

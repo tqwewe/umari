@@ -24,6 +24,7 @@ use crate::routes::{
     active::list_active,
     commands::{get_command, list_commands},
     effects::{get_effect, list_effects},
+    env_vars::{delete_env_var, set_env_var},
     events::list_events,
     execute::execute_command,
     index::index,
@@ -62,6 +63,8 @@ pub fn ui_router(state: UiState) -> Router {
         .route("/ui/{module_type}/{name}/active", delete(deactivate))
         .route("/ui/commands/{name}/execute", post(execute_command))
         .route("/ui/{module_type}/{name}/replay", post(replay))
+        .route("/ui/{module_type}/{name}/env", post(set_env_var))
+        .route("/ui/{module_type}/{name}/env/{key}", delete(delete_env_var))
         .route("/ui/events", get(list_events))
         .with_state(state)
 }

@@ -19,7 +19,7 @@ use crate::{
     events::ModuleEvent,
     module_store::{
         ModuleType,
-        actor::{GetActiveModule, GetAllActiveModules, ModuleStoreActor},
+        actor::{GetActiveModule, GetAllActiveModules, GetEnvVars, ModuleStoreActor},
     },
     output::ModuleOutput,
     wit,
@@ -355,6 +355,15 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
             let _ = fs::remove_file(format!("{}-shm", db_path.display()));
         }
 
+        let env_vars = self
+            .module_store_ref
+            .ask(GetEnvVars {
+                module_type: A::MODULE_TYPE,
+                name: name.clone(),
+            })
+            .await
+            .unwrap_or_default();
+
         let output = pending.output.clone();
         let actor_ref = ModuleActor::supervise(
             supervisor_ref,
@@ -369,6 +378,7 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
                 version: pending.version.clone(),
                 args: self.args.clone(),
                 output: output.clone(),
+                env_vars,
             },
         )
         .restart_policy(RestartPolicy::Never)

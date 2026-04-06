@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use kameo::prelude::*;
 use kameo_actors::pubsub::{PubSub, Publish};
@@ -119,6 +119,36 @@ impl ModuleStoreActor {
         module_type: ModuleType,
     ) -> Result<Vec<String>, ModuleStoreError> {
         self.store.get_all_module_names(module_type)
+    }
+
+    #[message]
+    pub fn get_env_vars(
+        &self,
+        module_type: ModuleType,
+        name: Arc<str>,
+    ) -> Result<HashMap<String, String>, ModuleStoreError> {
+        self.store.get_env_vars(module_type, &name)
+    }
+
+    #[message]
+    pub fn set_env_var(
+        &self,
+        module_type: ModuleType,
+        name: Arc<str>,
+        key: Arc<str>,
+        value: Arc<str>,
+    ) -> Result<(), ModuleStoreError> {
+        self.store.set_env_var(module_type, &name, &key, &value)
+    }
+
+    #[message]
+    pub fn delete_env_var(
+        &self,
+        module_type: ModuleType,
+        name: Arc<str>,
+        key: Arc<str>,
+    ) -> Result<bool, ModuleStoreError> {
+        self.store.delete_env_var(module_type, &name, &key)
     }
 }
 

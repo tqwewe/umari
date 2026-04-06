@@ -15,15 +15,15 @@ use umari_runtime::{
     },
     module_store::{
         ModuleType,
-        actor::{GetActiveModule, GetAllActiveModules, GetAllModuleNames, GetModuleVersions},
+        actor::{GetActiveModule, GetAllActiveModules, GetAllModuleNames, GetEnvVars, GetModuleVersions},
     },
 };
 
 use crate::{
     UiState,
     components::{
-        ModuleHealth, module_status_card, module_summary_table, output, tabs, upload_form,
-        versions_table,
+        ModuleHealth, env_vars_panel, module_status_card, module_summary_table, output, tabs,
+        upload_form, versions_table,
     },
     error::HtmlError,
     htmx::respond,
@@ -100,7 +100,7 @@ pub async fn get_projector(
         .module_store_ref
         .ask(GetActiveModule {
             module_type: ModuleType::Projector,
-            name: name_arc,
+            name: name_arc.clone(),
         })
         .await?;
     let active_version = active.map(|(v, _)| v);
@@ -145,12 +145,21 @@ pub async fn get_projector(
 
     let query_url = format!("/ui/projectors/{name}/query");
 
+    let env_vars = state
+        .module_store_ref
+        .ask(GetEnvVars {
+            module_type: ModuleType::Projector,
+            name: name_arc.clone(),
+        })
+        .await?;
+
     let versions_panel = html! {
         (versions_table(ModuleType::Projector, &name, versions, active_version.as_ref()))
         (upload_form(ModuleType::Projector, Some(&name)))
     };
     let output_panel = output(&entries);
     let sql_panel = sql_query_section(&query_url, default_query.as_deref());
+    let env_panel = env_vars_panel(ModuleType::Projector, &name, &env_vars);
 
     let content = html! {
         a href="/ui/projectors"
@@ -166,6 +175,7 @@ pub async fn get_projector(
                 ("Versions", versions_panel),
                 ("Output", output_panel),
                 ("SQL", sql_panel),
+                ("Environment", env_panel),
             ]))
         }
     };

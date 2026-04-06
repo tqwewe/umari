@@ -12,15 +12,15 @@ use umari_runtime::{
     },
     module_store::{
         ModuleType,
-        actor::{GetActiveModule, GetAllActiveModules, GetAllModuleNames, GetModuleVersions},
+        actor::{GetActiveModule, GetAllActiveModules, GetAllModuleNames, GetEnvVars, GetModuleVersions},
     },
 };
 
 use crate::{
     UiState,
     components::{
-        ModuleHealth, module_status_card, module_summary_table, output, tabs, upload_form,
-        versions_table,
+        ModuleHealth, env_vars_panel, module_status_card, module_summary_table, output, tabs,
+        upload_form, versions_table,
     },
     error::HtmlError,
     htmx::respond,
@@ -97,7 +97,7 @@ pub async fn get_policy(
         .module_store_ref
         .ask(GetActiveModule {
             module_type: ModuleType::Policy,
-            name: name_arc,
+            name: name_arc.clone(),
         })
         .await?;
     let active_version = active.map(|(v, _)| v);
@@ -119,11 +119,20 @@ pub async fn get_policy(
         None => (None, Vec::new()),
     };
 
+    let env_vars = state
+        .module_store_ref
+        .ask(GetEnvVars {
+            module_type: ModuleType::Policy,
+            name: name_arc,
+        })
+        .await?;
+
     let versions_panel = html! {
         (versions_table(ModuleType::Policy, &name, versions, active_version.as_ref()))
         (upload_form(ModuleType::Policy, Some(&name)))
     };
     let output_panel = output(&entries);
+    let env_panel = env_vars_panel(ModuleType::Policy, &name, &env_vars);
 
     let content = html! {
         a href="/ui/policies"
@@ -138,6 +147,7 @@ pub async fn get_policy(
             (tabs(&format!("tabs-policy-{name}"), vec![
                 ("Versions", versions_panel),
                 ("Output", output_panel),
+                ("Environment", env_panel),
             ]))
         }
     };

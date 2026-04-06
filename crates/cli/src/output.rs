@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use colored::Colorize;
 use comfy_table::{Cell, Table};
 use umari_types::{ActiveModuleInfo, ModuleDetailsResponse, ModuleSummary, VersionDetailsResponse};
@@ -66,6 +68,24 @@ pub fn print_version_details(details: &VersionDetailsResponse) {
         if details.active { "Yes" } else { "No" }
     );
     println!("{}: {}", "SHA256".bold(), details.sha256);
+}
+
+pub fn print_env_vars(vars: &HashMap<String, String>) {
+    if vars.is_empty() {
+        println!("no environment variables set");
+        return;
+    }
+
+    let mut table = Table::new();
+    table.set_header(vec!["KEY", "VALUE"]);
+
+    let mut pairs: Vec<_> = vars.iter().collect();
+    pairs.sort_by_key(|(k, _)| k.as_str());
+    for (key, value) in pairs {
+        table.add_row(vec![Cell::new(key), Cell::new(value)]);
+    }
+
+    println!("{table}");
 }
 
 pub fn print_active_modules(modules: &[ActiveModuleInfo]) {

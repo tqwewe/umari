@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeSet, HashMap},
     fs,
     hash::{DefaultHasher, Hash, Hasher},
     path::PathBuf,
@@ -70,6 +70,7 @@ pub struct ModuleActorArgs<A> {
     pub version: Version,
     pub args: A,
     pub output: ModuleOutput,
+    pub env_vars: HashMap<String, String>,
 }
 
 impl<A: EventHandlerModule> Actor for ModuleActor<A> {
@@ -167,10 +168,13 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
             )?
             .map(|n| n as u64);
 
-        let wasi_ctx = WasiCtx::builder()
-            .stdout(args.output.stdout_pipe())
-            .stderr(args.output.stderr_pipe())
-            .build();
+        let mut wasi_builder = WasiCtx::builder();
+        wasi_builder.stdout(args.output.stdout_pipe());
+        wasi_builder.stderr(args.output.stderr_pipe());
+        for (key, value) in &args.env_vars {
+            wasi_builder.env(key, value);
+        }
+        let wasi_ctx = wasi_builder.build();
 
         // Clone fields for worker pool before command_ref is moved into state
         let args_for_workers = if A::POOL_SIZE > 0 {
@@ -242,6 +246,7 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
                 name: worker_args.name.clone(),
                 args: worker_args.args.clone(),
                 output: output.clone(),
+                env_vars: worker_args.env_vars.clone(),
             };
 
             let global =

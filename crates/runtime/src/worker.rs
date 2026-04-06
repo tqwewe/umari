@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use kameo::prelude::*;
 use rusqlite::Connection;
@@ -29,6 +29,7 @@ pub struct ModuleWorkerArgs<A: EventHandlerModule> {
     pub name: Arc<str>,
     pub args: A::Args,
     pub output: ModuleOutput,
+    pub env_vars: HashMap<String, String>,
 }
 
 pub struct ModuleWorkerActor<A: EventHandlerModule> {
@@ -68,10 +69,13 @@ impl<A: EventHandlerModule> Actor for ModuleWorkerActor<A> {
             ",
         )?;
 
-        let wasi_ctx = WasiCtx::builder()
-            .stdout(args.output.stdout_pipe())
-            .stderr(args.output.stderr_pipe())
-            .build();
+        let mut wasi_builder = WasiCtx::builder();
+        wasi_builder.stdout(args.output.stdout_pipe());
+        wasi_builder.stderr(args.output.stderr_pipe());
+        for (key, value) in &args.env_vars {
+            wasi_builder.env(key, value);
+        }
+        let wasi_ctx = wasi_builder.build();
         let state = wit::EventHandlerComponentState::new(
             wasi_ctx,
             ResourceTable::new(),

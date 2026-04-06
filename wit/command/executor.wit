@@ -2,8 +2,7 @@ package umari:command@0.1.0;
 
 interface executor {
     use types.{error};
-    use umari:common/types@0.1.0.{stored-event, json, uuid};
-
+    use umari:common/types@0.1.0.{event-type, json, uuid};
 
     record command-context {
         correlation-id: option<uuid>,
@@ -11,5 +10,16 @@ interface executor {
         idempotency-key: option<uuid>,
     }
 
-    execute: func(command: string, input: json, context: command-context) -> result<list<stored-event>, string>;
+    record command-receipt {
+        position: option<u64>,
+        events: list<emitted-event>,
+    }
+
+    record emitted-event {
+        id: uuid,
+        event-type: event-type,
+        tags: list<string>,
+    }
+
+    execute: func(command: string, input: json, context: command-context) -> result<command-receipt, string>;
 }

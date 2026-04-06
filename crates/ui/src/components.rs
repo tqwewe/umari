@@ -415,6 +415,102 @@ pub fn output(entries: &[LogEntry]) -> Markup {
     }
 }
 
+pub fn env_vars_panel(module_type: ModuleType, name: &str, vars: &HashMap<String, String>) -> Markup {
+    let type_path = match module_type {
+        ModuleType::Command => "commands",
+        ModuleType::Policy => "policies",
+        ModuleType::Projector => "projectors",
+        ModuleType::Effect => "effects",
+    };
+    let panel_id = format!("env-panel-{type_path}-{name}");
+    let post_url = format!("/ui/{type_path}/{name}/env");
+
+    let mut sorted_vars: Vec<(&str, &str)> = vars
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    sorted_vars.sort_by_key(|(k, _)| *k);
+
+    html! {
+        div id=(panel_id) {
+            p class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mb-4" {
+                "Changes take effect on the next module restart."
+            }
+            @if sorted_vars.is_empty() {
+                p class="text-sm text-gray-400 italic mb-4" { "no environment variables set" }
+            } @else {
+                div class="overflow-hidden rounded-lg border border-gray-200 bg-white mb-4" {
+                    table class="w-full text-sm" {
+                        thead {
+                            tr class="bg-gray-50 border-b border-gray-200" {
+                                th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/3" { "Key" }
+                                th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" { "Value" }
+                                th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-32" { }
+                            }
+                        }
+                        tbody {
+                            @for (key, value) in &sorted_vars {
+                                tr class="border-b border-gray-100 last:border-0" {
+                                    td class="px-4 py-3 font-mono text-xs text-gray-800 font-medium" { (key) }
+                                    td class="px-4 py-3 font-mono text-xs text-gray-600" {
+                                        span data-value=(value) { "••••••••" }
+                                        " "
+                                        button
+                                            type="button"
+                                            class="text-xs text-indigo-500 hover:text-indigo-700 ml-1"
+                                            onclick="const s=this.previousElementSibling;s.textContent=s.textContent==='••••••••'?s.dataset.value:'••••••••';this.textContent=this.textContent==='Reveal'?'Hide':'Reveal';"
+                                            { "Reveal" }
+                                    }
+                                    td class="px-4 py-3 text-right" {
+                                        button
+                                            type="button"
+                                            class="text-xs text-red-500 hover:text-red-700"
+                                            hx-delete={(post_url) "/" (key)}
+                                            hx-target={"#" (panel_id)}
+                                            hx-swap="outerHTML"
+                                            hx-confirm={"Delete " (key) "?"}
+                                            { "Delete" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            details class="group" {
+                summary class="cursor-pointer text-sm font-medium text-gray-700 hover:text-gray-900 select-none list-none flex items-center gap-1 mb-3" {
+                    span class="text-gray-400 group-open:rotate-90 transition-transform inline-block" { "▶" }
+                    "Add Variable"
+                }
+                form
+                    hx-post=(post_url)
+                    hx-target={"#" (panel_id)}
+                    hx-swap="outerHTML"
+                    class="flex flex-col gap-3 pl-4"
+                {
+                    div class="flex gap-3" {
+                        input
+                            type="text"
+                            name="key"
+                            placeholder="KEY"
+                            required
+                            class="w-1/3 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
+                        input
+                            type="text"
+                            name="value"
+                            placeholder="value"
+                            class="flex-1 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
+                    }
+                    button
+                        type="submit"
+                        class="self-start inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+                        { "Add Variable" }
+                }
+            }
+        }
+    }
+}
+
 pub fn upload_form(module_type: ModuleType, name: Option<&str>) -> Markup {
     let module_type_str = match module_type {
         ModuleType::Command => "commands",

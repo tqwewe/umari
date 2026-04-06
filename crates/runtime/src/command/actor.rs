@@ -130,6 +130,8 @@ pub struct ExecuteResult {
 #[derive(Serialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct EmittedEvent {
+    /// Event unique identifier
+    pub id: Uuid,
     /// Event type identifier
     pub event_type: String,
     /// Domain ID tags for event categorization
@@ -233,6 +235,8 @@ impl CommandActor {
                 .events
                 .into_iter()
                 .map(|event| {
+                    let event_id = Uuid::new_v4();
+
                     // Convert domain_ids HashMap<String, DomainIdValue> to tags
                     let tags: Vec<String> = event
                         .domain_ids
@@ -244,6 +248,7 @@ impl CommandActor {
 
                     // Store event info for result
                     emitted_events.push(EmittedEvent {
+                        id: event_id,
                         event_type: event.event_type.clone(),
                         tags: tags.clone(),
                     });
@@ -255,7 +260,7 @@ impl CommandActor {
                         event_type: event.event_type,
                         tags,
                         data: encode_with_envelope(envelope, data_value),
-                        uuid: Some(Uuid::new_v4()),
+                        uuid: Some(event_id),
                     })
                 })
                 .collect::<Result<Vec<_>, CommandError>>()?;

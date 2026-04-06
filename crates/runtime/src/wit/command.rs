@@ -33,7 +33,7 @@ impl executor::Host for wit::CommandComponentState {
         _command: String,
         _input: String,
         _context: executor::CommandContext,
-    ) -> wasmtime::Result<Result<Vec<StoredEvent>, String>> {
+    ) -> wasmtime::Result<Result<executor::CommandReceipt, String>> {
         panic!("executor not available in commands")
     }
 }
@@ -44,8 +44,7 @@ impl executor::Host for wit::EventHandlerComponentState {
         command: String,
         input: String,
         context: executor::CommandContext,
-    ) -> wasmtime::Result<Result<Vec<StoredEvent>, String>> {
-        let input = serde_json::from_str(&input).context("invalid json input")?; // trap
+    ) -> wasmtime::Result<Result<executor::CommandReceipt, String>> {
         let context = context.try_into()?; // trap
         let msg = Execute {
             name: command.into(),
@@ -54,7 +53,7 @@ impl executor::Host for wit::EventHandlerComponentState {
 
         let result = self.command_ref.ask(msg).await;
         match result {
-            Ok(_) => todo!("NOT DONE YET"),
+            Ok(result) => Ok(Ok(result.into())),
             Err(SendError::HandlerError(err)) => Ok(Err(err.to_string())),
             Err(err) => Err(wasmtime::Error::msg(err.to_string())),
         }
@@ -86,5 +85,28 @@ impl TryFrom<executor::CommandContext> for CommandContext {
                 .transpose()
                 .context("invalid indempotency key")?,
         })
+    }
+}
+
+impl From<crate::command::actor::ExecuteResult> for executor::CommandReceipt {
+    fn from(result: crate::command::actor::ExecuteResult) -> Self {
+        executor::CommandReceipt {
+            position: result.position,
+            events: result
+                .events
+                .into_iter()
+                .map(|emitted| emitted.into())
+                .collect(),
+        }
+    }
+}
+
+impl From<crate::command::actor::EmittedEvent> for executor::EmittedEvent {
+    fn from(event: crate::command::actor::EmittedEvent) -> Self {
+        executor::EmittedEvent {
+            id: event.id.to_string(),
+            event_type: event.event_type,
+            tags: event.tags,
+        }
     }
 }
