@@ -15,7 +15,7 @@ pub async fn list_active(
         .map_err(HtmlError::from)?;
 
     let content = html! {
-        h2 class="text-2xl font-semibold text-gray-900 mb-6" { "Active Modules" }
+        h2 class="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-6" { "Active Modules" }
         @if modules.is_empty() {
             p class="text-sm text-gray-500 py-4" { "No active modules." }
         } @else {

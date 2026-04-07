@@ -58,7 +58,7 @@ pub async fn list_commands(
         .collect();
 
     let content = html! {
-        h2 class="text-2xl font-semibold text-gray-900 mb-6" { "Commands" }
+        h2 class="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-6" { "Commands" }
         (module_summary_table(ModuleType::Command, &names, &active_modules, &health))
         (upload_form(ModuleType::Command, None))
     };
@@ -118,9 +118,9 @@ pub async fn get_command(
             hx-get="/ui/commands"
             hx-target="#content"
             hx-push-url="/ui/commands"
-            class="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 mb-6"
+            class="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 mb-6"
             { "← Back to Commands" }
-        h2 class="text-2xl font-semibold text-gray-900 mb-6" { "Command: " (name) }
+        h2 class="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-6" { "Command: " (name) }
         div class="mt-6" {
             (tabs(&format!("tabs-command-{name}"), vec![
                 ("Versions", versions_panel),

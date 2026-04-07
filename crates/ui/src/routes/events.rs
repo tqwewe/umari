@@ -154,28 +154,28 @@ pub async fn list_events(
     let event_count = events.len();
 
     let content = html! {
-        h2 class="text-2xl font-semibold text-gray-900 mb-6" { "Events" }
+        h2 class="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-6" { "Events" }
 
         form hx-get="/ui/events" hx-target="#content" hx-push-url="true"
-            class="bg-white border border-gray-200 rounded-lg p-4 mb-6" {
+            class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-4 mb-6" {
             div class="grid grid-cols-3 gap-4" {
                 div {
-                    label class="block text-xs font-medium text-gray-500 mb-1" { "Types (comma-separated)" }
+                    label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1" { "Types (comma-separated)" }
                     input type="text" name="types" value=(types_val)
                         placeholder="e.g. UserCreated,OrderPlaced"
-                        class="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300";
+                        class="w-full border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300";
                 }
                 div {
-                    label class="block text-xs font-medium text-gray-500 mb-1" { "Tags (comma-separated)" }
+                    label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1" { "Tags (comma-separated)" }
                     input type="text" name="tags" value=(tags_val)
                         placeholder="e.g. user_id:abc123"
-                        class="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300";
+                        class="w-full border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300";
                 }
                 div class="flex items-end gap-2" {
                     div class="flex-1" {
-                        label class="block text-xs font-medium text-gray-500 mb-1" { "Limit" }
+                        label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1" { "Limit" }
                         input type="number" name="limit" value=(limit)
-                            class="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300";
+                            class="w-full border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300";
                     }
                     button type="submit"
                         class="px-4 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded hover:bg-indigo-700 transition-colors" {
@@ -186,21 +186,21 @@ pub async fn list_events(
         }
 
         @if events.is_empty() {
-            div class="text-center text-gray-400 py-16" {
+            div class="text-center text-gray-400 dark:text-gray-600 py-16" {
                 p class="text-lg" { "No events found" }
                 p class="text-sm mt-1" { "Try adjusting the filters or execute a command" }
             }
         } @else {
-            div class="bg-white border border-gray-200 rounded-lg overflow-hidden" {
+            div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden" {
                 table class="w-full text-sm" {
                     thead {
-                        tr class="border-b border-gray-200 bg-gray-50" {
+                        tr class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800" {
                             th class="w-4" {}
-                            th class="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-16" { "Pos" }
-                            th class="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider" { "Type" }
-                            th class="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider" { "Tags" }
-                            th class="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-44" { "Timestamp" }
-                            th class="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28" { "Correlation" }
+                            th class="text-left px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-16" { "Pos" }
+                            th class="text-left px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider" { "Type" }
+                            th class="text-left px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider" { "Tags" }
+                            th class="text-left px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-44" { "Timestamp" }
+                            th class="text-left px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-28" { "Correlation" }
                         }
                     }
                     tbody {
@@ -214,22 +214,22 @@ pub async fn list_events(
                             @if meta.show_separator {
                                 tr style="border-top: 1px dashed #e5e7eb" {}
                             }
-                            tr onclick=(toggle_js) class="border-b border-gray-100 hover:bg-gray-50 cursor-pointer" style=(row_style) {
+                            tr onclick=(toggle_js) class="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer" style=(row_style) {
                                 td class="pl-3 w-4 align-middle" {
-                                    svg class="chev text-gray-400" style="transition:transform 0.15s" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" {
+                                    svg class="chev text-gray-400 dark:text-gray-600" style="transition:transform 0.15s" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" {
                                         polyline points="9 18 15 12 9 6" {}
                                     }
                                 }
-                                td class="px-3 py-2 text-gray-500 font-mono text-xs" { (ev.position) }
-                                td class="px-3 py-2 font-mono text-xs text-gray-900" { (ev.event_type) }
+                                td class="px-3 py-2 text-gray-500 dark:text-gray-500 font-mono text-xs" { (ev.position) }
+                                td class="px-3 py-2 font-mono text-xs text-gray-900 dark:text-gray-100" { (ev.event_type) }
                                 td class="px-3 py-2" {
                                     div class="flex flex-wrap gap-1" {
                                         @for tag in &ev.tags {
-                                            span class="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-xs" { (tag) }
+                                            span class="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded text-xs" { (tag) }
                                         }
                                     }
                                 }
-                                td class="px-3 py-2 text-xs text-gray-600 whitespace-nowrap"
+                                td class="px-3 py-2 text-xs text-gray-600 dark:text-gray-400 whitespace-nowrap"
                                     title=(ev.timestamp.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()) {
                                     (ev.timestamp.format("%Y-%m-%d %H:%M:%S UTC"))
                                 }
@@ -242,13 +242,13 @@ pub async fn list_events(
                                 }
                             }
                             tr id=(detail_id) style="display:none" {
-                                td colspan="6" class="bg-gray-50 border-b border-gray-100" style=(format!("border-left: 3px solid {border_color}")) {
-                                    div class="flex flex-wrap gap-6 px-4 py-2 border-b border-gray-200 bg-white text-xs text-gray-500" {
+                                td colspan="6" class="bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-700/50" style=(format!("border-left: 3px solid {border_color}")) {
+                                    div class="flex flex-wrap gap-6 px-4 py-2 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs text-gray-500 dark:text-gray-400" {
                                         @if let Some(id) = ev.uuid {
                                             @let full = id.to_string();
                                             span {
                                                 "Event ID: "
-                                                span class="font-mono text-gray-700 cursor-pointer hover:text-indigo-600"
+                                                span class="font-mono text-gray-700 dark:text-gray-300 cursor-pointer hover:text-indigo-600"
                                                     title=(full)
                                                     onclick=(format!("navigator.clipboard.writeText('{full}')")) {
                                                     (&full[..8])
@@ -258,7 +258,7 @@ pub async fn list_events(
                                         @let corr = ev.correlation_id.to_string();
                                         span {
                                             "Correlation: "
-                                            span class="font-mono text-gray-700 cursor-pointer hover:text-indigo-600"
+                                            span class="font-mono text-gray-700 dark:text-gray-300 cursor-pointer hover:text-indigo-600"
                                                 title=(corr)
                                                 onclick=(format!("navigator.clipboard.writeText('{corr}')")) {
                                                 (&corr[..8])
@@ -267,7 +267,7 @@ pub async fn list_events(
                                         @let caus = ev.causation_id.to_string();
                                         span {
                                             "Causation: "
-                                            span class="font-mono text-gray-700 cursor-pointer hover:text-indigo-600"
+                                            span class="font-mono text-gray-700 dark:text-gray-300 cursor-pointer hover:text-indigo-600"
                                                 title=(caus)
                                                 onclick=(format!("navigator.clipboard.writeText('{caus}')")) {
                                                 (&caus[..8])
@@ -277,7 +277,7 @@ pub async fn list_events(
                                             @let trig = tid.to_string();
                                             span {
                                                 "Triggered by: "
-                                                span class="font-mono text-gray-700 cursor-pointer hover:text-indigo-600"
+                                                span class="font-mono text-gray-700 dark:text-gray-300 cursor-pointer hover:text-indigo-600"
                                                     title=(trig)
                                                     onclick=(format!("navigator.clipboard.writeText('{trig}')")) {
                                                     (&trig[..8])
@@ -285,7 +285,7 @@ pub async fn list_events(
                                             }
                                         }
                                     }
-                                    pre class="ev-json text-xs text-gray-800 whitespace-pre-wrap break-all px-4 py-3" {
+                                    pre class="ev-json text-xs text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-all px-4 py-3" {
                                         (serde_json::to_string_pretty(&ev.data).unwrap_or_default())
                                     }
                                 }
@@ -294,7 +294,7 @@ pub async fn list_events(
                     }
                 }
             }
-            p class="text-xs text-gray-400 mt-2" { "showing " (event_count) " events (newest first)" }
+            p class="text-xs text-gray-400 dark:text-gray-600 mt-2" { "showing " (event_count) " events (newest first)" }
             script {
                 (maud::PreEscaped(r#"
 (function() {

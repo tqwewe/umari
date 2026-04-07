@@ -1,5 +1,5 @@
 use axum::http::HeaderMap;
-use maud::Markup;
+use maud::{Markup, html};
 
 use crate::layout::{page, wide_page, width_wrapper};
 
@@ -11,7 +11,10 @@ pub fn is_htmx(headers: &HeaderMap) -> bool {
 
 pub fn respond(headers: &HeaderMap, title: &str, content: Markup) -> Markup {
     if is_htmx(headers) {
-        width_wrapper(content, false)
+        html! {
+            span data-page-title=(title) style="display:none" {}
+            (width_wrapper(content, false))
+        }
     } else {
         page(title, content)
     }
@@ -19,7 +22,10 @@ pub fn respond(headers: &HeaderMap, title: &str, content: Markup) -> Markup {
 
 pub fn respond_wide(headers: &HeaderMap, title: &str, content: Markup) -> Markup {
     if is_htmx(headers) {
-        width_wrapper(content, true)
+        html! {
+            span data-page-title=(title) style="display:none" {}
+            (width_wrapper(content, true))
+        }
     } else {
         wide_page(title, content)
     }

@@ -63,7 +63,7 @@ pub async fn list_policies(
     }
 
     let content = html! {
-        h2 class="text-2xl font-semibold text-gray-900 mb-6" { "Policies" }
+        h2 class="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-6" { "Policies" }
         (module_summary_table(ModuleType::Policy, &names, &active_modules, &health))
         (upload_form(ModuleType::Policy, None))
     };
@@ -139,9 +139,9 @@ pub async fn get_policy(
             hx-get="/ui/policies"
             hx-target="#content"
             hx-push-url="/ui/policies"
-            class="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 mb-6"
+            class="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 mb-6"
             { "← Back to Policies" }
-        h2 class="text-2xl font-semibold text-gray-900 mb-6" { "Policy: " (name) }
+        h2 class="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-6" { "Policy: " (name) }
         (module_status_card(ModuleType::Policy, &name, active_version.as_ref(), health.as_ref()))
         div class="mt-6" {
             (tabs(&format!("tabs-policy-{name}"), vec![

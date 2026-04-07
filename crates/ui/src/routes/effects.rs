@@ -63,7 +63,7 @@ pub async fn list_effects(
     }
 
     let content = html! {
-        h2 class="text-2xl font-semibold text-gray-900 mb-6" { "Effects" }
+        h2 class="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-6" { "Effects" }
         (module_summary_table(ModuleType::Effect, &names, &active_modules, &health))
         (upload_form(ModuleType::Effect, None))
     };
@@ -139,9 +139,9 @@ pub async fn get_effect(
             hx-get="/ui/effects"
             hx-target="#content"
             hx-push-url="/ui/effects"
-            class="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 mb-6"
+            class="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 mb-6"
             { "← Back to Effects" }
-        h2 class="text-2xl font-semibold text-gray-900 mb-6" { "Effect: " (name) }
+        h2 class="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-6" { "Effect: " (name) }
         (module_status_card(ModuleType::Effect, &name, active_version.as_ref(), health.as_ref()))
         div class="mt-6" {
             (tabs(&format!("tabs-effect-{name}"), vec![

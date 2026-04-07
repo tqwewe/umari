@@ -66,7 +66,7 @@ pub async fn list_projectors(
     }
 
     let content = html! {
-        h2 class="text-2xl font-semibold text-gray-900 mb-6" { "Projectors" }
+        h2 class="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-6" { "Projectors" }
         (module_summary_table(ModuleType::Projector, &names, &active_modules, &health))
         (upload_form(ModuleType::Projector, None))
     };
@@ -166,9 +166,9 @@ pub async fn get_projector(
             hx-get="/ui/projectors"
             hx-target="#content"
             hx-push-url="/ui/projectors"
-            class="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 mb-6"
+            class="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 mb-6"
             { "← Back to Projectors" }
-        h2 class="text-2xl font-semibold text-gray-900 mb-6" { "Projector: " (name) }
+        h2 class="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-6" { "Projector: " (name) }
         (module_status_card(ModuleType::Projector, &name, active_version.as_ref(), health.as_ref()))
         div class="mt-6" {
             (tabs(&format!("tabs-projector-{name}"), vec![
@@ -200,7 +200,7 @@ fn sql_query_section(query_url: &str, default_query: Option<&str>) -> Markup {
                     name="sql"
                     rows="3"
                     placeholder=(placeholder)
-                    class="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-500 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                     { (default_query.unwrap_or("")) }
                 button type="submit"
                     class="self-start inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
@@ -286,20 +286,20 @@ async fn query_projector_inner(
             @if rows.is_empty() {
                 p class="text-sm text-gray-400 italic" { "no rows returned" }
             } @else {
-                div class="overflow-x-auto overflow-hidden rounded-lg border border-gray-200 bg-white" {
+                div class="overflow-x-auto overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" {
                     table class="w-full text-xs font-mono" {
                         thead {
-                            tr class="bg-gray-50 border-b border-gray-200" {
+                            tr class="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700" {
                                 @for col in &column_names {
-                                    th class="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" { (col) }
+                                    th class="px-3 py-2 text-left font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap" { (col) }
                                 }
                             }
                         }
                         tbody {
                             @for row in &rows {
-                                tr class="border-b border-gray-100 last:border-0 hover:bg-gray-50" {
+                                tr class="border-b border-gray-100 dark:border-gray-700/50 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800" {
                                     @for cell in row {
-                                        td class="px-3 py-1.5 text-gray-800 whitespace-nowrap" { (cell) }
+                                        td class="px-3 py-1.5 text-gray-800 dark:text-gray-200 whitespace-nowrap" { (cell) }
                                     }
                                 }
                             }

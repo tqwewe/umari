@@ -29,40 +29,40 @@ pub fn module_summary_table(
     };
 
     html! {
-        div class="overflow-hidden rounded-lg border border-gray-200 bg-white" {
+        div class="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" {
             table class="w-full text-sm" {
                 thead {
-                    tr class="bg-gray-50 border-b border-gray-200" {
-                        th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" { "Name" }
-                        th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" { "Active Version" }
-                        th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" { "Status" }
-                        th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" { "Position" }
-                        th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" { "SHA256" }
+                    tr class="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700" {
+                        th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" { "Name" }
+                        th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" { "Active Version" }
+                        th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" { "Status" }
+                        th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" { "Position" }
+                        th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" { "SHA256" }
                     }
                 }
                 tbody {
                     @if names.is_empty() {
                         tr {
-                            td colspan="5" class="px-4 py-3 text-sm text-gray-500" { "No modules uploaded yet." }
+                            td colspan="5" class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400" { "No modules uploaded yet." }
                         }
                     }
                     @for name in names {
                         @let active = active_modules.iter().find(|m| m.name == *name);
                         @let module_health = health.get(name.as_str());
-                        tr class="border-b border-gray-100 last:border-0 hover:bg-gray-50" {
+                        tr class="border-b border-gray-100 dark:border-gray-700/50 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800" {
                             td class="px-4 py-3" {
                                 a href={"/ui/" (type_path) "/" (name)}
                                     hx-get={"/ui/" (type_path) "/" (name)}
                                     hx-target="#content"
                                     hx-push-url={"/ui/" (type_path) "/" (name)}
-                                    class="text-indigo-600 hover:text-indigo-800 font-medium"
+                                    class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 font-medium"
                                     { (name) }
                             }
-                            td class="px-4 py-3 text-gray-700" {
+                            td class="px-4 py-3 text-gray-700 dark:text-gray-300" {
                                 @if let Some(a) = active {
                                     span class="text-emerald-600 font-medium" { (a.version) }
                                 } @else {
-                                    span class="text-gray-400" { "—" }
+                                    span class="text-gray-400 dark:text-gray-500" { "—" }
                                 }
                             }
                             td class="px-4 py-3" {
@@ -79,12 +79,12 @@ pub fn module_summary_table(
                                     span class="text-amber-500" { "● Not running" }
                                 }
                             }
-                            td class="px-4 py-3 text-gray-500 font-mono text-xs" {
+                            td class="px-4 py-3 text-gray-500 dark:text-gray-400 font-mono text-xs" {
                                 @if let Some(pos) = module_health.and_then(|h| h.last_position) {
                                     (pos)
                                 }
                             }
-                            td class="px-4 py-3 text-gray-500 font-mono text-xs" {
+                            td class="px-4 py-3 text-gray-500 dark:text-gray-400 font-mono text-xs" {
                                 @if let Some(a) = active {
                                     @let sha_short = &a.sha256[..12.min(a.sha256.len())];
                                     span title=(a.sha256) { (sha_short) "…" }
@@ -113,12 +113,12 @@ pub fn module_status_card(
     let replay_url = format!("/ui/{type_path}/{name}/replay");
 
     html! {
-        div class="rounded-lg border border-gray-200 bg-white p-4 flex items-start justify-between gap-4" {
+        div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 flex items-start justify-between gap-4" {
             div class="flex items-center gap-8" {
                 div {
-                    p class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1" { "Status" }
+                    p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1" { "Status" }
                     @if active_version.is_none() {
-                        span class="text-gray-400 text-sm" { "Inactive" }
+                        span class="text-gray-400 dark:text-gray-500 text-sm" { "Inactive" }
                     } @else if let Some(h) = health {
                         @if h.healthy {
                             span class="text-emerald-600 text-sm font-medium" { "● Running" }
@@ -131,19 +131,19 @@ pub fn module_status_card(
                     }
                 }
                 div {
-                    p class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1" { "Active Version" }
+                    p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1" { "Active Version" }
                     @if let Some(v) = active_version {
                         span class="text-emerald-600 font-mono text-sm font-medium" { (v) }
                     } @else {
-                        span class="text-gray-400 text-sm" { "—" }
+                        span class="text-gray-400 dark:text-gray-500 text-sm" { "—" }
                     }
                 }
                 div {
-                    p class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1" { "Position" }
+                    p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1" { "Position" }
                     @if let Some(pos) = health.and_then(|h| h.last_position) {
-                        span class="text-gray-700 font-mono text-sm" { (pos) }
+                        span class="text-gray-700 dark:text-gray-300 font-mono text-sm" { (pos) }
                     } @else {
-                        span class="text-gray-400 text-sm" { "—" }
+                        span class="text-gray-400 dark:text-gray-500 text-sm" { "—" }
                     }
                 }
             }
@@ -152,11 +152,11 @@ pub fn module_status_card(
                     dialog
                         id="confirm-reset-replay"
                         onclick="if(event.target===this)this.close()"
-                        class="rounded-lg border border-gray-200 shadow-xl backdrop:bg-black/40 p-0 w-full max-w-md"
+                        class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl backdrop:bg-black/40 p-0 w-full max-w-md"
                     {
                         div class="p-6" {
-                            h3 class="text-lg font-semibold text-gray-900 mb-2" { "Reset & Replay" }
-                            p class="text-sm text-gray-600 mb-4" {
+                            h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2" { "Reset & Replay" }
+                            p class="text-sm text-gray-600 dark:text-gray-400 mb-4" {
                                 "This will reset the module database and replay all events from position 0. "
                                 "Any state built up by this module will be lost."
                             }
@@ -164,7 +164,7 @@ pub fn module_status_card(
                                 button
                                     type="button"
                                     onclick="document.getElementById('confirm-reset-replay').close()"
-                                    class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+                                    class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                                     { "Cancel" }
                                 button
                                     type="button"
@@ -214,11 +214,11 @@ pub fn versions_table(
                 dialog
                     id=(modal_id)
                     onclick="if(event.target===this)this.close()"
-                    class="rounded-lg border border-gray-200 shadow-xl backdrop:bg-black/40 p-0 w-full max-w-md"
+                    class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl backdrop:bg-black/40 p-0 w-full max-w-md"
                 {
                     div class="p-6" {
-                        h3 class="text-lg font-semibold text-gray-900 mb-2" { "Major Version Change" }
-                        p class="text-sm text-gray-600 mb-4" {
+                        h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2" { "Major Version Change" }
+                        p class="text-sm text-gray-600 dark:text-gray-400 mb-4" {
                             "Activating version " strong { (info.version) } " will reset the module database, "
                             "as it has a different major version to the currently active version " strong { (active_ver_str) } "."
                         }
@@ -226,7 +226,7 @@ pub fn versions_table(
                             button
                                 type="button"
                                 onclick={"document.getElementById('" (modal_id) "').close()"}
-                                class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+                                class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                                 { "Cancel" }
                             button
                                 type="button"
@@ -242,41 +242,41 @@ pub fn versions_table(
                 }
             }
         }
-        div class="overflow-hidden rounded-lg border border-gray-200 bg-white" {
+        div class="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" {
             table id=(table_id) class="w-full text-sm" {
                 thead {
-                    tr class="bg-gray-50 border-b border-gray-200" {
-                        th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" { "Version" }
-                        th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" { "Active" }
-                        th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" { "SHA256" }
-                        th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider" { "Actions" }
+                    tr class="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700" {
+                        th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" { "Version" }
+                        th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" { "Active" }
+                        th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" { "SHA256" }
+                        th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" { "Actions" }
                     }
                 }
                 tbody {
                     @if versions.is_empty() {
                         tr {
-                            td colspan="4" class="px-4 py-3 text-sm text-gray-500" { "No versions uploaded yet." }
+                            td colspan="4" class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400" { "No versions uploaded yet." }
                         }
                     }
                     @for info in &versions {
                         @let is_active = active_version.is_some_and(|v| v == &info.version);
                         @let major_differs = !is_active && active_version.is_some_and(|av| av.major != info.version.major);
                         @let sha_short = &info.sha256[..12.min(info.sha256.len())];
-                        tr class="border-b border-gray-100 last:border-0 hover:bg-gray-50" {
-                            td class="px-4 py-3 text-gray-700 font-mono text-xs" { (info.version) }
+                        tr class="border-b border-gray-100 dark:border-gray-700/50 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800" {
+                            td class="px-4 py-3 text-gray-700 dark:text-gray-300 font-mono text-xs" { (info.version) }
                             td class="px-4 py-3" {
                                 @if is_active {
                                     span class="text-emerald-500 font-semibold" { "✓" }
                                 }
                             }
-                            td class="px-4 py-3 text-gray-500 font-mono text-xs" {
+                            td class="px-4 py-3 text-gray-500 dark:text-gray-400 font-mono text-xs" {
                                 span class="inline-flex items-center gap-1.5" {
                                     span title=(info.sha256) { (sha_short) "…" }
                                     button
                                         type="button"
                                         title="Copy full SHA256"
                                         onclick={"navigator.clipboard.writeText('" (info.sha256) "').then(() => { const el = this; el.textContent = '✓'; setTimeout(() => el.textContent = '⧉', 1500); })"}
-                                        class="text-gray-400 hover:text-gray-600 transition-colors"
+                                        class="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
                                         { "⧉" }
                                 }
                             }
@@ -286,7 +286,7 @@ pub fn versions_table(
                                         hx-delete={"/ui/" (module_type_str) "/" (name) "/active"}
                                         hx-target={"#" (table_id)}
                                         hx-swap="outerHTML"
-                                        class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+                                        class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                                         { "Deactivate" }
                                 } @else if major_differs {
                                     @let modal_id = format!("confirm-activate-{name}-{}", info.version);
@@ -333,18 +333,15 @@ pub fn tabs(id: &str, panels: Vec<(&str, Markup)>) -> Markup {
     );
     html! {
         div id=(id) {
-            div class="flex border-b border-gray-200 mb-6" {
+            div class="flex border-b border-gray-200 dark:border-gray-700 mb-6" {
                 @for (i, label) in labels.iter().enumerate() {
                     button
                         type="button"
                         data-tab-btn=""
                         data-tab-slug=(slugs[i])
                         onclick=(format!("umariTabs('{}',{},'{}')", id, i, slugs[i]))
-                        class=(if i == 0 {
-                            "px-4 py-2 text-sm font-medium -mb-px border-b-2 border-indigo-600 text-indigo-600"
-                        } else {
-                            "px-4 py-2 text-sm font-medium -mb-px border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                        })
+                        data-tab-active[i == 0]
+                        class="px-4 py-2 text-sm font-medium -mb-px border-b-2 border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600"
                     { (label) }
                 }
             }
@@ -362,8 +359,7 @@ pub fn tabs(id: &str, panels: Vec<(&str, Markup)>) -> Markup {
                 const group = document.getElementById(id);
                 group.querySelectorAll('[data-tab-panel]').forEach((p, i) => p.classList.toggle('hidden', i !== idx));
                 group.querySelectorAll('[data-tab-btn]').forEach((b, i) => {
-                    b.classList.toggle('border-indigo-600', i === idx);
-                    b.classList.toggle('text-indigo-600', i === idx);
+                    b.toggleAttribute('data-tab-active', i === idx);
                     b.classList.toggle('border-transparent', i !== idx);
                     b.classList.toggle('text-gray-500', i !== idx);
                 });
@@ -379,13 +375,13 @@ pub fn output(entries: &[LogEntry]) -> Markup {
             @if entries.is_empty() {
                 p class="text-sm text-gray-400 italic" { "no output" }
             } @else {
-                div class="overflow-hidden rounded-lg border border-gray-200 bg-white" {
+                div class="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" {
                     table class="w-full text-xs font-mono" {
                         tbody {
                             @for entry in entries {
                                 @if matches!(entry.stream, LogStream::System) {
-                                    tr class="border-b border-gray-100 last:border-0 bg-gray-50" {
-                                        td colspan="3" class="px-3 py-1.5 text-center text-xs text-gray-400 italic" {
+                                    tr class="border-b border-gray-100 dark:border-gray-700/50 last:border-0 bg-gray-50 dark:bg-gray-800" {
+                                        td colspan="3" class="px-3 py-1.5 text-center text-xs text-gray-400 dark:text-gray-500 italic" {
                                             (entry.timestamp.format("%H:%M:%S%.3f").to_string())
                                             " — "
                                             (entry.message)
@@ -394,16 +390,16 @@ pub fn output(entries: &[LogEntry]) -> Markup {
                                 } @else {
                                     @let ts = entry.timestamp.format("%H:%M:%S%.3f").to_string();
                                     @let is_stderr = matches!(entry.stream, LogStream::Stderr);
-                                    tr class="border-b border-gray-100 last:border-0" {
-                                        td class="px-3 py-1 text-gray-400 whitespace-nowrap w-28" { (ts) }
+                                    tr class="border-b border-gray-100 dark:border-gray-700/50 last:border-0" {
+                                        td class="px-3 py-1 text-gray-400 dark:text-gray-500 whitespace-nowrap w-28" { (ts) }
                                         td class="px-2 py-1 whitespace-nowrap w-16" {
                                             @if is_stderr {
                                                 span class="text-red-500 font-semibold" { "stderr" }
                                             } @else {
-                                                span class="text-gray-400" { "stdout" }
+                                                span class="text-gray-400 dark:text-gray-500" { "stdout" }
                                             }
                                         }
-                                        td class="px-3 py-1 text-gray-800 break-all" { (entry.message) }
+                                        td class="px-3 py-1 text-gray-800 dark:text-gray-200 break-all" { (entry.message) }
                                     }
                                 }
                             }
@@ -433,26 +429,26 @@ pub fn env_vars_panel(module_type: ModuleType, name: &str, vars: &HashMap<String
 
     html! {
         div id=(panel_id) {
-            p class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mb-4" {
+            p class="text-sm text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-md px-3 py-2 mb-4" {
                 "Changes take effect on the next module restart."
             }
             @if sorted_vars.is_empty() {
-                p class="text-sm text-gray-400 italic mb-4" { "no environment variables set" }
+                p class="text-sm text-gray-400 dark:text-gray-500 italic mb-4" { "no environment variables set" }
             } @else {
-                div class="overflow-hidden rounded-lg border border-gray-200 bg-white mb-4" {
+                div class="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 mb-4" {
                     table class="w-full text-sm" {
                         thead {
-                            tr class="bg-gray-50 border-b border-gray-200" {
-                                th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/3" { "Key" }
-                                th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" { "Value" }
-                                th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-32" { }
+                            tr class="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700" {
+                                th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-1/3" { "Key" }
+                                th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" { "Value" }
+                                th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-32" { }
                             }
                         }
                         tbody {
                             @for (key, value) in &sorted_vars {
-                                tr class="border-b border-gray-100 last:border-0" {
-                                    td class="px-4 py-3 font-mono text-xs text-gray-800 font-medium" { (key) }
-                                    td class="px-4 py-3 font-mono text-xs text-gray-600" {
+                                tr class="border-b border-gray-100 dark:border-gray-700/50 last:border-0" {
+                                    td class="px-4 py-3 font-mono text-xs text-gray-800 dark:text-gray-200 font-medium" { (key) }
+                                    td class="px-4 py-3 font-mono text-xs text-gray-600 dark:text-gray-400" {
                                         span data-value=(value) { "••••••••" }
                                         " "
                                         button
@@ -478,8 +474,8 @@ pub fn env_vars_panel(module_type: ModuleType, name: &str, vars: &HashMap<String
                 }
             }
             details class="group" {
-                summary class="cursor-pointer text-sm font-medium text-gray-700 hover:text-gray-900 select-none list-none flex items-center gap-1 mb-3" {
-                    span class="text-gray-400 group-open:rotate-90 transition-transform inline-block" { "▶" }
+                summary class="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 select-none list-none flex items-center gap-1 mb-3" {
+                    span class="text-gray-400 dark:text-gray-500 group-open:rotate-90 transition-transform inline-block" { "▶" }
                     "Add Variable"
                 }
                 form
@@ -494,12 +490,12 @@ pub fn env_vars_panel(module_type: ModuleType, name: &str, vars: &HashMap<String
                             name="key"
                             placeholder="KEY"
                             required
-                            class="w-1/3 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
+                            class="w-1/3 rounded-md border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm font-mono dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
                         input
                             type="text"
                             name="value"
                             placeholder="value"
-                            class="flex-1 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
+                            class="flex-1 rounded-md border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm font-mono dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
                     }
                     button
                         type="submit"
@@ -535,14 +531,14 @@ pub fn upload_form(module_type: ModuleType, name: Option<&str>) -> Markup {
         dialog
             id=(modal_id)
             onclick="if(event.target===this)this.close()"
-            class="rounded-xl border border-gray-200 shadow-xl p-0 w-full max-w-md backdrop:bg-black/40 open:flex open:flex-col"
+            class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl p-0 w-full max-w-md backdrop:bg-black/40 open:flex open:flex-col"
         {
-            div class="flex items-center justify-between px-5 py-4 border-b border-gray-100" {
-                h3 class="text-base font-semibold text-gray-800 m-0" { "Upload New Version" }
+            div class="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700/50" {
+                h3 class="text-base font-semibold text-gray-800 dark:text-gray-200 m-0" { "Upload New Version" }
                 button
                     type="button"
                     onclick={"document.getElementById('" (modal_id) "').close()"}
-                    class="text-gray-400 hover:text-gray-600 text-xl leading-none"
+                    class="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 text-xl leading-none"
                 { "×" }
             }
             form
@@ -555,23 +551,23 @@ pub fn upload_form(module_type: ModuleType, name: Option<&str>) -> Markup {
                 @if let Some(n) = name {
                     input type="hidden" name="name" value=(n);
                 } @else {
-                    label class="flex flex-col gap-1 text-sm font-medium text-gray-700" {
+                    label class="flex flex-col gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" {
                         "Name"
                         input type="text" name="name" required placeholder="module-name"
-                            class="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
+                            class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
                     }
                 }
-                label class="flex flex-col gap-1 text-sm font-medium text-gray-700" {
+                label class="flex flex-col gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" {
                     "Version"
                     input type="text" name="version" required placeholder="1.0.0"
-                        class="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
+                        class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
                 }
-                label class="flex flex-col gap-1 text-sm font-medium text-gray-700" {
+                label class="flex flex-col gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" {
                     "WASM file"
                     input type="file" name="wasm" accept=".wasm" required
-                        class="block w-full text-sm text-gray-700";
+                        class="block w-full text-sm text-gray-700 dark:text-gray-300";
                 }
-                label class="flex items-center gap-2 text-sm text-gray-700" {
+                label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300" {
                     input type="checkbox" name="activate" value="true";
                     "Activate immediately"
                 }
@@ -579,7 +575,7 @@ pub fn upload_form(module_type: ModuleType, name: Option<&str>) -> Markup {
                     button
                         type="button"
                         onclick={"document.getElementById('" (modal_id) "').close()"}
-                        class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+                        class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                     { "Cancel" }
                     button type="submit"
                         class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
@@ -781,12 +777,12 @@ pub fn execute_form(name: &str, schema: Option<&Schema>) -> Markup {
         let execute_url = format!("/ui/commands/{name}/execute");
         let fn_name = name.replace('-', "_");
         html! {
-            section class="bg-white rounded-lg border border-gray-200 p-5 mt-6" {
-                h3 class="text-base font-semibold text-gray-700 mb-3 mt-0" { "Execute Command" }
+            section class="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-5 mt-6" {
+                h3 class="text-base font-semibold text-gray-700 dark:text-gray-300 mb-3 mt-0" { "Execute Command" }
                 form id=(form_id) class="flex flex-col gap-4" {
                     input type="hidden" name="payload";
                     @for field in &fields {
-                        label class="flex flex-col gap-1 text-sm font-medium text-gray-700" {
+                        label class="flex flex-col gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" {
                             span {
                                 (field.label)
                                 @if field.required {
@@ -794,7 +790,7 @@ pub fn execute_form(name: &str, schema: Option<&Schema>) -> Markup {
                                 }
                             }
                             @if let Some(desc) = &field.description {
-                                span class="text-gray-400 text-xs font-normal" { (desc) }
+                                span class="text-gray-400 dark:text-gray-500 text-xs font-normal" { (desc) }
                             }
                             @match &field.input_type {
                                 InputType::Text => {
@@ -807,7 +803,7 @@ pub fn execute_form(name: &str, schema: Option<&Schema>) -> Markup {
                                         minlength=[field.min_length]
                                         maxlength=[field.max_length]
                                         pattern=[field.pattern.as_deref()]
-                                        class="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
+                                        class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
                                 }
                                 InputType::Email => {
                                     input type="email"
@@ -818,7 +814,7 @@ pub fn execute_form(name: &str, schema: Option<&Schema>) -> Markup {
                                         required[field.required]
                                         minlength=[field.min_length]
                                         maxlength=[field.max_length]
-                                        class="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
+                                        class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
                                 }
                                 InputType::Date => {
                                     input type="date"
@@ -826,7 +822,7 @@ pub fn execute_form(name: &str, schema: Option<&Schema>) -> Markup {
                                         data-field=(field.key)
                                         data-type="string"
                                         required[field.required]
-                                        class="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
+                                        class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
                                 }
                                 InputType::DateTime => {
                                     input type="datetime-local"
@@ -834,7 +830,7 @@ pub fn execute_form(name: &str, schema: Option<&Schema>) -> Markup {
                                         data-field=(field.key)
                                         data-type="string"
                                         required[field.required]
-                                        class="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
+                                        class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
                                 }
                                 InputType::Number { integer } => {
                                     input type="number"
@@ -846,21 +842,21 @@ pub fn execute_form(name: &str, schema: Option<&Schema>) -> Markup {
                                         max=[field.max]
                                         placeholder=[field.placeholder]
                                         required[field.required]
-                                        class="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
+                                        class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
                                 }
                                 InputType::Checkbox => {
                                     input type="checkbox"
                                         name=(field.key)
                                         data-field=(field.key)
                                         data-type="boolean"
-                                        class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500";
+                                        class="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500";
                                 }
                                 InputType::Select(options) => {
                                     select name=(field.key)
                                         data-field=(field.key)
                                         data-type="string"
                                         required[field.required]
-                                        class="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                        class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                                     {
                                         @if !field.required {
                                             option value="" { "" }
@@ -880,9 +876,9 @@ pub fn execute_form(name: &str, schema: Option<&Schema>) -> Markup {
                             }
                             class="self-start inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
                             { "Execute" }
-                        label class="flex items-center gap-2 text-xs text-gray-400 font-normal cursor-pointer" {
+                        label class="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500 font-normal cursor-pointer" {
                             input type="checkbox" data-bypass-validation
-                                class="h-3.5 w-3.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500";
+                                class="h-3.5 w-3.5 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500";
                             "Bypass validation"
                         }
                     }
@@ -916,18 +912,18 @@ pub fn execute_form(name: &str, schema: Option<&Schema>) -> Markup {
         }
     } else {
         html! {
-            section class="bg-white rounded-lg border border-gray-200 p-5 mt-6" {
-                h3 class="text-base font-semibold text-gray-700 mb-3 mt-0" { "Execute Command" }
+            section class="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-5 mt-6" {
+                h3 class="text-base font-semibold text-gray-700 dark:text-gray-300 mb-3 mt-0" { "Execute Command" }
                 form
                     hx-post={"/ui/commands/" (name) "/execute"}
                     hx-target="#execute-result"
                     hx-swap="innerHTML"
                     class="flex flex-col gap-4"
                 {
-                    label class="flex flex-col gap-1 text-sm font-medium text-gray-700" {
+                    label class="flex flex-col gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" {
                         "JSON Payload"
                         textarea name="payload" rows="6" placeholder="{}"
-                            class="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                            class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                             {}
                     }
                     button type="submit"
