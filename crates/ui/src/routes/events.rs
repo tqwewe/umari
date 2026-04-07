@@ -23,11 +23,13 @@ pub struct EventsQuery {
 
 struct EventView {
     position: u64,
+    uuid: Option<Uuid>,
     event_type: String,
     tags: Vec<String>,
     timestamp: DateTime<Utc>,
     correlation_id: Uuid,
     causation_id: Uuid,
+    triggering_event_id: Option<Uuid>,
     data: Value,
 }
 
@@ -111,11 +113,13 @@ pub async fn list_events(
         };
         events.push(EventView {
             position: seq.position,
+            uuid: seq.event.uuid,
             event_type: seq.event.event_type,
             tags: seq.event.tags,
             timestamp: stored.timestamp,
             correlation_id: stored.correlation_id,
             causation_id: stored.causation_id,
+            triggering_event_id: stored.triggering_event_id,
             data: stored.data,
         });
     }
@@ -197,7 +201,6 @@ pub async fn list_events(
                             th class="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider" { "Tags" }
                             th class="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-44" { "Timestamp" }
                             th class="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28" { "Correlation" }
-                            th class="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28" { "Causation" }
                         }
                     }
                     tbody {
@@ -226,7 +229,8 @@ pub async fn list_events(
                                         }
                                     }
                                 }
-                                td class="px-3 py-2 text-xs text-gray-600 whitespace-nowrap" {
+                                td class="px-3 py-2 text-xs text-gray-600 whitespace-nowrap"
+                                    title=(ev.timestamp.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()) {
                                     (ev.timestamp.format("%Y-%m-%d %H:%M:%S UTC"))
                                 }
                                 td class="px-3 py-2" {
@@ -236,16 +240,52 @@ pub async fn list_events(
                                         (&ev.correlation_id.to_string()[..8])
                                     }
                                 }
-                                td class="px-3 py-2" {
-                                    span class="px-1.5 py-0.5 bg-gray-100 text-gray-700 rounded text-xs font-mono"
-                                        title=(ev.causation_id.to_string()) {
-                                        (&ev.causation_id.to_string()[..8])
-                                    }
-                                }
                             }
                             tr id=(detail_id) style="display:none" {
-                                td colspan="7" class="px-4 py-3 bg-gray-50 border-b border-gray-100" style=(format!("border-left: 3px solid {border_color}")) {
-                                    pre class="text-xs text-gray-800 whitespace-pre-wrap break-all" {
+                                td colspan="6" class="bg-gray-50 border-b border-gray-100" style=(format!("border-left: 3px solid {border_color}")) {
+                                    div class="flex flex-wrap gap-6 px-4 py-2 border-b border-gray-200 bg-white text-xs text-gray-500" {
+                                        @if let Some(id) = ev.uuid {
+                                            @let full = id.to_string();
+                                            span {
+                                                "Event ID: "
+                                                span class="font-mono text-gray-700 cursor-pointer hover:text-indigo-600"
+                                                    title=(full)
+                                                    onclick=(format!("navigator.clipboard.writeText('{full}')")) {
+                                                    (&full[..8])
+                                                }
+                                            }
+                                        }
+                                        @let corr = ev.correlation_id.to_string();
+                                        span {
+                                            "Correlation: "
+                                            span class="font-mono text-gray-700 cursor-pointer hover:text-indigo-600"
+                                                title=(corr)
+                                                onclick=(format!("navigator.clipboard.writeText('{corr}')")) {
+                                                (&corr[..8])
+                                            }
+                                        }
+                                        @let caus = ev.causation_id.to_string();
+                                        span {
+                                            "Causation: "
+                                            span class="font-mono text-gray-700 cursor-pointer hover:text-indigo-600"
+                                                title=(caus)
+                                                onclick=(format!("navigator.clipboard.writeText('{caus}')")) {
+                                                (&caus[..8])
+                                            }
+                                        }
+                                        @if let Some(tid) = ev.triggering_event_id {
+                                            @let trig = tid.to_string();
+                                            span {
+                                                "Triggered by: "
+                                                span class="font-mono text-gray-700 cursor-pointer hover:text-indigo-600"
+                                                    title=(trig)
+                                                    onclick=(format!("navigator.clipboard.writeText('{trig}')")) {
+                                                    (&trig[..8])
+                                                }
+                                            }
+                                        }
+                                    }
+                                    pre class="ev-json text-xs text-gray-800 whitespace-pre-wrap break-all px-4 py-3" {
                                         (serde_json::to_string_pretty(&ev.data).unwrap_or_default())
                                     }
                                 }
@@ -255,6 +295,30 @@ pub async fn list_events(
                 }
             }
             p class="text-xs text-gray-400 mt-2" { "showing " (event_count) " events (newest first)" }
+            script {
+                (maud::PreEscaped(r#"
+(function() {
+  function highlight(text) {
+    return text.replace(
+      /("(?:\\u[0-9a-fA-F]{4}|\\[^u]|[^\\"])*"(?:\s*:)?|true|false|null|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+      function(m) {
+        if (m[0] === '"') {
+          return m.slice(-1) === ':'
+            ? '<span style="color:#6366f1">' + m + '</span>'
+            : '<span style="color:#16a34a">' + m + '</span>';
+        }
+        if (m === 'true' || m === 'false') return '<span style="color:#d97706">' + m + '</span>';
+        if (m === 'null')  return '<span style="color:#9ca3af">' + m + '</span>';
+        return '<span style="color:#7c3aed">' + m + '</span>';
+      }
+    );
+  }
+  document.querySelectorAll('pre.ev-json').forEach(function(el) {
+    el.innerHTML = highlight(el.textContent);
+  });
+})();
+                "#))
+            }
         }
     };
 

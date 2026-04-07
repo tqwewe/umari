@@ -220,7 +220,7 @@ impl CommandActor {
             let context = command.context;
             let envelope = EventEnvelope {
                 timestamp,
-                correlation_id: context.correlation_id,
+                correlation_id: context.correlation_id.unwrap_or_else(Uuid::new_v4),
                 causation_id,
                 triggering_event_id: context.triggering_event_id,
                 idempotency_key: context.idempotency_key,

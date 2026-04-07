@@ -35,8 +35,8 @@ garde = { path = "/home/ari/dev/jprochazk/garde/garde", version = "0.22" }
 hex = "0.4"
 humantime = "2.3"
 indexmap = { version = "2.13", features = ["serde"] }
-kameo = { path = "/home/ari/dev/tqwewe/kameo" } # { git = "https://github.com/tqwewe/kameo", branch = "main" }
-kameo_actors = { path = "/home/ari/dev/tqwewe/kameo/actors" } # { git = "https://github.com/tqwewe/kameo", branch = "main", package = "kameo_actors" }
+kameo = { git = "https://github.com/tqwewe/kameo", branch = "main" }
+kameo_actors = { git = "https://github.com/tqwewe/kameo", branch = "main", package = "kameo_actors" }
 libc = "0.2"
 maud = { version = "0.27", features = ["axum"] }
 proc-macro2 = "1.0"

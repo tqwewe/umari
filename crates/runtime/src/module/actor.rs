@@ -338,9 +338,7 @@ impl<A: EventHandlerModule> Message<WorkerAck> for ModuleActor<A> {
 }
 
 impl<A: EventHandlerModule> ModuleActor<A> {
-    fn deserialize_event(
-        event: DcbSequencedEvent,
-    ) -> Result<wit::common::StoredEvent, ModuleError> {
+    fn deserialize_event(event: DcbSequencedEvent) -> Result<StoredEvent<Value>, ModuleError> {
         let data: StoredEventData<Value> =
             serde_json::from_slice(&event.event.data).map_err(ModuleError::DeserializeEvent)?;
 
@@ -355,19 +353,24 @@ impl<A: EventHandlerModule> ModuleActor<A> {
             triggering_event_id: data.triggering_event_id,
             idempotency_key: data.idempotency_key,
             data: data.data,
-        }
-        .into())
+        })
     }
 
     async fn process_batch(&mut self, batch: Vec<DcbSequencedEvent>) -> Result<(), ModuleError> {
         if A::POOL_SIZE > 0 {
             for event in batch {
                 let position = event.position;
-                let wit_event = Self::deserialize_event(event)?;
+                let stored_event = Self::deserialize_event(event)?;
+                let process_event_msg = ProcessEvent {
+                    current_event_id: stored_event.id,
+                    correlation_id: stored_event.correlation_id,
+                    event: stored_event.into(),
+                    position,
+                };
 
                 let partition_key = self
                     .instance
-                    .partition_key(&mut self.store, self.handler, &wit_event)
+                    .partition_key(&mut self.store, self.handler, &process_event_msg.event)
                     .await?;
 
                 let pool = self
@@ -378,30 +381,21 @@ impl<A: EventHandlerModule> ModuleActor<A> {
                     PartitionKey::Inline => {
                         warn!(name = %self.name, position, "handler returned inline partition key, routing to global worker");
                         pool.global
-                            .tell(ProcessEvent {
-                                event: wit_event,
-                                position,
-                            })
+                            .tell(process_event_msg)
                             .send()
                             .await
                             .map_err(|_| ModuleError::WorkerUnavailable)?;
                     }
                     PartitionKey::Unkeyed => {
                         pool.global
-                            .tell(ProcessEvent {
-                                event: wit_event,
-                                position,
-                            })
+                            .tell(process_event_msg)
                             .send()
                             .await
                             .map_err(|_| ModuleError::WorkerUnavailable)?;
                     }
                     PartitionKey::Keyed(ref key) => {
                         pool.route(key)
-                            .tell(ProcessEvent {
-                                event: wit_event,
-                                position,
-                            })
+                            .tell(process_event_msg)
                             .send()
                             .await
                             .map_err(|_| ModuleError::WorkerUnavailable)?;
@@ -413,10 +407,11 @@ impl<A: EventHandlerModule> ModuleActor<A> {
             let mut new_position = None;
             for event in batch {
                 new_position = Some(event.position);
-                self.store
-                    .data_mut()
-                    .update_current_event_id(event.event.uuid.ok_or(ModuleError::MissingEventId)?);
-                let wit_event = Self::deserialize_event(event)?;
+                let store = self.store.data_mut();
+                let stored_event = Self::deserialize_event(event)?;
+                store.update_current_event_id(stored_event.id);
+                store.update_current_correlation_id(stored_event.correlation_id);
+                let wit_event = stored_event.into();
                 self.instance
                     .handle_event(&mut self.store, self.handler, &wit_event)
                     .await?;

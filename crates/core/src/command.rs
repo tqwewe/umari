@@ -484,7 +484,7 @@ where
             T::COMMAND_NAME,
             input,
             &CommandContext {
-                correlation_id: Some(ctx.correlation_id.to_string()),
+                correlation_id: ctx.correlation_id.as_ref().map(ToString::to_string),
                 triggering_event_id: ctx.triggering_event_id.as_ref().map(ToString::to_string),
                 idempotency_key: ctx.idempotency_key.as_ref().map(ToString::to_string),
             },
@@ -517,7 +517,7 @@ where
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CommandContext {
     /// Original request ID (flows through everything)
-    pub correlation_id: Uuid,
+    pub correlation_id: Option<Uuid>,
     /// Event ID that triggered this command (for sagas)
     pub triggering_event_id: Option<Uuid>,
     /// Client-supplied key for deduplicating retried command executions.
@@ -527,14 +527,14 @@ pub struct CommandContext {
 impl CommandContext {
     pub fn new() -> Self {
         CommandContext {
-            correlation_id: Uuid::new_v4(),
+            correlation_id: None,
             triggering_event_id: None,
             idempotency_key: None,
         }
     }
 
     pub fn with_correlation_id(mut self, correlation_id: Uuid) -> Self {
-        self.correlation_id = correlation_id;
+        self.correlation_id = Some(correlation_id);
         self
     }
 

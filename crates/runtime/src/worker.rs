@@ -2,6 +2,7 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use kameo::prelude::*;
 use rusqlite::Connection;
+use uuid::Uuid;
 use wasmtime::{
     Engine, Store,
     component::{Component, Linker, ResourceAny},
@@ -85,13 +86,14 @@ impl<A: EventHandlerModule> Actor for ModuleWorkerActor<A> {
         );
         let mut store = Store::new(&args.engine, state);
 
-        let instance = match A::instantiate(&mut store, &args.component, &args.linker, args.args).await {
-            Ok(instance) => instance,
-            Err(err) => {
-                args.output.push_stderr(format!("{err:#}"));
-                return Err(ModuleError::Wasmtime(err));
-            }
-        };
+        let instance =
+            match A::instantiate(&mut store, &args.component, &args.linker, args.args).await {
+                Ok(instance) => instance,
+                Err(err) => {
+                    args.output.push_stderr(format!("{err:#}"));
+                    return Err(ModuleError::Wasmtime(err));
+                }
+            };
 
         store.data().conn().execute("BEGIN", [])?;
 
@@ -119,9 +121,14 @@ impl<A: EventHandlerModule> ModuleWorkerActor<A> {
     #[message]
     pub async fn process_event(
         &mut self,
+        current_event_id: Uuid,
+        correlation_id: Uuid,
         event: wit::common::StoredEvent,
         position: u64,
     ) -> Result<(), ModuleError> {
+        let store = self.store.data_mut();
+        store.update_current_event_id(current_event_id);
+        store.update_current_correlation_id(correlation_id);
         match self
             .instance
             .handle_event(&mut self.store, self.handler, &event)

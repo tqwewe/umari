@@ -41,6 +41,7 @@ pub struct EventHandlerComponentState {
     command_ref: ActorRef<CommandActor>,
     conn: Connection,
     current_event_id: Uuid,
+    current_correlation_id: Uuid,
     last_position: Option<u64>,
     statements: SlotMap<DefaultKey, Box<Statement<'static>>>,
     #[cfg(debug_assertions)]
@@ -64,6 +65,7 @@ impl EventHandlerComponentState {
             command_ref,
             conn,
             current_event_id: Uuid::nil(),
+            current_correlation_id: Uuid::nil(),
             last_position,
             statements: SlotMap::new(),
             #[cfg(debug_assertions)]
@@ -81,6 +83,14 @@ impl EventHandlerComponentState {
 
     pub fn update_current_event_id(&mut self, event_id: Uuid) {
         self.current_event_id = event_id;
+    }
+
+    pub fn current_correlation_id(&self) -> Uuid {
+        self.current_correlation_id
+    }
+
+    pub fn update_current_correlation_id(&mut self, correlation_id: Uuid) {
+        self.current_correlation_id = correlation_id;
     }
 
     pub fn last_position(&self) -> Option<u64> {

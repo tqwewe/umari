@@ -46,7 +46,12 @@ impl executor::Host for wit::EventHandlerComponentState {
         context: executor::CommandContext,
     ) -> wasmtime::Result<Result<executor::CommandReceipt, String>> {
         let mut context: CommandContext = context.try_into()?; // trap
-        context = context.with_triggering_event_id(self.current_event_id);
+        context
+            .correlation_id
+            .get_or_insert(self.current_correlation_id);
+        context
+            .triggering_event_id
+            .get_or_insert(self.current_event_id);
         let msg = Execute {
             name: command.into(),
             command: CommandPayload { input, context },
@@ -71,8 +76,7 @@ impl TryFrom<executor::CommandContext> for CommandContext {
                 .as_deref()
                 .map(Uuid::parse_str)
                 .transpose()
-                .context("invalid correlation id")?
-                .unwrap_or_else(Uuid::new_v4),
+                .context("invalid correlation id")?,
             triggering_event_id: ctx
                 .triggering_event_id
                 .as_deref()

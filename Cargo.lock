@@ -1626,6 +1626,7 @@ dependencies = [
 [[package]]
 name = "kameo"
 version = "0.19.2"
+source = "git+https://github.com/tqwewe/kameo?branch=main#35680273b7fc1b2c3f7b9fe2ae1ffc117318890c"
 dependencies = [
  "downcast-rs",
  "dyn-clone",
@@ -1639,6 +1640,7 @@ dependencies = [
 [[package]]
 name = "kameo_actors"
 version = "0.4.0"
+source = "git+https://github.com/tqwewe/kameo?branch=main#35680273b7fc1b2c3f7b9fe2ae1ffc117318890c"
 dependencies = [
  "futures",
  "glob",
@@ -1650,6 +1652,7 @@ dependencies = [
 [[package]]
 name = "kameo_macros"
 version = "0.19.0"
+source = "git+https://github.com/tqwewe/kameo?branch=main#35680273b7fc1b2c3f7b9fe2ae1ffc117318890c"
 dependencies = [
  "heck",
  "proc-macro2",

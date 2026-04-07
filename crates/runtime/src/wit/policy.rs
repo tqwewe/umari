@@ -123,7 +123,7 @@ impl EventHandlerModule for PolicyState {
                     command: CommandPayload {
                         input: cmd.input,
                         context: CommandContext {
-                            correlation_id,
+                            correlation_id: Some(correlation_id),
                             triggering_event_id: Some(event_id),
                             idempotency_key: Some(idempotency_key),
                         },
