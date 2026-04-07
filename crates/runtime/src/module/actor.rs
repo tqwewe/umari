@@ -192,13 +192,14 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
         );
         let mut store = Store::new(&args.engine, state);
 
-        let instance = match A::instantiate(&mut store, &args.component, &args.linker, args.args).await {
-            Ok(instance) => instance,
-            Err(err) => {
-                args.output.push_stderr(format!("{err:#}"));
-                return Err(ModuleError::Wasmtime(err));
-            }
-        };
+        let instance =
+            match A::instantiate(&mut store, &args.component, &args.linker, args.args).await {
+                Ok(instance) => instance,
+                Err(err) => {
+                    args.output.push_stderr(format!("{err:#}"));
+                    return Err(ModuleError::Wasmtime(err));
+                }
+            };
 
         store.data().conn().execute("BEGIN", [])?;
 
@@ -412,6 +413,9 @@ impl<A: EventHandlerModule> ModuleActor<A> {
             let mut new_position = None;
             for event in batch {
                 new_position = Some(event.position);
+                self.store
+                    .data_mut()
+                    .update_current_event_id(event.event.uuid.ok_or(ModuleError::MissingEventId)?);
                 let wit_event = Self::deserialize_event(event)?;
                 self.instance
                     .handle_event(&mut self.store, self.handler, &wit_event)

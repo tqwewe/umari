@@ -1,6 +1,8 @@
+use std::mem;
+
 use kameo::actor::ActorRef;
 use umari_core::prelude::CommandContext;
-use uuid::Uuid;
+use uuid::{Uuid, uuid};
 use wasmtime::{
     Store,
     component::{Component, Linker, ResourceAny, bindgen},
@@ -14,6 +16,9 @@ use crate::{
 };
 
 pub use self::exports::umari::policy::policy::Error;
+
+// Uuid::new_v5(&Uuid::NAMESPACE_URL, b"https://umari.dev/policy-idempotency-namespace")
+const POLICY_IDEMPOTENCY_NAMESPACE: Uuid = uuid!("74ef686a-96c5-589f-b7cb-a258ea5517b7");
 
 bindgen!({
     path: "../../wit/policy",
@@ -108,7 +113,10 @@ impl EventHandlerModule for PolicyState {
             .call_handle(store, handler, event)
             .await?;
 
-        for cmd in cmds {
+        for (i, cmd) in cmds.into_iter().enumerate() {
+            let command_idx = u16::try_from(i).unwrap();
+            let idempotency_key =
+                generate_policy_idempotency_key(&cmd.command_type, command_idx, event_id);
             self.command_ref
                 .ask(Execute {
                     name: cmd.command_type.into(),
@@ -117,7 +125,7 @@ impl EventHandlerModule for PolicyState {
                         context: CommandContext {
                             correlation_id,
                             triggering_event_id: Some(event_id),
-                            idempotency_key: None,
+                            idempotency_key: Some(idempotency_key),
                         },
                     },
                 })
@@ -126,4 +134,16 @@ impl EventHandlerModule for PolicyState {
 
         Ok(())
     }
+}
+
+fn generate_policy_idempotency_key(
+    command_type: &str,
+    command_idx: u16,
+    triggering_event_id: Uuid,
+) -> Uuid {
+    let mut bytes = Vec::with_capacity(command_type.len() + mem::size_of::<u16>() + 16);
+    bytes.extend_from_slice(command_type.as_bytes());
+    bytes.extend_from_slice(&command_idx.to_le_bytes());
+    bytes.extend_from_slice(triggering_event_id.as_bytes());
+    Uuid::new_v5(&POLICY_IDEMPOTENCY_NAMESPACE, &bytes)
 }

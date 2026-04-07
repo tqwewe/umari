@@ -109,10 +109,8 @@ pub async fn get_command(
         (versions_table(ModuleType::Command, &name, versions, active_version.as_ref()))
         (upload_form(ModuleType::Command, Some(&name)))
     };
-    let execute_panel = html! {
-        (execute_form(&name, schema.as_ref()))
-        (output(&entries))
-    };
+    let execute_panel = execute_form(&name, schema.as_ref());
+    let output_panel = output(&entries);
     let env_panel = env_vars_panel(ModuleType::Command, &name, &env_vars);
 
     let content = html! {
@@ -127,6 +125,7 @@ pub async fn get_command(
             (tabs(&format!("tabs-command-{name}"), vec![
                 ("Versions", versions_panel),
                 ("Execute", execute_panel),
+                ("Output", output_panel),
                 ("Environment", env_panel),
             ]))
         }

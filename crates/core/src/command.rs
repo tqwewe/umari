@@ -5,7 +5,7 @@ use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use umadb_dcb::{DcbEvent, DcbQueryItem};
+use umadb_dcb::DcbQueryItem;
 use uuid::Uuid;
 
 use crate::{
@@ -13,7 +13,6 @@ use crate::{
     emit::Emit,
     error::{CommandExecuteError, SerializationError},
     event::EventSet,
-    runtime::command::umari::command::executor::CommandReceipt,
 };
 
 /// Trait for command input structs that declare domain ID bindings.
@@ -512,7 +511,7 @@ where
     )
     .map_err(CommandExecuteError)?;
 
-    Ok(result)
+    Ok(result.into())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -562,9 +561,16 @@ pub struct EventMeta {
 }
 
 #[derive(Clone, Debug)]
-pub struct ExecuteResult {
+pub struct CommandReceipt {
     pub position: Option<u64>,
-    pub events: Vec<DcbEvent>,
+    pub events: Vec<EmittedEventRef>,
+}
+
+#[derive(Clone, Debug)]
+pub struct EmittedEventRef {
+    pub id: Uuid,
+    pub event_type: String,
+    pub tags: Vec<String>,
 }
 
 pub fn build_query_items<E: EventSet>(bindings: &DomainIdBindings) -> Vec<DcbQueryItem> {

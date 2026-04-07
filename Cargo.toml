@@ -60,7 +60,7 @@ umadb-client = { path = "/home/ari/dev/umadb-io/umadb/umadb-client" } # { git = 
 umadb-dcb = { path = "/home/ari/dev/umadb-io/umadb/umadb-dcb", features = ["serde"] } # { git = "https://github.com/tqwewe/umadb", branch = "feat/serde", features = ["serde"] }
 utoipa = { version = "5.3", features = ["axum_extras", "uuid"] }
 utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
-uuid = { version = "1.22", features = ["serde", "v4"] }
+uuid = { version = "1.22", features = ["serde", "v4", "v5"] }
 wasip2 = "1.0.2"
 wasmtime = { version = "43.0", default-features = false, features = [
   "addr2line",

@@ -4,6 +4,7 @@ use std::thread;
 use kameo::actor::ActorRef;
 use rusqlite::{Connection, Statement};
 use slotmap::{DefaultKey, SlotMap};
+use uuid::Uuid;
 use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxView, WasiView};
 use wasmtime_wasi_http::{
     WasiHttpCtx,
@@ -39,6 +40,7 @@ pub struct EventHandlerComponentState {
     resource_table: ResourceTable,
     command_ref: ActorRef<CommandActor>,
     conn: Connection,
+    current_event_id: Uuid,
     last_position: Option<u64>,
     statements: SlotMap<DefaultKey, Box<Statement<'static>>>,
     #[cfg(debug_assertions)]
@@ -61,6 +63,7 @@ impl EventHandlerComponentState {
             resource_table,
             command_ref,
             conn,
+            current_event_id: Uuid::nil(),
             last_position,
             statements: SlotMap::new(),
             #[cfg(debug_assertions)]
@@ -70,6 +73,14 @@ impl EventHandlerComponentState {
 
     pub fn conn(&self) -> &Connection {
         &self.conn
+    }
+
+    pub fn current_event_id(&self) -> Uuid {
+        self.current_event_id
+    }
+
+    pub fn update_current_event_id(&mut self, event_id: Uuid) {
+        self.current_event_id = event_id;
     }
 
     pub fn last_position(&self) -> Option<u64> {

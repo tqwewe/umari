@@ -3,6 +3,7 @@ use std::marker::PhantomData;
 use garde::Validate;
 use serde::de::DeserializeOwned;
 use umadb_dcb::DcbQuery;
+use uuid::Uuid;
 
 use crate::command::{
     Command, CommandInput, EventMeta, FoldSet, RuleSet, RuleSetRunner,
@@ -121,5 +122,28 @@ where
         Ok(ExecuteOutput {
             events: emitted_events,
         })
+    }
+}
+
+impl From<umari::command::executor::CommandReceipt> for crate::command::CommandReceipt {
+    fn from(receipt: umari::command::executor::CommandReceipt) -> Self {
+        crate::command::CommandReceipt {
+            position: receipt.position,
+            events: receipt
+                .events
+                .into_iter()
+                .map(|event| event.into())
+                .collect(),
+        }
+    }
+}
+
+impl From<umari::command::executor::EmittedEvent> for crate::command::EmittedEventRef {
+    fn from(event: umari::command::executor::EmittedEvent) -> Self {
+        crate::command::EmittedEventRef {
+            id: Uuid::parse_str(&event.id).expect("invalid event id"),
+            event_type: event.event_type,
+            tags: event.tags,
+        }
     }
 }

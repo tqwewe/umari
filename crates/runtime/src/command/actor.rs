@@ -169,7 +169,6 @@ impl CommandActor {
                 .collect_with_head()
                 .await?;
 
-            let triggering_event_id = command.context.triggering_event_id;
             let idempotency_key = command.context.idempotency_key;
             let mut mapped_events = Vec::with_capacity(events.len());
 
@@ -186,13 +185,10 @@ impl CommandActor {
                 let data = serde_json::to_string(&stored.data)
                     .expect("serde value should never fail to serialize");
 
-                let is_triggering_event_id_idempotent = triggering_event_id
-                    .zip(stored.triggering_event_id)
-                    .is_some_and(|(a, b)| a == b);
                 let is_idempotentcy_key_idempotent = idempotency_key
                     .zip(stored.idempotency_key)
                     .is_some_and(|(a, b)| a == b);
-                if is_triggering_event_id_idempotent || is_idempotentcy_key_idempotent {
+                if is_idempotentcy_key_idempotent {
                     return Ok(ExecuteResult {
                         position: head,
                         events: vec![],

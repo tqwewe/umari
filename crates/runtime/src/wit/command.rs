@@ -45,7 +45,8 @@ impl executor::Host for wit::EventHandlerComponentState {
         input: String,
         context: executor::CommandContext,
     ) -> wasmtime::Result<Result<executor::CommandReceipt, String>> {
-        let context = context.try_into()?; // trap
+        let mut context: CommandContext = context.try_into()?; // trap
+        context = context.with_triggering_event_id(self.current_event_id);
         let msg = Execute {
             name: command.into(),
             command: CommandPayload { input, context },
