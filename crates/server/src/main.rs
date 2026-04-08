@@ -91,7 +91,7 @@ async fn main() {
     let startup_fut = runtime_ref.wait_for_startup_with_result(|res| match res {
         Ok(()) => true,
         Err(HookError::Error(RuntimeError::EventStore(DcbError::TransportError(msg)))) => {
-            error!("failed to connect to event store: {msg}");
+            error!("failed to connect to UmaDB: {msg}");
             false
         }
         Err(err) => {
