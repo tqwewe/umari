@@ -7,7 +7,7 @@ use semver::Version;
 
 use crate::events::ModuleEvent;
 
-use super::{Module, ModuleStore, ModuleStoreError, ModuleType, ModuleVersionInfo, sqlite::SqliteModuleStore};
+use super::{Module, ModuleStoreError, ModuleType, ModuleVersionInfo, sqlite::SqliteModuleStore};
 
 pub struct ModuleStoreActor {
     store: SqliteModuleStore,

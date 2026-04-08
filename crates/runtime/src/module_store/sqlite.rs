@@ -7,7 +7,7 @@ use rusqlite::{
 use semver::Version;
 use sha2::{Digest, Sha256};
 
-use super::{Module, ModuleStore, ModuleStoreError, ModuleType, ModuleVersionInfo};
+use super::{Module, ModuleStoreError, ModuleType, ModuleVersionInfo};
 
 pub struct SqliteModuleStore {
     conn: Connection,
@@ -56,8 +56,8 @@ impl SqliteModuleStore {
     }
 }
 
-impl ModuleStore for SqliteModuleStore {
-    fn save_module(
+impl SqliteModuleStore {
+    pub fn save_module(
         &self,
         module_type: ModuleType,
         name: &str,
@@ -94,7 +94,7 @@ impl ModuleStore for SqliteModuleStore {
         Ok(())
     }
 
-    fn load_module(
+    pub fn load_module(
         &self,
         module_type: ModuleType,
         name: &str,
@@ -124,7 +124,7 @@ impl ModuleStore for SqliteModuleStore {
         Ok(Some((wasm_bytes, sha256)))
     }
 
-    fn activate_module(
+    pub fn activate_module(
         &mut self,
         module_type: ModuleType,
         name: &str,
@@ -159,7 +159,7 @@ impl ModuleStore for SqliteModuleStore {
         Ok(rows_affected > 0)
     }
 
-    fn get_active_module(
+    pub fn get_active_module(
         &self,
         module_type: ModuleType,
         name: &str,
@@ -189,7 +189,7 @@ impl ModuleStore for SqliteModuleStore {
         }
     }
 
-    fn deactivate_module(
+    pub fn deactivate_module(
         &self,
         module_type: ModuleType,
         name: &str,
@@ -202,7 +202,7 @@ impl ModuleStore for SqliteModuleStore {
         Ok(rows_affected > 0)
     }
 
-    fn get_all_active_modules(
+    pub fn get_all_active_modules(
         &self,
         module_type: Option<ModuleType>,
     ) -> Result<Vec<Module>, ModuleStoreError> {
@@ -252,7 +252,7 @@ impl ModuleStore for SqliteModuleStore {
         .map_err(ModuleStoreError::Database)
     }
 
-    fn get_module_versions(
+    pub fn get_module_versions(
         &self,
         module_type: ModuleType,
         name: &str,
@@ -275,7 +275,7 @@ impl ModuleStore for SqliteModuleStore {
         rows.map_err(ModuleStoreError::Database)
     }
 
-    fn get_all_module_names(
+    pub fn get_all_module_names(
         &self,
         module_type: ModuleType,
     ) -> Result<Vec<String>, ModuleStoreError> {
@@ -289,9 +289,7 @@ impl ModuleStore for SqliteModuleStore {
 
         rows.map_err(ModuleStoreError::Database)
     }
-}
 
-impl SqliteModuleStore {
     pub fn get_env_vars(
         &self,
         module_type: ModuleType,
