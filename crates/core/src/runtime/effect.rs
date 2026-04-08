@@ -29,7 +29,10 @@ wit_bindgen::generate!({
 #[macro_export]
 macro_rules! export_effect {
     ($ty:path) => {
-        $crate::runtime::effect::export!($crate::runtime::effect::EffectExport<$ty>, with_types_in $crate::runtime::effect);
+        $crate::runtime::effect::export!({
+            ty: $crate::runtime::effect::EffectExport<$ty>,
+            with_types_in: $crate::runtime::effect,
+        });
     };
 }
 

@@ -22,7 +22,10 @@ wit_bindgen::generate!({
 #[macro_export]
 macro_rules! export_policy {
     ($ty:path) => {
-        $crate::runtime::policy::export!($crate::runtime::policy::PolicyExport<$ty>, with_types_in $crate::runtime::policy);
+        $crate::runtime::policy::export!({
+            ty: $crate::runtime::policy::PolicyExport<$ty>,
+            with_types_in: $crate::runtime::policy,
+        });
     };
 }
 

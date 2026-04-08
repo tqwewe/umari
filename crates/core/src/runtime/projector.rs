@@ -22,7 +22,10 @@ wit_bindgen::generate!({
 #[macro_export]
 macro_rules! export_projector {
     ($ty:path) => {
-        $crate::runtime::projector::export!($crate::runtime::projector::ProjectorExport<$ty>, with_types_in $crate::runtime::projector);
+        $crate::runtime::projector::export!({
+            ty: $crate::runtime::projector::ProjectorExport<$ty>,
+            with_types_in: $crate::runtime::projector,
+        });
     };
 }
 

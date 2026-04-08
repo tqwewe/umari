@@ -1758,6 +1758,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "macro-string"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "59a9dbbfc75d2688ed057456ce8a3ee3f48d12eec09229f560f3643b9f275653"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "matchers"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3425,7 +3436,7 @@ dependencies = [
  "umari-macros",
  "uuid",
  "wasip2",
- "wit-bindgen 0.53.1",
+ "wit-bindgen 0.55.0",
 ]
 
 [[package]]
@@ -3834,6 +3845,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "wasm-encoder"
+version = "0.246.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "61fb705ce81adde29d2a8e99d87995e39a6e927358c91398f374474746070ef7"
+dependencies = [
+ "leb128fmt",
+ "wasmparser 0.246.2",
+]
+
+[[package]]
 name = "wasm-metadata"
 version = "0.244.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3847,14 +3868,14 @@ dependencies = [
 
 [[package]]
 name = "wasm-metadata"
-version = "0.245.1"
+version = "0.246.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da55e60097e8b37b475a0fa35c3420dd71d9eb7bd66109978ab55faf56a57efb"
+checksum = "e3e4c2aa916c425dcca61a6887d3e135acdee2c6d0ed51fd61c08d41ddaf62b1"
 dependencies = [
  "anyhow",
  "indexmap",
- "wasm-encoder 0.245.1",
- "wasmparser 0.245.1",
+ "wasm-encoder 0.246.2",
+ "wasmparser 0.246.2",
 ]
 
 [[package]]
@@ -3880,6 +3901,18 @@ dependencies = [
  "indexmap",
  "semver",
  "serde",
+]
+
+[[package]]
+name = "wasmparser"
+version = "0.246.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "71cde4757396defafd25417cfb36aa3161027d06d865b0c24baaae229aac005d"
+dependencies = [
+ "bitflags",
+ "hashbrown 0.16.1",
+ "indexmap",
+ "semver",
 ]
 
 [[package]]
@@ -4546,10 +4579,10 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen"
-version = "0.53.1"
+version = "0.55.0"
 dependencies = [
  "bitflags",
- "wit-bindgen-rust-macro 0.53.1",
+ "wit-bindgen-rust-macro 0.55.0",
 ]
 
 [[package]]
@@ -4565,11 +4598,11 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen-core"
-version = "0.53.1"
+version = "0.55.0"
 dependencies = [
  "anyhow",
  "heck",
- "wit-parser 0.245.1",
+ "wit-parser 0.246.2",
 ]
 
 [[package]]
@@ -4590,16 +4623,16 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen-rust"
-version = "0.53.1"
+version = "0.55.0"
 dependencies = [
  "anyhow",
  "heck",
  "indexmap",
  "prettyplease",
  "syn",
- "wasm-metadata 0.245.1",
- "wit-bindgen-core 0.53.1",
- "wit-component 0.245.1",
+ "wasm-metadata 0.246.2",
+ "wit-bindgen-core 0.55.0",
+ "wit-component 0.246.2",
 ]
 
 [[package]]
@@ -4619,15 +4652,16 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen-rust-macro"
-version = "0.53.1"
+version = "0.55.0"
 dependencies = [
  "anyhow",
+ "macro-string",
  "prettyplease",
  "proc-macro2",
  "quote",
  "syn",
- "wit-bindgen-core 0.53.1",
- "wit-bindgen-rust 0.53.1",
+ "wit-bindgen-core 0.55.0",
+ "wit-bindgen-rust 0.55.0",
 ]
 
 [[package]]
@@ -4651,9 +4685,9 @@ dependencies = [
 
 [[package]]
 name = "wit-component"
-version = "0.245.1"
+version = "0.246.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4894f10d2d5cbc17c77e91f86a1e48e191a788da4425293b55c98b44ba3fcac9"
+checksum = "1936c26cb24b93dc36bf78fb5dc35c55cd37f66ecdc2d2663a717d9fb3ee951e"
 dependencies = [
  "anyhow",
  "bitflags",
@@ -4662,10 +4696,10 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
- "wasm-encoder 0.245.1",
- "wasm-metadata 0.245.1",
- "wasmparser 0.245.1",
- "wit-parser 0.245.1",
+ "wasm-encoder 0.246.2",
+ "wasm-metadata 0.246.2",
+ "wasmparser 0.246.2",
+ "wit-parser 0.246.2",
 ]
 
 [[package]]
@@ -4703,6 +4737,25 @@ dependencies = [
  "serde_json",
  "unicode-xid",
  "wasmparser 0.245.1",
+]
+
+[[package]]
+name = "wit-parser"
+version = "0.246.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fd979042b5ff288607ccf3b314145435453f20fc67173195f91062d2289b204d"
+dependencies = [
+ "anyhow",
+ "hashbrown 0.16.1",
+ "id-arena",
+ "indexmap",
+ "log",
+ "semver",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "unicode-xid",
+ "wasmparser 0.246.2",
 ]
 
 [[package]]
