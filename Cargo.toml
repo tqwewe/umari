@@ -9,9 +9,6 @@ members = [
   "crates/server",
   "crates/types",
   "crates/ui",
-  "example/events",
-  # "example/commands/open_account",
-  # "example/projectors/accounts",
 ]
 
 [workspace.dependencies]
@@ -22,19 +19,19 @@ umari-runtime = { path = "crates/runtime" }
 umari-types = { path = "crates/types" }
 umari-ui = { path = "crates/ui" }
 
-
-# Example
-events = { path = "example/events" }
-
+anyhow = "1.0"
 axum = { version = "0.8", features = ["multipart"] }
 bytes = "1.11"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.5", features = ["derive", "env"] }
+colored = "3.1"
+comfy-table = "7.1"
 futures-util = "0.3"
 garde = { path = "/home/ari/dev/jprochazk/garde/garde", version = "0.22" }
 hex = "0.4"
 humantime = "2.3"
 indexmap = { version = "2.13", features = ["serde"] }
+indicatif = "0.18"
 kameo = { git = "https://github.com/tqwewe/kameo", branch = "main" }
 kameo_actors = { git = "https://github.com/tqwewe/kameo", branch = "main", package = "kameo_actors" }
 libc = "0.2"
@@ -54,10 +51,12 @@ syn = "2.0"
 thiserror = "2.0"
 tokio = { version = "1.50", features = ["macros", "rt-multi-thread"] }
 tokio-util = "0.7"
+toml_edit = "0.25"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 umadb-client = { path = "/home/ari/dev/umadb-io/umadb/umadb-client" } # { git = "https://github.com/tqwewe/umadb", branch = "feat/serde" }
 umadb-dcb = { path = "/home/ari/dev/umadb-io/umadb/umadb-dcb", features = ["serde"] } # { git = "https://github.com/tqwewe/umadb", branch = "feat/serde", features = ["serde"] }
+ureq = "3.2"
 utoipa = { version = "5.3", features = ["axum_extras", "uuid"] }
 utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
 uuid = { version = "1.22", features = ["serde", "v4", "v5"] }
@@ -90,11 +89,3 @@ wasmtime = { version = "43.0", default-features = false, features = [
 wasmtime-wasi = "43.0"
 wasmtime-wasi-http = "43.0"
 wit-bindgen = { path = "/home/ari/dev/bytecodealliance/wit-bindgen/crates/guest-rust" } # "0.53"
-
-# CLI dependencies
-anyhow = "1.0"
-comfy-table = "7.1"
-colored = "3.1"
-indicatif = "0.18"
-toml_edit = "0.25"
-ureq = "3.2"

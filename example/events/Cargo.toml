@@ -1,7 +1,0 @@
-[package]
-name = "events"
-edition = "2024"
-
-[dependencies]
-umari-core.workspace = true
-serde.workspace = true
