@@ -13,7 +13,7 @@ use clap::Parser;
 use kameo::{actor::ActorRef, error::HookError, prelude::Spawn};
 use tokio::{signal, task::JoinHandle};
 use tracing::{error, info, trace};
-use umadb_client::AsyncUmaDBClient;
+use umadb_client::AsyncUmaDbClient;
 use umadb_dcb::DcbError;
 use umari_api::{AppState, start_server};
 use umari_runtime::{
@@ -113,8 +113,8 @@ async fn main() {
 
     info!("runtime started after {:?}", start.elapsed());
 
-    let event_store: Arc<AsyncUmaDBClient> = Arc::new(
-        umadb_client::UmaDBClient::new(event_store_url)
+    let event_store: Arc<AsyncUmaDbClient> = Arc::new(
+        umadb_client::UmaDbClient::new(event_store_url)
             .connect_async()
             .await
             .expect("failed to connect event store for UI"),

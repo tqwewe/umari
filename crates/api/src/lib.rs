@@ -9,7 +9,7 @@ use axum::{
 };
 use kameo::actor::ActorRef;
 use tokio::{io, net::ToSocketAddrs};
-use umadb_client::AsyncUmaDBClient;
+use umadb_client::AsyncUmaDbClient;
 use umari_runtime::{
     command::actor::CommandActor,
     module::supervisor::ModuleSupervisor,
@@ -135,7 +135,7 @@ pub struct AppState {
     pub projector_supervisor_ref: ActorRef<ModuleSupervisor<ProjectorWorld>>,
     pub policy_supervisor_ref: ActorRef<ModuleSupervisor<PolicyState>>,
     pub effect_supervisor_ref: ActorRef<ModuleSupervisor<EffectWorld>>,
-    pub event_store: Arc<AsyncUmaDBClient>,
+    pub event_store: Arc<AsyncUmaDbClient>,
 }
 
 pub async fn start_server(addr: impl ToSocketAddrs, state: AppState) -> io::Result<()> {

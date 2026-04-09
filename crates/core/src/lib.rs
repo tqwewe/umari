@@ -86,9 +86,11 @@ pub mod event;
 #[macro_use]
 mod macros;
 pub mod effect;
+pub mod folds;
 pub mod params;
 pub mod policy;
 pub mod projector;
+pub mod rules;
 pub mod runtime;
 pub mod sqlite;
 
@@ -99,8 +101,10 @@ pub mod prelude {
     pub use crate::emit::*;
     pub use crate::error::*;
     pub use crate::event::*;
+    pub use crate::folds::*;
     pub use crate::policy::*;
     pub use crate::projector::*;
+    pub use crate::rules::*;
     pub use crate::sqlite::*;
     pub use crate::{emit, export_command, export_effect, export_policy, export_projector, reject};
     pub use umari_macros::{CommandInput, Event, EventSet};

@@ -11,7 +11,7 @@ use axum::{
     routing::{delete, get, post, put},
 };
 use kameo::actor::ActorRef;
-use umadb_client::AsyncUmaDBClient;
+use umadb_client::AsyncUmaDbClient;
 use umari_runtime::{
     command::actor::CommandActor,
     module::supervisor::ModuleSupervisor,
@@ -42,7 +42,7 @@ pub struct UiState {
     pub projector_supervisor_ref: ActorRef<ModuleSupervisor<ProjectorWorld>>,
     pub policy_supervisor_ref: ActorRef<ModuleSupervisor<PolicyState>>,
     pub effect_supervisor_ref: ActorRef<ModuleSupervisor<EffectWorld>>,
-    pub event_store: Arc<AsyncUmaDBClient>,
+    pub event_store: Arc<AsyncUmaDbClient>,
 }
 
 pub fn ui_router(state: UiState) -> Router {

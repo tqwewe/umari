@@ -4,7 +4,7 @@ use kameo::{prelude::*, supervision::RestartPolicy};
 use rusqlite::{Connection, OptionalExtension};
 use semver::Version;
 use tracing::{debug, error, info, warn};
-use umadb_client::AsyncUmaDBClient;
+use umadb_client::AsyncUmaDbClient;
 use wasmtime::{
     Engine,
     component::{Component, HasSelf, Linker},
@@ -42,7 +42,7 @@ pub struct ModuleSupervisor<A: EventHandlerModule> {
     data_dir: Arc<PathBuf>,
     engine: Engine,
     linker: Linker<wit::EventHandlerComponentState>,
-    event_store: Arc<AsyncUmaDBClient>,
+    event_store: Arc<AsyncUmaDbClient>,
     module_store_ref: ActorRef<ModuleStoreActor>,
     command_ref: ActorRef<CommandActor>,
     modules: HashMap<Arc<str>, VersionedModule<A>>,
@@ -57,7 +57,7 @@ pub struct ModuleSupervisor<A: EventHandlerModule> {
 pub struct ModuleSupervisorArgs<A> {
     pub data_dir: Arc<PathBuf>,
     pub engine: Engine,
-    pub event_store: Arc<AsyncUmaDBClient>,
+    pub event_store: Arc<AsyncUmaDbClient>,
     pub module_store_ref: ActorRef<ModuleStoreActor>,
     pub command_ref: ActorRef<CommandActor>,
     pub args: A,
@@ -179,9 +179,9 @@ impl<A: EventHandlerModule> Actor for ModuleSupervisor<A> {
                 "module failed, retrying with backoff"
             );
 
-            module.output.push_system(format!(
-                "restarting (attempt {attempt}, delay {delay:?})"
-            ));
+            module
+                .output
+                .push_system(format!("restarting (attempt {attempt}, delay {delay:?})"));
 
             if let Some(supervisor_ref) = actor_ref.upgrade() {
                 let name = name.clone();

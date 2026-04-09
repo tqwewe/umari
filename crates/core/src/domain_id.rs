@@ -59,6 +59,12 @@ impl From<&str> for DomainIdValue {
     }
 }
 
+impl From<u64> for DomainIdValue {
+    fn from(value: u64) -> Self {
+        Self::Value(value.to_string())
+    }
+}
+
 impl From<Uuid> for DomainIdValue {
     fn from(value: Uuid) -> Self {
         Self::Value(value.to_string())

@@ -54,8 +54,8 @@ tokio-util = "0.7"
 toml_edit = "0.25"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-umadb-client = { path = "/home/ari/dev/umadb-io/umadb/umadb-client" } # { git = "https://github.com/tqwewe/umadb", branch = "feat/serde" }
-umadb-dcb = { path = "/home/ari/dev/umadb-io/umadb/umadb-dcb", features = ["serde"] } # { git = "https://github.com/tqwewe/umadb", branch = "feat/serde", features = ["serde"] }
+umadb-client = "0.5"
+umadb-dcb = "0.5"
 ureq = "3.2"
 utoipa = { version = "5.3", features = ["axum_extras", "uuid"] }
 utoipa-swagger-ui = { version = "9.0", features = ["axum"] }

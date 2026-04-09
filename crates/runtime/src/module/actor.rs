@@ -13,7 +13,7 @@ use rusqlite::{Connection, OptionalExtension};
 use semver::Version;
 use serde_json::Value;
 use tracing::{debug, error, info, warn};
-use umadb_client::AsyncUmaDBClient;
+use umadb_client::AsyncUmaDbClient;
 use umadb_dcb::{DcbError, DcbEventStoreAsync, DcbQuery, DcbReadResponseAsync, DcbSequencedEvent};
 use umari_core::event::{StoredEvent, StoredEventData};
 use wasmtime::{
@@ -63,7 +63,7 @@ pub struct ModuleActorArgs<A> {
     pub data_dir: Arc<PathBuf>,
     pub engine: Engine,
     pub linker: Linker<wit::EventHandlerComponentState>,
-    pub event_store: Arc<AsyncUmaDBClient>,
+    pub event_store: Arc<AsyncUmaDbClient>,
     pub command_ref: ActorRef<CommandActor>,
     pub component: Component,
     pub name: Arc<str>,

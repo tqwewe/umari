@@ -50,8 +50,9 @@ where
     where
         Self: Sized,
     {
+        let state = T::init().expect("policy init failed");
         PolicyState {
-            inner: RefCell::new(T::default()),
+            inner: RefCell::new(state),
         }
     }
 

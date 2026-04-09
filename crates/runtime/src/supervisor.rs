@@ -7,7 +7,7 @@ use kameo_actors::{
 };
 use thiserror::Error;
 use tokio::fs;
-use umadb_client::AsyncUmaDBClient;
+use umadb_client::AsyncUmaDbClient;
 use wasmtime::{Config, Engine};
 
 use crate::{
@@ -68,7 +68,7 @@ impl Actor for RuntimeSupervisor {
 
         // Setup event store
         let event_store = Arc::new(
-            umadb_client::UmaDBClient::new(config.event_store_url)
+            umadb_client::UmaDbClient::new(config.event_store_url)
                 .connect_async()
                 .await?,
         );
@@ -175,7 +175,7 @@ async fn spawn_event_handler_supervisor<A: EventHandlerModule>(
     supervisor_ref: &ActorRef<RuntimeSupervisor>,
     data_dir: Arc<PathBuf>,
     engine: Engine,
-    event_store: Arc<AsyncUmaDBClient>,
+    event_store: Arc<AsyncUmaDbClient>,
     module_store_ref: ActorRef<ModuleStoreActor>,
     command_ref: ActorRef<CommandActor>,
     module_pubsub: &ActorRef<PubSub<ModuleEvent>>,

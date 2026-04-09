@@ -5,9 +5,10 @@ use serde::de::DeserializeOwned;
 use umadb_dcb::DcbQuery;
 use uuid::Uuid;
 
-use crate::command::{
-    Command, CommandInput, EventMeta, FoldSet, RuleSet, RuleSetRunner,
-    build_query_items_from_domain_ids,
+use crate::{
+    command::{Command, CommandInput, EventMeta, build_query_items_from_domain_ids},
+    folds::FoldSet,
+    rules::{RuleSet, RuleSetRunner},
 };
 
 pub use self::umari::command::types::*;
@@ -29,6 +30,9 @@ macro_rules! export_command {
         impl $crate::command::CommandName for $ty {
             const COMMAND_NAME: &'static str = env!("CARGO_PKG_NAME");
         }
+
+        // type ExportedCommand = $crate::runtime::command::CommandExport<$ty>;
+        // $crate::runtime::command::export!(ExportedCommand with_types_in $crate::runtime::command);
 
         $crate::runtime::command::export!({
             ty: $crate::runtime::command::CommandExport<$ty>,

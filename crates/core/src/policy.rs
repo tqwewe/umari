@@ -6,8 +6,13 @@ use crate::{
     event::{EventSet, StoredEvent},
 };
 
-pub trait Policy: Default {
+pub trait Policy: Sized {
     type Query: EventSet;
+
+    /// Idempotently initialise the database.
+    ///
+    /// This is called on startup.
+    fn init() -> Result<Self, SqliteError>;
 
     /// Query describing what events this effect should receive
     fn query(&self) -> DcbQuery {

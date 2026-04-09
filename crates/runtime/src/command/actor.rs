@@ -8,7 +8,7 @@ use semver::Version;
 use serde::Serialize;
 use serde_json::Value;
 use tracing::{debug, error, info, warn};
-use umadb_client::AsyncUmaDBClient;
+use umadb_client::AsyncUmaDbClient;
 use umadb_dcb::{DcbAppendCondition, DcbEvent, DcbEventStoreAsync, DcbQuery};
 use umari_core::{
     emit::encode_with_envelope,
@@ -45,7 +45,7 @@ pub struct VersionedModule {
 pub struct CommandActor {
     engine: Engine,
     linker: Linker<CommandComponentState>,
-    event_store: Arc<AsyncUmaDBClient>,
+    event_store: Arc<AsyncUmaDbClient>,
     module_store_ref: ActorRef<ModuleStoreActor>,
     components: HashMap<Arc<str>, VersionedModule>,
 }
@@ -53,7 +53,7 @@ pub struct CommandActor {
 #[derive(Clone)]
 pub struct CommandActorArgs {
     pub engine: Engine,
-    pub event_store: Arc<AsyncUmaDBClient>,
+    pub event_store: Arc<AsyncUmaDbClient>,
     pub module_store_ref: ActorRef<ModuleStoreActor>,
 }
 
