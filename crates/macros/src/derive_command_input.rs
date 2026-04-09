@@ -7,7 +7,6 @@ use syn::{
     parse::{Parse, ParseStream},
 };
 
-#[derive(Debug)]
 pub struct DeriveCommandInput {
     ident: Ident,
     domain_ids: HashMap<Ident, LitStr>,

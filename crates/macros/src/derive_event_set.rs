@@ -7,17 +7,33 @@ use syn::{
     spanned::Spanned,
 };
 
-#[derive(Debug)]
 pub struct DeriveEventSet {
     ident: Ident,
     events: Vec<QueryEvent>,
 }
 
-#[derive(Debug)]
 struct QueryEvent {
-    scope: Option<Punctuated<Ident, Token![,]>>,
+    scope: Option<Vec<ScopeEntry>>,
     ident: Ident,
     ty: Type,
+}
+
+enum ScopeEntry {
+    Dynamic(Ident),
+    Static(Ident, LitStr),
+}
+
+impl Parse for ScopeEntry {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let ident: Ident = input.parse()?;
+        if input.peek(Token![=]) {
+            let _: Token![=] = input.parse()?;
+            let value: LitStr = input.parse()?;
+            Ok(ScopeEntry::Static(ident, value))
+        } else {
+            Ok(ScopeEntry::Dynamic(ident))
+        }
+    }
 }
 
 impl DeriveEventSet {
@@ -28,16 +44,34 @@ impl DeriveEventSet {
         let event_domain_ids = events.iter().map(|QueryEvent { scope, ty, .. }| {
             match scope {
                 Some(scope) => {
-                    let scope = scope.iter().map(|s| LitStr::new(&s.to_string(), s.span()));
+                    let dynamic: Vec<_> = scope.iter().filter_map(|e| match e {
+                        ScopeEntry::Dynamic(id) => Some(LitStr::new(&id.to_string(), id.span())),
+                        ScopeEntry::Static(..) => None,
+                    }).collect();
+
+                    let static_pairs: Vec<_> = scope.iter().filter_map(|e| match e {
+                        ScopeEntry::Static(id, val) => {
+                            let field = LitStr::new(&id.to_string(), id.span());
+                            Some(quote! { (#field, #val) })
+                        },
+                        ScopeEntry::Dynamic(_) => None,
+                    }).collect();
+
                     quote! {
-                        (<#ty as ::umari_core::event::Event>::EVENT_TYPE, &[
-                            #( #scope , )*
-                        ])
+                        ::umari_core::event::EventDomainId {
+                            event_type: <#ty as ::umari_core::event::Event>::EVENT_TYPE,
+                            dynamic_fields: &[ #(#dynamic,)* ],
+                            static_fields: &[ #(#static_pairs,)* ],
+                        }
                     }
                 },
                 None => {
                     quote! {
-                        (<#ty as ::umari_core::event::Event>::EVENT_TYPE, <#ty as ::umari_core::event::Event>::DOMAIN_ID_FIELDS)
+                        ::umari_core::event::EventDomainId {
+                            event_type: <#ty as ::umari_core::event::Event>::EVENT_TYPE,
+                            dynamic_fields: <#ty as ::umari_core::event::Event>::DOMAIN_ID_FIELDS,
+                            static_fields: &[],
+                        }
                     }
                 },
             }
@@ -92,11 +126,14 @@ impl DeriveEventSet {
         );
 
         let validations = events.iter().filter_map(|QueryEvent { scope, ty, .. }| {
-            scope.as_ref().map(|scope_fields| {
-                let validations = scope_fields.iter().map(|field| {
-                    let field_str = field.to_string();
+            scope.as_ref().map(|scope_entries| {
+                let validations = scope_entries.iter().map(|entry| {
+                    let (field_ident, field_str) = match entry {
+                        ScopeEntry::Dynamic(id) => (id, id.to_string()),
+                        ScopeEntry::Static(id, _) => (id, id.to_string()),
+                    };
                     quote_spanned! {
-                        field.span()=>
+                        field_ident.span()=>
                         const _: () = {
                             const fn contains_str(haystack: &[&str], needle: &str) -> bool {
                                 let mut i = 0;
@@ -108,7 +145,7 @@ impl DeriveEventSet {
                                 }
                                 false
                             }
-                    
+
                             const fn const_str_eq(a: &str, b: &str) -> bool {
                                 let a = a.as_bytes();
                                 let b = b.as_bytes();
@@ -120,14 +157,14 @@ impl DeriveEventSet {
                                 }
                                 true
                             }
-                    
+
                             if !contains_str(<#ty as ::umari_core::event::Event>::DOMAIN_ID_FIELDS, #field_str) {
                                 panic!(concat!("Domain ID '", #field_str, "' not found in ", stringify!(#ty), "::DOMAIN_ID_FIELDS"));
                             }
                         };
                     }
                 });
-        
+
                 quote! {
                     #( #validations )*
                 }
@@ -143,7 +180,7 @@ impl DeriveEventSet {
                     ::std::vec![ #( <#event_types as ::umari_core::event::Event>::EVENT_TYPE, )* ]
                 }
 
-                fn event_domain_ids() -> ::std::vec::Vec<(&'static str, &'static [&'static str])> {
+                fn event_domain_ids() -> ::std::vec::Vec<::umari_core::event::EventDomainId> {
                     ::std::vec![ #( #event_domain_ids , )* ]
                 }
 
@@ -175,8 +212,8 @@ impl Parse for DeriveEventSet {
                         let scope = variant.attrs.into_iter().find_map(|attr| {
                             if attr.path().is_ident("scope") {
                                 match attr.meta {
-                                    syn::Meta::List(list) => match list.parse_args_with(Punctuated::parse_terminated) {
-                                        Ok(domain_ids) => Some(Ok(domain_ids)),
+                                    syn::Meta::List(list) => match list.parse_args_with(Punctuated::<ScopeEntry, Token![,]>::parse_terminated) {
+                                        Ok(entries) => Some(Ok(entries.into_iter().collect())),
                                         Err(err) => Some(Err(err)),
                                     },
                                     syn::Meta::Path(_) | syn::Meta::NameValue(_) => {

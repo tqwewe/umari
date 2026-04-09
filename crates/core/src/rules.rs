@@ -7,7 +7,7 @@ use crate::{
     command::EventMeta,
     domain_id::DomainIdBindings,
     error::SerializationError,
-    event::EventSet,
+    event::{EventDomainId, EventSet},
     folds::{Fold, matches_fold_query},
 };
 
@@ -98,7 +98,7 @@ pub trait RuleSet {
 }
 
 pub trait RuleSetRunner {
-    fn event_domain_ids(&self) -> Vec<(&'static str, &'static [&'static str])>;
+    fn event_domain_ids(&self) -> Vec<EventDomainId>;
 
     fn apply_event(
         &mut self,
@@ -124,7 +124,7 @@ impl RuleSet for () {
 }
 
 impl RuleSetRunner for () {
-    fn event_domain_ids(&self) -> Vec<(&'static str, &'static [&'static str])> {
+    fn event_domain_ids(&self) -> Vec<EventDomainId> {
         vec![]
     }
 
@@ -168,10 +168,10 @@ macro_rules! impl_tuple_rule_sets {
                 $t: Rule,
             )+
         {
-            fn event_domain_ids(&self) -> Vec<(&'static str, &'static [&'static str])> {
+            fn event_domain_ids(&self) -> Vec<EventDomainId> {
                 let mut ids = Vec::new();
                 $(
-                    ids.extend_from_slice(&<<$t as Rule>::State as Fold>::Events::event_domain_ids());
+                    ids.extend(<<$t as Rule>::State as Fold>::Events::event_domain_ids());
                 )+
                 ids
             }

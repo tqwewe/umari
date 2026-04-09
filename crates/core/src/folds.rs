@@ -1,7 +1,10 @@
 use serde_json::Value;
 
 use crate::{
-    command::EventMeta, domain_id::DomainIdBindings, error::SerializationError, event::EventSet,
+    command::EventMeta,
+    domain_id::DomainIdBindings,
+    error::SerializationError,
+    event::{EventDomainId, EventSet},
 };
 
 pub trait Fold: Default {
@@ -46,7 +49,7 @@ impl_tuple_folds!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10, L:11);
 
 pub trait FoldSet: Default {
     fn event_types() -> Vec<&'static str>;
-    fn event_domain_ids() -> Vec<(&'static str, &'static [&'static str])>;
+    fn event_domain_ids() -> Vec<EventDomainId>;
 
     fn apply(
         &mut self,
@@ -63,7 +66,7 @@ impl FoldSet for () {
         vec![]
     }
 
-    fn event_domain_ids() -> Vec<(&'static str, &'static [&'static str])> {
+    fn event_domain_ids() -> Vec<EventDomainId> {
         vec![]
     }
 
@@ -95,10 +98,10 @@ macro_rules! impl_tuple_fold_sets {
                 types
             }
 
-            fn event_domain_ids() -> Vec<(&'static str, &'static [&'static str])> {
+            fn event_domain_ids() -> Vec<EventDomainId> {
                 let mut ids = Vec::new();
                 $(
-                    ids.extend_from_slice(&$t::Events::event_domain_ids());
+                    ids.extend($t::Events::event_domain_ids());
                 )+
                 ids
             }
@@ -142,13 +145,12 @@ pub(crate) fn matches_fold_query<I: Fold>(
     bindings: &DomainIdBindings,
 ) -> bool {
     let domain_ids = I::Events::event_domain_ids();
-    let required_fields = domain_ids
-        .iter()
-        .find(|(et, _)| *et == event_type)
-        .map(|(_, fields)| *fields)
-        .unwrap_or(&[]);
+    let required = domain_ids.iter().find(|e| e.event_type == event_type);
+    let Some(required) = required else {
+        return true;
+    };
 
-    required_fields.iter().all(|field| {
+    required.dynamic_fields.iter().all(|field| {
         bindings
             .get(field)
             .map(|values| {
@@ -168,5 +170,12 @@ pub(crate) fn matches_fold_query<I: Fold>(
                 })
             })
             .unwrap_or(true)
+    }) && required.static_fields.iter().all(|(field, value)| {
+        tags.iter().any(|tag| {
+            tag.strip_prefix(field)
+                .and_then(|r| r.strip_prefix(':'))
+                .map(|r| r == *value)
+                .unwrap_or(false)
+        })
     })
 }

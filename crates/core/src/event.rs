@@ -94,6 +94,16 @@ pub trait Event: Serialize + DeserializeOwned + Sized {
     fn domain_ids(&self) -> DomainIdValues;
 }
 
+/// Identifies which domain ID fields a specific event type requires when queried.
+#[derive(Clone, Copy, Debug)]
+pub struct EventDomainId {
+    pub event_type: &'static str,
+    /// Fields looked up from runtime bindings at query time.
+    pub dynamic_fields: &'static [&'static str],
+    /// Fields with a hard-coded value — always included as tags.
+    pub static_fields: &'static [(&'static str, &'static str)],
+}
+
 /// Trait for a set of events that a command handler reads.
 ///
 /// This is derived on a user-defined enum that wraps the event types
@@ -118,7 +128,7 @@ pub trait EventSet: Sized {
     /// Used to build the query to the event store.
     fn event_types() -> Vec<&'static str>;
     /// List of event domain ids in the query per event type.
-    fn event_domain_ids() -> Vec<(&'static str, &'static [&'static str])>;
+    fn event_domain_ids() -> Vec<EventDomainId>;
 
     /// Attempt to deserialize an event into this set.
     ///
@@ -153,7 +163,7 @@ where
         A::event_types()
     }
 
-    fn event_domain_ids() -> Vec<(&'static str, &'static [&'static str])> {
+    fn event_domain_ids() -> Vec<EventDomainId> {
         A::event_domain_ids()
     }
 
@@ -183,10 +193,10 @@ macro_rules! impl_tuple_event_set {
                 types
             }
 
-            fn event_domain_ids() -> Vec<(&'static str, &'static [&'static str])> {
+            fn event_domain_ids() -> Vec<EventDomainId> {
                 let mut ids = Vec::new();
                 $(
-                    ids.extend_from_slice(&$t::event_domain_ids());
+                    ids.extend($t::event_domain_ids());
                 )*
                 ids
             }

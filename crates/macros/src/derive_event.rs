@@ -7,7 +7,6 @@ use syn::{
     parse::{Parse, ParseStream},
 };
 
-#[derive(Debug)]
 pub struct DeriveEvent {
     ident: Ident,
     event_type: LitStr,

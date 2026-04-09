@@ -8,7 +8,11 @@ use umadb_dcb::DcbQueryItem;
 use uuid::Uuid;
 
 use crate::{
-    domain_id::DomainIdBindings, emit::Emit, error::CommandExecuteError, folds::FoldSet,
+    domain_id::DomainIdBindings,
+    emit::Emit,
+    error::CommandExecuteError,
+    event::EventDomainId,
+    folds::FoldSet,
     rules::RuleSet,
 };
 
@@ -241,43 +245,51 @@ pub struct EmittedEventRef {
 }
 
 pub(crate) fn build_query_items_from_domain_ids(
-    event_domain_ids: &[(&str, &[&'static str])],
+    event_domain_ids: &[EventDomainId],
     bindings: &DomainIdBindings,
 ) -> Vec<DcbQueryItem> {
-    // Group event types by their domain ID field signature
-    // { ["user_id"] => ["UserRegistered", "UserCompletedOnboarding"],
-    //   ["bet_id", "user_id"] => ["BetTracked"] }
-    let mut groups: HashMap<Vec<&str>, Vec<&str>> = HashMap::new();
+    // Group event types by their (dynamic fields, static tags) signature
+    let mut groups: HashMap<(Vec<&str>, Vec<(&str, &str)>), Vec<&str>> = HashMap::new();
 
-    for (event_type, fields) in event_domain_ids {
-        // Only include fields that are in our input bindings
-        let mut relevant_fields: Vec<&str> = fields
+    for entry in event_domain_ids {
+        // Only include dynamic fields that are in our input bindings
+        let mut relevant_dynamic: Vec<&str> = entry
+            .dynamic_fields
             .iter()
             .filter(|f| bindings.contains_key(*f))
             .copied()
             .collect();
-        relevant_fields.sort();
+        relevant_dynamic.sort();
 
-        groups.entry(relevant_fields).or_default().push(event_type);
+        let mut static_tags: Vec<(&str, &str)> = entry.static_fields.to_vec();
+        static_tags.sort();
+
+        groups
+            .entry((relevant_dynamic, static_tags))
+            .or_default()
+            .push(entry.event_type);
     }
 
     // Build one QueryItem per group
     let mut items = Vec::new();
 
-    for (fields, event_types) in groups {
-        if fields.is_empty() {
+    for ((dynamic_fields, static_fields), event_types) in groups {
+        // Build effective bindings: runtime bindings for dynamic + statics as singletons
+        let mut effective: DomainIdBindings = dynamic_fields
+            .iter()
+            .filter_map(|f| bindings.get(f).map(|v| (*f, v.clone())))
+            .collect();
+        for (field, value) in &static_fields {
+            effective.entry(field).or_default().push(value.to_string());
+        }
+
+        if effective.is_empty() {
             // No matching domain IDs - query by type only
             items.push(DcbQueryItem::new().types(event_types.iter().copied()));
             continue;
         }
 
-        // Cartesian product for THIS group's fields only
-        let group_bindings: DomainIdBindings = fields
-            .iter()
-            .filter_map(|f| bindings.get(f).map(|v| (*f, v.clone())))
-            .collect();
-
-        let tag_combinations = cartesian_product(&group_bindings);
+        let tag_combinations = cartesian_product(&effective);
 
         for tags in tag_combinations {
             items.push(
@@ -367,8 +379,11 @@ mod tests {
             vec!["EventA", "EventB"]
         }
 
-        fn event_domain_ids() -> Vec<(&'static str, &'static [&'static str])> {
-            vec![("EventA", &["user_id"]), ("EventB", &["user_id"])]
+        fn event_domain_ids() -> Vec<EventDomainId> {
+            vec![
+                EventDomainId { event_type: "EventA", dynamic_fields: &["user_id"], static_fields: &[] },
+                EventDomainId { event_type: "EventB", dynamic_fields: &["user_id"], static_fields: &[] },
+            ]
         }
 
         fn from_event(_: &str, _: Value) -> Option<Result<Self::Item, SerializationError>> {
@@ -384,11 +399,11 @@ mod tests {
             vec!["UserRegistered", "UserCompletedOnboarding", "BetTracked"]
         }
 
-        fn event_domain_ids() -> Vec<(&'static str, &'static [&'static str])> {
+        fn event_domain_ids() -> Vec<EventDomainId> {
             vec![
-                ("UserRegistered", &["user_id"]),
-                ("UserCompletedOnboarding", &["user_id"]),
-                ("BetTracked", &["bet_id", "user_id"]),
+                EventDomainId { event_type: "UserRegistered", dynamic_fields: &["user_id"], static_fields: &[] },
+                EventDomainId { event_type: "UserCompletedOnboarding", dynamic_fields: &["user_id"], static_fields: &[] },
+                EventDomainId { event_type: "BetTracked", dynamic_fields: &["bet_id", "user_id"], static_fields: &[] },
             ]
         }
 
@@ -405,10 +420,10 @@ mod tests {
             vec!["TransferSent", "TransferReceived"]
         }
 
-        fn event_domain_ids() -> Vec<(&'static str, &'static [&'static str])> {
+        fn event_domain_ids() -> Vec<EventDomainId> {
             vec![
-                ("TransferSent", &["account_id", "region_id"]),
-                ("TransferReceived", &["account_id", "region_id"]),
+                EventDomainId { event_type: "TransferSent", dynamic_fields: &["account_id", "region_id"], static_fields: &[] },
+                EventDomainId { event_type: "TransferReceived", dynamic_fields: &["account_id", "region_id"], static_fields: &[] },
             ]
         }
 
@@ -425,8 +440,11 @@ mod tests {
             vec!["UserEvent", "OrderEvent"]
         }
 
-        fn event_domain_ids() -> Vec<(&'static str, &'static [&'static str])> {
-            vec![("UserEvent", &["user_id"]), ("OrderEvent", &["order_id"])]
+        fn event_domain_ids() -> Vec<EventDomainId> {
+            vec![
+                EventDomainId { event_type: "UserEvent", dynamic_fields: &["user_id"], static_fields: &[] },
+                EventDomainId { event_type: "OrderEvent", dynamic_fields: &["order_id"], static_fields: &[] },
+            ]
         }
 
         fn from_event(_: &str, _: Value) -> Option<Result<Self::Item, SerializationError>> {
@@ -442,8 +460,38 @@ mod tests {
             vec!["GlobalEvent"]
         }
 
-        fn event_domain_ids() -> Vec<(&'static str, &'static [&'static str])> {
-            vec![("GlobalEvent", &[])]
+        fn event_domain_ids() -> Vec<EventDomainId> {
+            vec![
+                EventDomainId { event_type: "GlobalEvent", dynamic_fields: &[], static_fields: &[] },
+            ]
+        }
+
+        fn from_event(_: &str, _: Value) -> Option<Result<Self::Item, SerializationError>> {
+            None
+        }
+    }
+
+    struct StaticFieldEvents;
+    impl EventSet for StaticFieldEvents {
+        type Item = Self;
+
+        fn event_types() -> Vec<&'static str> {
+            vec!["ShopEvent", "GlobalShopEvent"]
+        }
+
+        fn event_domain_ids() -> Vec<EventDomainId> {
+            vec![
+                EventDomainId {
+                    event_type: "ShopEvent",
+                    dynamic_fields: &["user_id"],
+                    static_fields: &[("shop_id", "warranti")],
+                },
+                EventDomainId {
+                    event_type: "GlobalShopEvent",
+                    dynamic_fields: &[],
+                    static_fields: &[("shop_id", "warranti")],
+                },
+            ]
         }
 
         fn from_event(_: &str, _: Value) -> Option<Result<Self::Item, SerializationError>> {
@@ -678,5 +726,50 @@ mod tests {
             .filter(|i| i.types.contains(&"BetTracked".to_string()))
             .collect();
         assert_eq!(bet_items.len(), 2);
+    }
+
+    // =========================================================================
+    // Tests: Static fields
+    // =========================================================================
+
+    #[test]
+    fn static_field_with_dynamic_binding() {
+        let b = bindings(&[("user_id", &["alice"])]);
+        let items = build_query_items::<StaticFieldEvents>(&b);
+
+        // ShopEvent: user_id=alice + shop_id=warranti → 1 item with both tags
+        // GlobalShopEvent: shop_id=warranti only → 1 item
+        assert_eq!(items.len(), 2);
+
+        let extracted = extract(&items);
+
+        let shop_user = extracted
+            .iter()
+            .find(|(tags, _)| tags.contains(&"user_id:alice".to_string()))
+            .expect("should have shop+user item");
+        assert!(shop_user.0.contains(&"shop_id:warranti".to_string()));
+        assert_eq!(shop_user.1, vec!["ShopEvent"]);
+
+        let global_shop = extracted
+            .iter()
+            .find(|(tags, _)| !tags.contains(&"user_id:alice".to_string()))
+            .expect("should have global shop item");
+        assert_eq!(global_shop.0, vec!["shop_id:warranti".to_string()]);
+        assert_eq!(global_shop.1, vec!["GlobalShopEvent"]);
+    }
+
+    #[test]
+    fn static_field_no_dynamic_bindings() {
+        let b = bindings(&[]);
+        let items = build_query_items::<StaticFieldEvents>(&b);
+
+        // Both events have no dynamic fields, only static shop_id=warranti
+        // They share the same effective binding signature, so they group together
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].tags, vec!["shop_id:warranti".to_string()]);
+        assert_eq!(
+            sorted(items[0].types.to_vec()),
+            vec!["GlobalShopEvent", "ShopEvent"]
+        );
     }
 }
