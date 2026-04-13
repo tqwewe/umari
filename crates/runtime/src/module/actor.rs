@@ -32,6 +32,21 @@ use crate::{
     worker::{ModuleWorkerActor, ModuleWorkerArgs, ProcessEvent, WorkerAck},
 };
 
+const INIT_SQL: &str = "
+    CREATE TABLE IF NOT EXISTS module_meta (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        name TEXT NOT NULL,
+        version TEXT NOT NULL,
+        last_position INTEGER
+    );
+
+    PRAGMA journal_mode = WAL;
+    PRAGMA synchronous = NORMAL; -- Don't fsync too often
+    PRAGMA temp_store = MEMORY;
+    PRAGMA foreign_keys = ON;
+    PRAGMA wal_autocheckpoint = 1000;
+";
+
 struct WorkerPool<A: EventHandlerModule> {
     global: ActorRef<ModuleWorkerActor<A>>,
     keyed: Vec<ActorRef<ModuleWorkerActor<A>>>,
@@ -93,22 +108,7 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
 
         let conn = Connection::open(&db_path)?;
 
-        conn.execute_batch(
-            "
-            CREATE TABLE IF NOT EXISTS module_meta (
-                id INTEGER PRIMARY KEY CHECK (id = 1),
-                name TEXT NOT NULL,
-                version TEXT NOT NULL,
-                last_position INTEGER
-            );
-
-            PRAGMA journal_mode = WAL;
-            PRAGMA synchronous = NORMAL; -- Don't fsync too often
-            PRAGMA temp_store = MEMORY;
-            PRAGMA foreign_keys = ON;
-            PRAGMA wal_autocheckpoint = 1000;
-            ",
-        )?;
+        conn.execute_batch(INIT_SQL)?;
 
         let stored_major: Option<u64> = conn
             .query_row("SELECT version FROM module_meta WHERE id = 1", [], |row| {
@@ -130,22 +130,7 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
             let _ = fs::remove_file(format!("{}-wal", db_path.display()));
             let _ = fs::remove_file(format!("{}-shm", db_path.display()));
             let conn = Connection::open(&db_path)?;
-            conn.execute_batch(
-                "
-                CREATE TABLE IF NOT EXISTS module_meta (
-                    id INTEGER PRIMARY KEY CHECK (id = 1),
-                    name TEXT NOT NULL,
-                    version TEXT NOT NULL,
-                    last_position INTEGER
-                );
-
-                PRAGMA journal_mode = WAL;
-                PRAGMA synchronous = NORMAL;
-                PRAGMA temp_store = MEMORY;
-                PRAGMA foreign_keys = ON;
-                PRAGMA wal_autocheckpoint = 1000;
-                ",
-            )?;
+            conn.execute_batch(INIT_SQL)?;
             conn
         } else {
             conn
