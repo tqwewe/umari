@@ -2,6 +2,7 @@ use std::{
     collections::{BTreeSet, HashMap},
     fs,
     hash::{DefaultHasher, Hash, Hasher},
+    ops::ControlFlow,
     path::PathBuf,
     sync::Arc,
     time::Duration,
@@ -54,6 +55,7 @@ pub struct ModuleActor<A: EventHandlerModule> {
     handler: ResourceAny,
     name: Arc<str>,
     version: Version,
+    output: ModuleOutput,
     stream: Box<dyn DcbReadResponseAsync + Send + 'static>,
     worker_pool: Option<WorkerPool<A>>,
 }
@@ -255,9 +257,31 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
             handler,
             name: args.name,
             version: args.version,
+            output: args.output,
             stream,
             worker_pool,
         })
+    }
+
+    async fn on_panic(
+        &mut self,
+        _actor_ref: WeakActorRef<Self>,
+        err: PanicError,
+    ) -> Result<ControlFlow<ActorStopReason>, Self::Error> {
+        match err.reason() {
+            PanicReason::HandlerPanic
+            | PanicReason::OnMessage
+            | PanicReason::OnStart
+            | PanicReason::OnPanic
+            | PanicReason::OnStop
+            | PanicReason::Next => {
+                err.with_str(|s| {
+                    self.output.push_stderr(s);
+                });
+            }
+            PanicReason::OnLinkDied => {}
+        }
+        Ok(ControlFlow::Break(ActorStopReason::Panicked(err)))
     }
 
     async fn next(
@@ -429,7 +453,10 @@ impl<A: EventHandlerModule> ModuleActor<A> {
         pool.highest_completed = pool.highest_completed.max(position);
 
         let watermark = match pool.in_flight.first() {
-            Some(&min) => min - 1,
+            Some(&min) => {
+                assert_ne!(min, 0);
+                min - 1
+            }
             None => pool.highest_completed,
         };
 

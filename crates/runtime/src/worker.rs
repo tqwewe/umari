@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, ops::ControlFlow, path::PathBuf, sync::Arc};
 
 use kameo::prelude::*;
 use rusqlite::Connection;
@@ -38,6 +38,7 @@ pub struct ModuleWorkerActor<A: EventHandlerModule> {
     instance: A,
     handler: ResourceAny,
     ack_recipient: Recipient<WorkerAck>,
+    output: ModuleOutput,
 }
 
 impl<A: EventHandlerModule> Actor for ModuleWorkerActor<A> {
@@ -104,7 +105,29 @@ impl<A: EventHandlerModule> Actor for ModuleWorkerActor<A> {
             instance,
             handler,
             ack_recipient: args.ack_recipient,
+            output: args.output,
         })
+    }
+
+    async fn on_panic(
+        &mut self,
+        _actor_ref: WeakActorRef<Self>,
+        err: PanicError,
+    ) -> Result<ControlFlow<ActorStopReason>, Self::Error> {
+        match err.reason() {
+            PanicReason::HandlerPanic
+            | PanicReason::OnMessage
+            | PanicReason::OnStart
+            | PanicReason::OnPanic
+            | PanicReason::OnStop
+            | PanicReason::Next => {
+                err.with_str(|s| {
+                    self.output.push_stderr(s);
+                });
+            }
+            PanicReason::OnLinkDied => {}
+        }
+        Ok(ControlFlow::Break(ActorStopReason::Panicked(err)))
     }
 }
 
