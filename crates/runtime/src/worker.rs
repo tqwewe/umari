@@ -9,7 +9,7 @@ use wasmtime::{
 };
 use wasmtime_wasi::{ResourceTable, WasiCtx};
 
-use crate::output::ModuleOutput;
+use crate::{module_store::INIT_SQL, output::ModuleOutput};
 
 use crate::{
     command::actor::CommandActor,
@@ -60,15 +60,7 @@ impl<A: EventHandlerModule> Actor for ModuleWorkerActor<A> {
             args.name
         )))?;
 
-        conn.execute_batch(
-            "
-            PRAGMA journal_mode = WAL;
-            PRAGMA synchronous = NORMAL;
-            PRAGMA temp_store = MEMORY;
-            PRAGMA foreign_keys = ON;
-            PRAGMA wal_autocheckpoint = 1000;
-            ",
-        )?;
+        conn.execute_batch(INIT_SQL)?;
 
         let mut wasi_builder = WasiCtx::builder();
         wasi_builder.stdout(args.output.stdout_pipe());

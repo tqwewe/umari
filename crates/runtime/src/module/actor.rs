@@ -22,7 +22,7 @@ use wasmtime::{
 };
 use wasmtime_wasi::{ResourceTable, WasiCtx};
 
-use crate::output::ModuleOutput;
+use crate::{module_store::INIT_SQL, output::ModuleOutput};
 
 use super::{EventHandlerModule, ModuleError, PartitionKey};
 use crate::{
@@ -31,21 +31,6 @@ use crate::{
     wit,
     worker::{ModuleWorkerActor, ModuleWorkerArgs, ProcessEvent, WorkerAck},
 };
-
-const INIT_SQL: &str = "
-    CREATE TABLE IF NOT EXISTS module_meta (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
-        name TEXT NOT NULL,
-        version TEXT NOT NULL,
-        last_position INTEGER
-    );
-
-    PRAGMA journal_mode = WAL;
-    PRAGMA synchronous = NORMAL; -- Don't fsync too often
-    PRAGMA temp_store = MEMORY;
-    PRAGMA foreign_keys = ON;
-    PRAGMA wal_autocheckpoint = 1000;
-";
 
 struct WorkerPool<A: EventHandlerModule> {
     global: ActorRef<ModuleWorkerActor<A>>,

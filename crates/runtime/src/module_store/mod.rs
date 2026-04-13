@@ -7,6 +7,21 @@ use serde::{Deserialize, Serialize};
 use strum::Display;
 use thiserror::Error;
 
+pub const INIT_SQL: &str = "
+    CREATE TABLE IF NOT EXISTS module_meta (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        name TEXT NOT NULL,
+        version TEXT NOT NULL,
+        last_position INTEGER
+    );
+
+    PRAGMA journal_mode = WAL;
+    PRAGMA synchronous = NORMAL; -- Don't fsync too often
+    PRAGMA temp_store = MEMORY;
+    PRAGMA foreign_keys = ON;
+    PRAGMA wal_autocheckpoint = 1000;
+";
+
 pub type ModuleId = (ModuleType, String, Version);
 
 #[derive(Clone, Debug, PartialEq)]
