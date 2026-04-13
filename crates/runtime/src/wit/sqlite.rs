@@ -83,6 +83,45 @@ impl umari::sqlite::connection::Host for EventHandlerComponentState {
     }
 }
 
+fn execute_stmt(stmt: &mut Statement<'_>, params: Vec<Value>) -> Vec<Row> {
+    let params = params
+        .into_iter()
+        .map(|value| value.into())
+        .collect::<Vec<rusqlite::types::Value>>();
+
+    let column_count = stmt.column_count();
+    let column_names: Vec<String> = (0..column_count)
+        .map(|i| stmt.column_name(i).unwrap_or("").to_string())
+        .collect();
+
+    let mut rows = stmt
+        .query(params_from_iter(params.iter()))
+        .unwrap_or_else(|err| panic!("statement query failed: {err}"));
+    let mut result = Vec::new();
+
+    while let Some(row) = rows
+        .next()
+        .unwrap_or_else(|err| panic!("row iteration failed: {err}"))
+    {
+        let mut row_data = Row {
+            columns: Vec::new(),
+        };
+        for (i, name) in column_names.iter().enumerate() {
+            let value = row
+                .get_ref(i)
+                .unwrap_or_else(|err| panic!("column get failed: {err}"))
+                .into();
+            row_data.columns.push(Column {
+                name: name.clone(),
+                value,
+            });
+        }
+        result.push(row_data);
+    }
+
+    result
+}
+
 impl umari::sqlite::statement::Host for EventHandlerComponentState {}
 
 impl umari::sqlite::statement::HostStmt for EventHandlerComponentState {
@@ -138,48 +177,11 @@ impl umari::sqlite::statement::HostStmt for EventHandlerComponentState {
             .resource_table
             .get(&self_)
             .unwrap_or_else(|err| panic!("invalid stmt resource: {err}"));
-
         let stmt = self
             .statements
             .get_mut(stmt_resource.key)
             .unwrap_or_else(|| panic!("statement resource does not exist"));
-
-        let params = params
-            .into_iter()
-            .map(|value| value.into())
-            .collect::<Vec<rusqlite::types::Value>>();
-
-        let column_count = stmt.column_count();
-        let column_names: Vec<String> = (0..column_count)
-            .map(|i| stmt.column_name(i).unwrap_or("").to_string())
-            .collect();
-
-        let mut rows = stmt
-            .query(params_from_iter(params.iter()))
-            .unwrap_or_else(|err| panic!("statement query failed: {err}"));
-        let mut result = Vec::new();
-
-        while let Some(row) = rows
-            .next()
-            .unwrap_or_else(|err| panic!("row iteration failed: {err}"))
-        {
-            let mut row_data = Row {
-                columns: Vec::new(),
-            };
-            for (i, name) in column_names.iter().enumerate() {
-                let value = row
-                    .get_ref(i)
-                    .unwrap_or_else(|err| panic!("column get failed: {err}"))
-                    .into();
-                row_data.columns.push(Column {
-                    name: name.clone(),
-                    value,
-                });
-            }
-            result.push(row_data);
-        }
-
-        Ok(result)
+        Ok(execute_stmt(stmt, params))
     }
 
     fn query_one(
@@ -192,47 +194,11 @@ impl umari::sqlite::statement::HostStmt for EventHandlerComponentState {
             .resource_table
             .get(&self_)
             .unwrap_or_else(|err| panic!("invalid stmt resource: {err}"));
-
         let stmt = self
             .statements
             .get_mut(stmt_resource.key)
             .unwrap_or_else(|| panic!("statement resource does not exist"));
-
-        let params = params
-            .into_iter()
-            .map(|value| value.into())
-            .collect::<Vec<rusqlite::types::Value>>();
-
-        let column_count = stmt.column_count();
-        let column_names: Vec<String> = (0..column_count)
-            .map(|i| stmt.column_name(i).unwrap_or("").to_string())
-            .collect();
-
-        let mut rows = stmt
-            .query(params_from_iter(params.iter()))
-            .unwrap_or_else(|err| panic!("statement query failed: {err}"));
-
-        if let Some(row) = rows
-            .next()
-            .unwrap_or_else(|err| panic!("row iteration failed: {err}"))
-        {
-            let mut row_data = Row {
-                columns: Vec::new(),
-            };
-            for (i, name) in column_names.iter().enumerate() {
-                let value = row
-                    .get_ref(i)
-                    .unwrap_or_else(|err| panic!("column get failed: {err}"))
-                    .into();
-                row_data.columns.push(Column {
-                    name: name.clone(),
-                    value,
-                });
-            }
-            Ok(Some(row_data))
-        } else {
-            Ok(None)
-        }
+        Ok(execute_stmt(stmt, params).into_iter().next())
     }
 
     fn query_row(
