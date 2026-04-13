@@ -1,6 +1,6 @@
 use std::mem;
 
-use rusqlite::{Statement, params_from_iter};
+use rusqlite::{OptionalExtension, Statement, params_from_iter};
 use slotmap::DefaultKey;
 use wasmtime::component::{Resource, bindgen};
 
@@ -55,32 +55,36 @@ impl umari::sqlite::connection::Host for EventHandlerComponentState {
             .into_iter()
             .map(|value| value.into())
             .collect::<Vec<rusqlite::types::Value>>();
-
-        match self
-            .conn
-            .query_row(&sql, params_from_iter(params.iter()), |row| {
-                let column_count = row.as_ref().column_count();
-                let mut row_data = Row {
-                    columns: Vec::with_capacity(column_count),
-                };
-                for i in 0..column_count {
-                    let name = row.as_ref().column_name(i).unwrap_or("").to_string();
-                    let value = row.get_ref(i)?.into();
-                    row_data.columns.push(Column { name, value });
-                }
-                Ok(row_data)
-            }) {
-            Ok(row) => Ok(Some(row)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(err) => {
-                Err(rusqlite_to_sqlite_error(err).unwrap_or_else(|trap| panic!("{trap}")))
-            }
-        }
+        self.conn
+            .query_one(&sql, params_from_iter(params.iter()), map_row)
+            .optional()
+            .map_err(|err| rusqlite_to_sqlite_error(err).unwrap_or_else(|trap| panic!("{trap}")))
     }
 
     fn query_row(&mut self, sql: Sql, params: Vec<Value>) -> Result<Option<Row>, SqliteError> {
-        Self::query_one(self, sql, params)
+        self.check_thread();
+        let params = params
+            .into_iter()
+            .map(|value| value.into())
+            .collect::<Vec<rusqlite::types::Value>>();
+        self.conn
+            .query_row(&sql, params_from_iter(params.iter()), map_row)
+            .optional()
+            .map_err(|err| rusqlite_to_sqlite_error(err).unwrap_or_else(|trap| panic!("{trap}")))
     }
+}
+
+fn map_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Row> {
+    let column_count = row.as_ref().column_count();
+    let mut row_data = Row {
+        columns: Vec::with_capacity(column_count),
+    };
+    for i in 0..column_count {
+        let name = row.as_ref().column_name(i).unwrap_or("").to_string();
+        let value = row.get_ref(i)?.into();
+        row_data.columns.push(Column { name, value });
+    }
+    Ok(row_data)
 }
 
 fn execute_stmt(stmt: &mut Statement<'_>, params: Vec<Value>) -> Vec<Row> {
@@ -88,11 +92,6 @@ fn execute_stmt(stmt: &mut Statement<'_>, params: Vec<Value>) -> Vec<Row> {
         .into_iter()
         .map(|value| value.into())
         .collect::<Vec<rusqlite::types::Value>>();
-
-    let column_count = stmt.column_count();
-    let column_names: Vec<String> = (0..column_count)
-        .map(|i| stmt.column_name(i).unwrap_or("").to_string())
-        .collect();
 
     let mut rows = stmt
         .query(params_from_iter(params.iter()))
@@ -103,20 +102,7 @@ fn execute_stmt(stmt: &mut Statement<'_>, params: Vec<Value>) -> Vec<Row> {
         .next()
         .unwrap_or_else(|err| panic!("row iteration failed: {err}"))
     {
-        let mut row_data = Row {
-            columns: Vec::new(),
-        };
-        for (i, name) in column_names.iter().enumerate() {
-            let value = row
-                .get_ref(i)
-                .unwrap_or_else(|err| panic!("column get failed: {err}"))
-                .into();
-            row_data.columns.push(Column {
-                name: name.clone(),
-                value,
-            });
-        }
-        result.push(row_data);
+        result.push(map_row(row).unwrap_or_else(|err| panic!("column get failed: {err}")));
     }
 
     result
@@ -198,7 +184,13 @@ impl umari::sqlite::statement::HostStmt for EventHandlerComponentState {
             .statements
             .get_mut(stmt_resource.key)
             .unwrap_or_else(|| panic!("statement resource does not exist"));
-        Ok(execute_stmt(stmt, params).into_iter().next())
+        let params = params
+            .into_iter()
+            .map(|value| value.into())
+            .collect::<Vec<rusqlite::types::Value>>();
+        stmt.query_one(params_from_iter(params.iter()), map_row)
+            .optional()
+            .map_err(|err| rusqlite_to_sqlite_error(err).unwrap_or_else(|trap| panic!("{trap}")))
     }
 
     fn query_row(
@@ -206,7 +198,22 @@ impl umari::sqlite::statement::HostStmt for EventHandlerComponentState {
         self_: Resource<Stmt>,
         params: Vec<Value>,
     ) -> Result<Option<Row>, SqliteError> {
-        Self::query_one(self, self_, params)
+        self.check_thread();
+        let stmt_resource = self
+            .resource_table
+            .get(&self_)
+            .unwrap_or_else(|err| panic!("invalid stmt resource: {err}"));
+        let stmt = self
+            .statements
+            .get_mut(stmt_resource.key)
+            .unwrap_or_else(|| panic!("statement resource does not exist"));
+        let params = params
+            .into_iter()
+            .map(|value| value.into())
+            .collect::<Vec<rusqlite::types::Value>>();
+        stmt.query_row(params_from_iter(params.iter()), map_row)
+            .optional()
+            .map_err(|err| rusqlite_to_sqlite_error(err).unwrap_or_else(|trap| panic!("{trap}")))
     }
 
     fn drop(&mut self, rep: Resource<Stmt>) -> wasmtime::Result<()> {
