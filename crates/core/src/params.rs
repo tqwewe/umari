@@ -23,7 +23,7 @@ where
     A: Into<Value>,
 {
     fn into_params(self) -> Vec<Value> {
-        vec![]
+        vec![self.0.into()]
     }
 }
 
