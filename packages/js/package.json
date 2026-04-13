@@ -1,0 +1,24 @@
+{
+  "name": "@umari/js",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for writing umari modules compiled to WASM",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "generate-types": "jco types ../../wit/command --out-dir src/generated/command && jco types ../../wit/projector --out-dir src/generated/projector && jco types ../../wit/policy --out-dir src/generated/policy && jco types ../../wit/effect --out-dir src/generated/effect && jco types ../../wit/sqlite --world-name sqlite --out-dir src/generated/sqlite"
+  },
+  "peerDependencies": {
+    "zod": "^3.0.0"
+  },
+  "dependencies": {
+    "zod-to-json-schema": "^3.23.0"
+  },
+  "devDependencies": {
+    "@bytecodealliance/jco": "^1.17.6",
+    "typescript": "^5.0.0",
+    "zod": "^3.23.0"
+  }
+}

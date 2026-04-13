@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "lib": ["ES2022", "DOM", "ESNext.Disposable"],
+    "paths": {
+      "umari:sqlite/connection@0.1.0": ["./src/generated/sqlite/interfaces/umari-sqlite-connection.d.ts"],
+      "umari:sqlite/statement@0.1.0": ["./src/generated/sqlite/interfaces/umari-sqlite-statement.d.ts"],
+      "umari:sqlite/types@0.1.0": ["./src/generated/sqlite/interfaces/umari-sqlite-types.d.ts"],
+      "umari:command/executor@0.1.0": ["./src/generated/command/interfaces/umari-command-executor.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "examples/**/*.ts"]
+}
