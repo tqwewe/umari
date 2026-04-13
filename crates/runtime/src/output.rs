@@ -22,7 +22,7 @@ pub enum LogStream {
     System,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct LogEntry {
     pub timestamp: DateTime<Utc>,
     pub stream: LogStream,
@@ -91,19 +91,7 @@ impl ModuleOutput {
 
     pub fn entries(&self) -> Vec<LogEntry> {
         let inner = self.inner.lock().unwrap();
-        let mut entries: Vec<LogEntry> = inner
-            .entries
-            .iter()
-            .map(|e| LogEntry {
-                timestamp: e.timestamp,
-                stream: match e.stream {
-                    LogStream::Stdout => LogStream::Stdout,
-                    LogStream::Stderr => LogStream::Stderr,
-                    LogStream::System => LogStream::System,
-                },
-                message: e.message.clone(),
-            })
-            .collect();
+        let mut entries: Vec<LogEntry> = inner.entries.iter().cloned().collect();
         if !inner.stdout_buf.is_empty() {
             entries.push(LogEntry {
                 timestamp: Utc::now(),
@@ -160,15 +148,21 @@ pub struct ModuleOutputPipe {
     output: ModuleOutput,
 }
 
-#[async_trait]
-impl OutputStream for ModuleOutputPipe {
-    fn write(&mut self, bytes: Bytes) -> Result<(), StreamError> {
+impl ModuleOutputPipe {
+    fn do_write(&mut self, bytes: &[u8]) {
         let mut inner = self.output.inner.lock().unwrap();
-        let text = String::from_utf8_lossy(&bytes).into_owned();
+        let text = String::from_utf8_lossy(bytes).into_owned();
         match self.stream {
             LogStream::Stdout => inner.push_stdout(&text),
             LogStream::Stderr | LogStream::System => inner.push_stderr(&text),
         }
+    }
+}
+
+#[async_trait]
+impl OutputStream for ModuleOutputPipe {
+    fn write(&mut self, bytes: Bytes) -> Result<(), StreamError> {
+        self.do_write(&bytes);
         Ok(())
     }
 
@@ -188,16 +182,11 @@ impl Pollable for ModuleOutputPipe {
 
 impl AsyncWrite for ModuleOutputPipe {
     fn poll_write(
-        self: Pin<&mut Self>,
+        mut self: Pin<&mut Self>,
         _cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
-        let mut inner = self.output.inner.lock().unwrap();
-        let text = String::from_utf8_lossy(buf).into_owned();
-        match self.stream {
-            LogStream::Stdout => inner.push_stdout(&text),
-            LogStream::Stderr | LogStream::System => inner.push_stderr(&text),
-        }
+        self.do_write(buf);
         Poll::Ready(Ok(buf.len()))
     }
 
