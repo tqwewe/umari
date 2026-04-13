@@ -2,6 +2,8 @@ use std::fmt;
 
 use chrono::DateTime;
 
+use crate::event::EventSet;
+
 pub use self::umari::common::types::*;
 
 wit_bindgen::generate!({
@@ -43,6 +45,31 @@ impl From<EventQuery> for umadb_dcb::DcbQuery {
             items: query.items.into_iter().map(|item| item.into()).collect(),
         }
     }
+}
+
+pub fn transform_stored_event<Q: EventSet>(
+    stored_event: StoredEvent,
+) -> Option<crate::event::StoredEvent<Q::Item>> {
+    let event: crate::event::StoredEvent<serde_json::Value> = stored_event.into();
+
+    let data = match Q::from_event(&event.event_type, event.data) {
+        Some(Ok(data)) => data,
+        Some(Err(err)) => panic!("failed to deserialize event data: {err}"),
+        None => return None,
+    };
+
+    Some(crate::event::StoredEvent {
+        id: event.id,
+        position: event.position,
+        event_type: event.event_type,
+        tags: event.tags,
+        timestamp: event.timestamp,
+        correlation_id: event.correlation_id,
+        causation_id: event.causation_id,
+        triggering_event_id: event.triggering_event_id,
+        idempotency_key: event.idempotency_key,
+        data,
+    })
 }
 
 impl fmt::Display for StoredEvent {

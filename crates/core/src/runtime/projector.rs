@@ -2,9 +2,8 @@ use std::{cell::RefCell, marker::PhantomData};
 
 pub use self::exports::umari::projector::projector::{Guest, GuestProjector};
 use crate::{
-    event::EventSet,
     projector::Projector,
-    runtime::common::{EventQuery, StoredEvent},
+    runtime::common::{self, EventQuery, StoredEvent},
 };
 
 wit_bindgen::generate!({
@@ -58,29 +57,9 @@ impl<T: Projector + 'static> GuestProjector for ProjectorState<T> {
     }
 
     fn handle(&self, stored_event: StoredEvent) {
-        let event: crate::event::StoredEvent<serde_json::Value> = stored_event.into();
-
-        let data = match T::Query::from_event(&event.event_type, event.data) {
-            Some(Ok(event)) => event,
-            Some(Err(err)) => {
-                panic!("failed to deserialize event data: {err}");
-            }
-            None => return, // Event type not in query set, skip
+        let Some(event) = common::transform_stored_event::<T::Query>(stored_event) else {
+            return;
         };
-
-        let event: crate::event::StoredEvent<<T::Query as EventSet>::Item> =
-            crate::event::StoredEvent {
-                id: event.id,
-                position: event.position,
-                event_type: event.event_type,
-                tags: event.tags,
-                timestamp: event.timestamp,
-                correlation_id: event.correlation_id,
-                causation_id: event.causation_id,
-                triggering_event_id: event.triggering_event_id,
-                idempotency_key: event.idempotency_key,
-                data,
-            };
 
         self.inner
             .borrow_mut()

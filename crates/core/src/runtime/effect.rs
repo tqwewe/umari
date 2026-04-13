@@ -3,8 +3,7 @@ use std::{cell::RefCell, fmt, marker::PhantomData};
 pub use self::exports::umari::effect::effect::{Guest, GuestEffect};
 use crate::{
     effect::Effect,
-    event::EventSet,
-    runtime::common::{EventQuery, StoredEvent},
+    runtime::common::{self, EventQuery, StoredEvent},
 };
 
 wit_bindgen::generate!({
@@ -72,12 +71,12 @@ where
     }
 
     fn partition_key(&self, stored_event: StoredEvent) -> Option<String> {
-        let event = transform_stored_event::<T>(stored_event)?;
+        let event = common::transform_stored_event::<T::Query>(stored_event)?;
         self.inner.borrow().partition_key(event)
     }
 
     fn handle(&self, stored_event: StoredEvent) {
-        let Some(event) = transform_stored_event::<T>(stored_event) else {
+        let Some(event) = common::transform_stored_event::<T::Query>(stored_event) else {
             return;
         };
 
@@ -88,29 +87,3 @@ where
     }
 }
 
-fn transform_stored_event<T: Effect>(
-    stored_event: StoredEvent,
-) -> Option<crate::event::StoredEvent<<T::Query as EventSet>::Item>> {
-    let event: crate::event::StoredEvent<serde_json::Value> = stored_event.into();
-
-    let data = match T::Query::from_event(&event.event_type, event.data) {
-        Some(Ok(event)) => event,
-        Some(Err(err)) => {
-            panic!("failed to deserialize event data: {err}");
-        }
-        None => return None, // Event type not in query set, skip
-    };
-
-    Some(crate::event::StoredEvent {
-        id: event.id,
-        position: event.position,
-        event_type: event.event_type,
-        tags: event.tags,
-        timestamp: event.timestamp,
-        correlation_id: event.correlation_id,
-        causation_id: event.causation_id,
-        triggering_event_id: event.triggering_event_id,
-        idempotency_key: event.idempotency_key,
-        data,
-    })
-}

@@ -2,9 +2,8 @@ use std::{cell::RefCell, marker::PhantomData};
 
 pub use self::exports::umari::policy::policy::{CommandSubmission, Guest, GuestPolicy};
 use crate::{
-    event::EventSet,
     policy::Policy,
-    runtime::common::{EventQuery, StoredEvent},
+    runtime::common::{self, EventQuery, StoredEvent},
 };
 
 wit_bindgen::generate!({
@@ -61,7 +60,7 @@ where
     }
 
     fn handle(&self, stored_event: StoredEvent) -> Vec<CommandSubmission> {
-        let Some(event) = transform_stored_event::<T>(stored_event) else {
+        let Some(event) = common::transform_stored_event::<T::Query>(stored_event) else {
             return vec![];
         };
 
@@ -72,29 +71,3 @@ where
     }
 }
 
-fn transform_stored_event<T: Policy>(
-    stored_event: StoredEvent,
-) -> Option<crate::event::StoredEvent<<T::Query as EventSet>::Item>> {
-    let event: crate::event::StoredEvent<serde_json::Value> = stored_event.into();
-
-    let data = match T::Query::from_event(&event.event_type, event.data) {
-        Some(Ok(event)) => event,
-        Some(Err(err)) => {
-            panic!("failed to deserialize event data: {err}");
-        }
-        None => return None, // Event type not in query set, skip
-    };
-
-    Some(crate::event::StoredEvent {
-        id: event.id,
-        position: event.position,
-        event_type: event.event_type,
-        tags: event.tags,
-        timestamp: event.timestamp,
-        correlation_id: event.correlation_id,
-        causation_id: event.causation_id,
-        triggering_event_id: event.triggering_event_id,
-        idempotency_key: event.idempotency_key,
-        data,
-    })
-}
