@@ -12,6 +12,7 @@ use wasmtime::{Config, Engine};
 
 use crate::{
     command::actor::{CommandActor, CommandActorArgs},
+    compile_cache::CompileCache,
     events::ModuleEvent,
     module::{
         EventHandlerModule,
@@ -64,6 +65,7 @@ impl Actor for RuntimeSupervisor {
     ) -> Result<Self, Self::Error> {
         let _ = fs::create_dir_all(config.data_dir.as_path()).await;
 
+        let compile_cache = CompileCache::new(&config.data_dir);
         let engine = Engine::new(Config::new().wasm_backtrace_max_frames(None))?;
 
         // Setup event store
@@ -105,6 +107,7 @@ impl Actor for RuntimeSupervisor {
                 engine: engine.clone(),
                 event_store: event_store.clone(),
                 module_store_ref: module_store_ref.clone(),
+                compile_cache: compile_cache.clone(),
             },
         )
         .spawn()
@@ -127,6 +130,7 @@ impl Actor for RuntimeSupervisor {
                     event_store.clone(),
                     module_store_ref.clone(),
                     command_ref.clone(),
+                    compile_cache.clone(),
                     &module_pubsub,
                     $name,
                     $args,
@@ -178,6 +182,7 @@ async fn spawn_event_handler_supervisor<A: EventHandlerModule>(
     event_store: Arc<AsyncUmaDbClient>,
     module_store_ref: ActorRef<ModuleStoreActor>,
     command_ref: ActorRef<CommandActor>,
+    compile_cache: Arc<CompileCache>,
     module_pubsub: &ActorRef<PubSub<ModuleEvent>>,
     name: &'static str,
     args: A::Args,
@@ -190,6 +195,7 @@ async fn spawn_event_handler_supervisor<A: EventHandlerModule>(
             event_store,
             module_store_ref,
             command_ref,
+            compile_cache,
             args,
         },
     )

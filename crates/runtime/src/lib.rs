@@ -1,3 +1,4 @@
+pub mod compile_cache;
 pub mod command;
 pub mod events;
 pub mod module;

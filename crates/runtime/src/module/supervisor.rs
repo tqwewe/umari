@@ -16,6 +16,7 @@ use super::{
 };
 use crate::{
     command::actor::CommandActor,
+    compile_cache::CompileCache,
     events::ModuleEvent,
     module_store::{
         ModuleType,
@@ -45,6 +46,7 @@ pub struct ModuleSupervisor<A: EventHandlerModule> {
     event_store: Arc<AsyncUmaDbClient>,
     module_store_ref: ActorRef<ModuleStoreActor>,
     command_ref: ActorRef<CommandActor>,
+    compile_cache: Arc<CompileCache>,
     modules: HashMap<Arc<str>, VersionedModule<A>>,
     /// Modules waiting for their predecessor to stop before spawning.
     /// Keyed by the stopping actor's ID; value is (module name, pending info).
@@ -60,6 +62,7 @@ pub struct ModuleSupervisorArgs<A> {
     pub event_store: Arc<AsyncUmaDbClient>,
     pub module_store_ref: ActorRef<ModuleStoreActor>,
     pub command_ref: ActorRef<CommandActor>,
+    pub compile_cache: Arc<CompileCache>,
     pub args: A,
 }
 
@@ -92,30 +95,49 @@ impl<A: EventHandlerModule> Actor for ModuleSupervisor<A> {
             .send()
             .await?;
 
+        let engine = args.engine;
+        let compile_cache = args.compile_cache;
+
         let mut supervisor = ModuleSupervisor {
             data_dir: args.data_dir,
-            engine: args.engine,
+            engine: engine.clone(),
             linker,
             event_store: args.event_store,
             module_store_ref: args.module_store_ref,
             command_ref: args.command_ref,
+            compile_cache: compile_cache.clone(),
             modules: HashMap::with_capacity(active_modules.len()),
             pending: HashMap::new(),
             backoff: HashMap::new(),
             args: args.args,
         };
 
+        let mut set = tokio::task::JoinSet::new();
         for module in active_modules {
             assert_eq!(module.module_type, A::MODULE_TYPE);
-            supervisor
-                .load_module(
-                    &actor_ref,
-                    module.name.into(),
-                    module.version,
-                    module.wasm_bytes,
-                    true,
-                )
-                .await?;
+            let cache = compile_cache.clone();
+            let eng = engine.clone();
+            let name: Arc<str> = module.name.into();
+            let version = module.version;
+            let bytes = module.wasm_bytes;
+            set.spawn_blocking(move || {
+                cache.load_component(&eng, &bytes).map(|c| (name, version, c))
+            });
+        }
+        while let Some(result) = set.join_next().await {
+            match result {
+                Ok(Ok((name, version, component))) => {
+                    supervisor
+                        .load_module(&actor_ref, name, version, component, true)
+                        .await?;
+                }
+                Ok(Err(err)) => {
+                    error!(module_type = %A::MODULE_TYPE, "failed to compile module: {err}");
+                }
+                Err(err) => {
+                    error!(module_type = %A::MODULE_TYPE, "compilation task panicked: {err}");
+                }
+            }
         }
 
         if !supervisor.modules.is_empty() {
@@ -227,7 +249,11 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
             })
             .await?
             .ok_or(ModuleError::NotActive)?;
-        let component = Component::new(&self.engine, wasm_bytes)?;
+        let engine = self.engine.clone();
+        let cache = self.compile_cache.clone();
+        let component = tokio::task::spawn_blocking(move || cache.load_component(&engine, &wasm_bytes))
+            .await
+            .map_err(|err| ModuleError::WorkerFailed(err.to_string()))??;
         let pending = PendingModule {
             version,
             component,
@@ -270,16 +296,9 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
         supervisor_ref: &ActorRef<Self>,
         name: Arc<str>,
         version: Version,
-        wasm_bytes: Vec<u8>,
+        component: Component,
         startup: bool,
     ) -> Result<(), ModuleError> {
-        let component = match Component::new(&self.engine, wasm_bytes) {
-            Ok(wasm_module) => wasm_module,
-            Err(err) => {
-                error!(module_type = %A::MODULE_TYPE, %name, %version, "failed to compile module: {err}");
-                return Ok(());
-            }
-        };
 
         // If a live actor exists, stop it and defer spawning until it fully dies.
         self.backoff.remove(&name);
@@ -303,6 +322,18 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
         }
 
         self.spawn_module(supervisor_ref, name, pending, startup)
+            .await
+    }
+
+    #[message(ctx)]
+    async fn module_compiled(
+        &mut self,
+        name: Arc<str>,
+        version: Version,
+        component: Component,
+        ctx: &mut Context<Self, Result<(), ModuleError>>,
+    ) -> Result<(), ModuleError> {
+        self.load_module(ctx.actor_ref(), name, version, component, false)
             .await
     }
 
@@ -449,8 +480,28 @@ impl<A: EventHandlerModule> Message<ModuleEvent> for ModuleSupervisor<A> {
                         .await?;
                     match module {
                         Some((version, wasm_bytes)) => {
-                            self.load_module(ctx.actor_ref(), name, version, wasm_bytes, false)
-                                .await?;
+                            let engine = self.engine.clone();
+                            let cache = self.compile_cache.clone();
+                            let actor_ref = ctx.actor_ref().clone();
+                            tokio::spawn(async move {
+                                match tokio::task::spawn_blocking(move || {
+                                    cache.load_component(&engine, &wasm_bytes)
+                                })
+                                .await
+                                {
+                                    Ok(Ok(component)) => {
+                                        let _ = actor_ref
+                                            .tell(ModuleCompiled { name, version, component })
+                                            .try_send();
+                                    }
+                                    Ok(Err(err)) => {
+                                        error!(module_type = %A::MODULE_TYPE, %name, %version, "failed to compile module: {err}");
+                                    }
+                                    Err(err) => {
+                                        error!(module_type = %A::MODULE_TYPE, %name, %version, "compilation task panicked: {err}");
+                                    }
+                                }
+                            });
                         }
                         None => {
                             warn!(module_type = %A::MODULE_TYPE, %name, %version, "active module not found");

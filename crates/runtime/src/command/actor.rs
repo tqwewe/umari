@@ -25,6 +25,7 @@ use wasmtime_wasi_http::WasiHttpCtx;
 
 use super::CommandError;
 use crate::{
+    compile_cache::CompileCache,
     events::ModuleEvent,
     module_store::{
         ModuleType,
@@ -48,6 +49,7 @@ pub struct CommandActor {
     linker: Linker<CommandComponentState>,
     event_store: Arc<AsyncUmaDbClient>,
     module_store_ref: ActorRef<ModuleStoreActor>,
+    compile_cache: Arc<CompileCache>,
     components: HashMap<Arc<str>, VersionedModule>,
 }
 
@@ -56,6 +58,7 @@ pub struct CommandActorArgs {
     pub engine: Engine,
     pub event_store: Arc<AsyncUmaDbClient>,
     pub module_store_ref: ActorRef<ModuleStoreActor>,
+    pub compile_cache: Arc<CompileCache>,
 }
 
 impl Actor for CommandActor {
@@ -81,19 +84,42 @@ impl Actor for CommandActor {
             .send()
             .await?;
 
+        let engine = args.engine;
+        let compile_cache = args.compile_cache;
+
         let mut actor = CommandActor {
-            engine: args.engine,
+            engine: engine.clone(),
             linker,
             event_store: args.event_store,
             module_store_ref: args.module_store_ref,
+            compile_cache: compile_cache.clone(),
             components: HashMap::with_capacity(active_modules.len()),
         };
 
+        let mut set = tokio::task::JoinSet::new();
         for module in active_modules {
             assert_eq!(module.module_type, ModuleType::Command);
-            actor
-                .load_module_gracefully(module.name.into(), module.version, module.wasm_bytes, true)
-                .await;
+            let cache = compile_cache.clone();
+            let eng = engine.clone();
+            let name: Arc<str> = module.name.into();
+            let version = module.version;
+            let bytes = module.wasm_bytes;
+            set.spawn_blocking(move || {
+                cache.load_component(&eng, &bytes).map(|c| (name, version, c))
+            });
+        }
+        while let Some(result) = set.join_next().await {
+            match result {
+                Ok(Ok((name, version, component))) => {
+                    actor.load_module_gracefully(name, version, component, true).await;
+                }
+                Ok(Err(err)) => {
+                    error!(module_type = %ModuleType::Command, "failed to compile module: {err}");
+                }
+                Err(err) => {
+                    error!(module_type = %ModuleType::Command, "compilation task panicked: {err}");
+                }
+            }
         }
 
         if !actor.components.is_empty() {
@@ -297,6 +323,16 @@ impl CommandActor {
         })
     }
 
+    #[message]
+    async fn module_compiled(
+        &mut self,
+        name: Arc<str>,
+        version: Version,
+        component: Component,
+    ) {
+        self.load_module_gracefully(name, version, component, false).await;
+    }
+
     async fn instantiate_module(
         &self,
         name: &Arc<str>,
@@ -344,11 +380,11 @@ impl CommandActor {
         &mut self,
         name: Arc<str>,
         version: Version,
-        wasm_bytes: Vec<u8>,
+        component: Component,
         startup: bool,
     ) {
         if let Err(err) = self
-            .load_module(name.clone(), version.clone(), wasm_bytes, startup)
+            .load_module(name.clone(), version.clone(), component, startup)
             .await
         {
             error!(module_type = %ModuleType::Command, %name, %version, "failed to load module: {err}");
@@ -359,11 +395,9 @@ impl CommandActor {
         &mut self,
         name: Arc<str>,
         version: Version,
-        wasm_bytes: Vec<u8>,
+        component: Component,
         startup: bool,
     ) -> Result<(), CommandError> {
-        let component = Component::new(&self.engine, wasm_bytes)?;
-
         let instance_pre = self.linker.instantiate_pre(&component)?;
         let command_pre = wit::command::CommandPre::new(instance_pre)?;
 
@@ -464,7 +498,7 @@ impl Message<ModuleEvent> for CommandActor {
     async fn handle(
         &mut self,
         msg: ModuleEvent,
-        _ctx: &mut Context<Self, Self::Reply>,
+        ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
         match msg {
             ModuleEvent::Activated {
@@ -484,7 +518,28 @@ impl Message<ModuleEvent> for CommandActor {
                         .await?;
                     match module {
                         Some((_, wasm_bytes)) => {
-                            self.load_module(name, version, wasm_bytes, false).await?;
+                            let engine = self.engine.clone();
+                            let cache = self.compile_cache.clone();
+                            let actor_ref = ctx.actor_ref().clone();
+                            tokio::spawn(async move {
+                                match tokio::task::spawn_blocking(move || {
+                                    cache.load_component(&engine, &wasm_bytes)
+                                })
+                                .await
+                                {
+                                    Ok(Ok(component)) => {
+                                        let _ = actor_ref
+                                            .tell(ModuleCompiled { name, version, component })
+                                            .try_send();
+                                    }
+                                    Ok(Err(err)) => {
+                                        error!(module_type = %ModuleType::Command, %name, %version, "failed to compile module: {err}");
+                                    }
+                                    Err(err) => {
+                                        error!(module_type = %ModuleType::Command, %name, %version, "compilation task panicked: {err}");
+                                    }
+                                }
+                            });
                         }
                         None => {
                             warn!(module_type = %ModuleType::Command, %name, %version, "active module not found");
