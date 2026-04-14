@@ -5,6 +5,7 @@ use std::{path::PathBuf, sync::Arc};
 
 use axum::{
     Router,
+    extract::DefaultBodyLimit,
     routing::{delete, get, post, put},
 };
 use kameo::actor::ActorRef;
@@ -232,6 +233,7 @@ pub async fn start_server(addr: impl ToSocketAddrs, state: AppState) -> io::Resu
         .route("/projectors/active", get(get_projector_health))
         .route("/policies/active", get(get_policy_health))
         .route("/effects/active", get(get_effect_health))
+        .layer(DefaultBodyLimit::max(100 * 1024 * 1024)) // 100 MB
         .with_state(state);
 
     // Merge routers

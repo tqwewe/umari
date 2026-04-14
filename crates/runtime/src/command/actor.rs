@@ -21,6 +21,7 @@ use wasmtime::{
     component::{Component, HasSelf, Linker},
 };
 use wasmtime_wasi::{ResourceTable, WasiCtx, p2::pipe::ClosedInputStream};
+use wasmtime_wasi_http::WasiHttpCtx;
 
 use super::CommandError;
 use crate::{
@@ -68,6 +69,7 @@ impl Actor for CommandActor {
     async fn on_start(args: Self::Args, _actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         let mut linker = Linker::new(&args.engine);
         wasmtime_wasi::p2::add_to_linker_async(&mut linker)?;
+        wasmtime_wasi_http::p2::add_only_http_to_linker_async(&mut linker)?;
         wit::command::Command::add_to_linker::<_, HasSelf<_>>(&mut linker, |s| s)?;
 
         let active_modules = args
@@ -321,6 +323,7 @@ impl CommandActor {
             .build();
         let state = CommandComponentState {
             wasi_ctx,
+            wasi_http_ctx: WasiHttpCtx::new(),
             resource_table: ResourceTable::new(),
         };
         let mut store = Store::new(&self.engine, state);
@@ -383,6 +386,7 @@ impl CommandActor {
             .build();
         let state = CommandComponentState {
             wasi_ctx,
+            wasi_http_ctx: WasiHttpCtx::new(),
             resource_table: ResourceTable::new(),
         };
         let mut store = Store::new(&self.engine, state);

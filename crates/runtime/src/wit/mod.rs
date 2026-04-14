@@ -22,6 +22,7 @@ pub mod sqlite;
 
 pub struct CommandComponentState {
     pub wasi_ctx: WasiCtx,
+    pub wasi_http_ctx: WasiHttpCtx,
     pub resource_table: ResourceTable,
 }
 
@@ -30,6 +31,16 @@ impl WasiView for CommandComponentState {
         WasiCtxView {
             ctx: &mut self.wasi_ctx,
             table: &mut self.resource_table,
+        }
+    }
+}
+
+impl WasiHttpView for CommandComponentState {
+    fn http(&mut self) -> WasiHttpCtxView<'_> {
+        WasiHttpCtxView {
+            ctx: &mut self.wasi_http_ctx,
+            table: &mut self.resource_table,
+            hooks: Default::default(),
         }
     }
 }

@@ -323,16 +323,39 @@ enum EnvAction {
     },
 }
 
+#[derive(clap::ValueEnum, Clone, Default)]
+enum Lang {
+    #[default]
+    Rust,
+    Js,
+}
+
 #[derive(Subcommand)]
 enum NewSubcommand {
     /// create a new command module
-    Command { name: String },
+    Command {
+        name: String,
+        #[arg(long, default_value = "rust")]
+        lang: Lang,
+    },
     /// create a new projector module
-    Projector { name: String },
+    Projector {
+        name: String,
+        #[arg(long, default_value = "rust")]
+        lang: Lang,
+    },
     /// create a new policy module
-    Policy { name: String },
+    Policy {
+        name: String,
+        #[arg(long, default_value = "rust")]
+        lang: Lang,
+    },
     /// create a new effect module
-    Effect { name: String },
+    Effect {
+        name: String,
+        #[arg(long, default_value = "rust")]
+        lang: Lang,
+    },
 }
 
 #[derive(Subcommand)]
@@ -480,10 +503,22 @@ fn main() -> Result<()> {
             debug,
         } => commands::workspace::deploy(&client, paths, no_activate, debug),
         Commands::New { command } => match command {
-            NewSubcommand::Command { name } => commands::new::generate("command", &name),
-            NewSubcommand::Projector { name } => commands::new::generate("projector", &name),
-            NewSubcommand::Policy { name } => commands::new::generate("policy", &name),
-            NewSubcommand::Effect { name } => commands::new::generate("effect", &name),
+            NewSubcommand::Command { name, lang } => match lang {
+                Lang::Js => commands::new::generate_js("command", &name),
+                Lang::Rust => commands::new::generate("command", &name),
+            },
+            NewSubcommand::Projector { name, lang } => match lang {
+                Lang::Js => commands::new::generate_js("projector", &name),
+                Lang::Rust => commands::new::generate("projector", &name),
+            },
+            NewSubcommand::Policy { name, lang } => match lang {
+                Lang::Js => commands::new::generate_js("policy", &name),
+                Lang::Rust => commands::new::generate("policy", &name),
+            },
+            NewSubcommand::Effect { name, lang } => match lang {
+                Lang::Js => commands::new::generate_js("effect", &name),
+                Lang::Rust => commands::new::generate("effect", &name),
+            },
         },
     }
 }
