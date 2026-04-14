@@ -3,10 +3,17 @@
   "version": "0.1.0",
   "description": "TypeScript SDK for writing umari modules compiled to WASM",
   "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": "./src/index.ts"
   },
+  "files": [
+    "src",
+    "wit",
+    "scripts"
+  ],
   "scripts": {
+    "prepare": "node scripts/copy-wit.js",
     "typecheck": "tsc --noEmit",
     "generate-types": "jco types ../../wit/command --out-dir src/generated/command && jco types ../../wit/projector --out-dir src/generated/projector && jco types ../../wit/policy --out-dir src/generated/policy && jco types ../../wit/effect --out-dir src/generated/effect && jco types ../../wit/sqlite --world-name sqlite --out-dir src/generated/sqlite"
   },
