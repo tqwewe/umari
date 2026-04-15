@@ -5,6 +5,7 @@ use std::{
 };
 
 use sha2::{Digest, Sha256};
+use tracing::warn;
 use wasmtime::{Engine, component::Component};
 
 pub struct CompileCache {
@@ -38,7 +39,12 @@ impl CompileCache {
     ) -> Result<Component, wasmtime::Error> {
         let sha256 = hex::encode(Sha256::digest(wasm_bytes));
         if let Some(cached) = self.load(&sha256) {
-            return Ok(unsafe { Component::deserialize(engine, &cached)? });
+            match unsafe { Component::deserialize(engine, &cached) } {
+                Ok(component) => return Ok(component),
+                Err(err) => {
+                    warn!("failed to deserialize cached component, recompiling: {err}");
+                }
+            }
         }
         let component = Component::new(engine, wasm_bytes)?;
         if let Ok(serialized) = component.serialize() {

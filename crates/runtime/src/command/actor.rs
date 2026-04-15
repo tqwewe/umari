@@ -7,6 +7,7 @@ use schemars::Schema;
 use semver::Version;
 use serde::Serialize;
 use serde_json::Value;
+use tokio::task::JoinSet;
 use tracing::{debug, error, info, warn};
 use umadb_client::AsyncUmaDbClient;
 use umadb_dcb::{DcbAppendCondition, DcbEvent, DcbEventStoreAsync, DcbQuery};
@@ -96,7 +97,7 @@ impl Actor for CommandActor {
             components: HashMap::with_capacity(active_modules.len()),
         };
 
-        let mut set = tokio::task::JoinSet::new();
+        let mut set = JoinSet::new();
         for module in active_modules {
             assert_eq!(module.module_type, ModuleType::Command);
             let cache = compile_cache.clone();
@@ -105,13 +106,17 @@ impl Actor for CommandActor {
             let version = module.version;
             let bytes = module.wasm_bytes;
             set.spawn_blocking(move || {
-                cache.load_component(&eng, &bytes).map(|c| (name, version, c))
+                cache
+                    .load_component(&eng, &bytes)
+                    .map(|component| (name, version, component))
             });
         }
         while let Some(result) = set.join_next().await {
             match result {
                 Ok(Ok((name, version, component))) => {
-                    actor.load_module_gracefully(name, version, component, true).await;
+                    actor
+                        .load_module_gracefully(name, version, component, true)
+                        .await;
                 }
                 Ok(Err(err)) => {
                     error!(module_type = %ModuleType::Command, "failed to compile module: {err}");
@@ -324,13 +329,9 @@ impl CommandActor {
     }
 
     #[message]
-    async fn module_compiled(
-        &mut self,
-        name: Arc<str>,
-        version: Version,
-        component: Component,
-    ) {
-        self.load_module_gracefully(name, version, component, false).await;
+    async fn module_compiled(&mut self, name: Arc<str>, version: Version, component: Component) {
+        self.load_module_gracefully(name, version, component, false)
+            .await;
     }
 
     async fn instantiate_module(
@@ -529,8 +530,12 @@ impl Message<ModuleEvent> for CommandActor {
                                 {
                                     Ok(Ok(component)) => {
                                         let _ = actor_ref
-                                            .tell(ModuleCompiled { name, version, component })
-                                            .try_send();
+                                            .tell(ModuleCompiled {
+                                                name,
+                                                version,
+                                                component,
+                                            })
+                                            .await;
                                     }
                                     Ok(Err(err)) => {
                                         error!(module_type = %ModuleType::Command, %name, %version, "failed to compile module: {err}");

@@ -60,7 +60,7 @@ struct Cli {
     verbose: bool,
 }
 
-#[tokio::main(name = "umari", flavor = "multi_thread", worker_threads = 4)]
+#[tokio::main(name = "umari", flavor = "multi_thread")]
 async fn main() {
     let cli = Cli::parse();
 
