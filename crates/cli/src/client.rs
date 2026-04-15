@@ -3,25 +3,57 @@ use std::path::Path;
 use anyhow::{Context, Result, anyhow};
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Serialize, de::DeserializeOwned};
-use umari_types::UploadResponse;
+use umari_types::{ErrorCode, ErrorResponse, UploadResponse};
+use ureq::{Agent, Body, http::Response};
 
 pub struct ApiClient {
     base_url: String,
+    agent: Agent,
 }
 
 impl ApiClient {
     pub fn new(base_url: String) -> Self {
-        ApiClient { base_url }
+        let agent = Agent::config_builder()
+            .http_status_as_error(false)
+            .build()
+            .new_agent();
+        ApiClient { base_url, agent }
     }
 
     fn url(&self, path: &str) -> String {
         format!("{}{}", self.base_url, path)
     }
 
+    fn check_response(&self, response: Response<Body>) -> Result<Response<Body>> {
+        let status = response.status().as_u16();
+        if (200..300).contains(&status) {
+            return Ok(response);
+        }
+        let body = response.into_body().read_to_string().unwrap_or_default();
+        if let Ok(err) = serde_json::from_str::<ErrorResponse>(&body) {
+            if let Some(msg) = err.error.message {
+                return Err(anyhow!("{msg}"));
+            }
+            let fallback = match err.error.code {
+                ErrorCode::InvalidInput => "invalid input",
+                ErrorCode::Duplicate => "already exists",
+                ErrorCode::NotFound => "not found",
+                ErrorCode::Database => "database error",
+                ErrorCode::Integrity => "integrity error",
+                ErrorCode::Internal => "internal server error",
+            };
+            return Err(anyhow!("{fallback} (status {status})"));
+        }
+        Err(anyhow!("request failed with status {status}"))
+    }
+
     pub fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
-        let response = ureq::get(&self.url(path))
+        let response: Response<Body> = self
+            .agent
+            .get(&self.url(path))
             .call()
-            .map_err(|err| self.handle_error(err))?;
+            .context("connection error")
+            .and_then(|r| self.check_response(r))?;
 
         let body = response
             .into_body()
@@ -33,10 +65,13 @@ impl ApiClient {
     pub fn post<B: Serialize, T: DeserializeOwned>(&self, path: &str, body: &B) -> Result<T> {
         let json_body = serde_json::to_string(body).context("failed to serialize request body")?;
 
-        let response = ureq::post(&self.url(path))
+        let response: Response<Body> = self
+            .agent
+            .post(&self.url(path))
             .header("Content-Type", "application/json")
             .send(&json_body)
-            .map_err(|err| self.handle_error(err))?;
+            .context("connection error")
+            .and_then(|r| self.check_response(r))?;
 
         let body = response
             .into_body()
@@ -48,10 +83,13 @@ impl ApiClient {
     pub fn put<B: Serialize, T: DeserializeOwned>(&self, path: &str, body: &B) -> Result<T> {
         let json_body = serde_json::to_string(body).context("failed to serialize request body")?;
 
-        let response = ureq::put(&self.url(path))
+        let response: Response<Body> = self
+            .agent
+            .put(&self.url(path))
             .header("Content-Type", "application/json")
             .send(&json_body)
-            .map_err(|err| self.handle_error(err))?;
+            .context("connection error")
+            .and_then(|r| self.check_response(r))?;
 
         let body = response
             .into_body()
@@ -61,9 +99,12 @@ impl ApiClient {
     }
 
     pub fn delete<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
-        let response = ureq::delete(&self.url(path))
+        let response: Response<Body> = self
+            .agent
+            .delete(&self.url(path))
             .call()
-            .map_err(|err| self.handle_error(err))?;
+            .context("connection error")
+            .and_then(|r| self.check_response(r))?;
 
         let body = response
             .into_body()
@@ -99,32 +140,35 @@ impl ApiClient {
 
         // Build multipart body
         let boundary = "----UmariCLIBoundary";
-        let mut body = Vec::new();
+        let mut multipart_body = Vec::new();
 
         // Add wasm field
-        body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
-        body.extend_from_slice(
+        multipart_body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
+        multipart_body.extend_from_slice(
             b"Content-Disposition: form-data; name=\"wasm\"; filename=\"module.wasm\"\r\n",
         );
-        body.extend_from_slice(b"Content-Type: application/wasm\r\n\r\n");
-        body.extend_from_slice(&wasm_bytes);
-        body.extend_from_slice(b"\r\n");
+        multipart_body.extend_from_slice(b"Content-Type: application/wasm\r\n\r\n");
+        multipart_body.extend_from_slice(&wasm_bytes);
+        multipart_body.extend_from_slice(b"\r\n");
 
         // End boundary
-        body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
+        multipart_body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
 
         // Make request
         let url = self.url(&format!(
             "/{module_type}/{name}/versions/{version}?activate={activate}"
         ));
 
-        let response = ureq::post(&url)
+        let response: Response<Body> = self
+            .agent
+            .post(&url)
             .header(
                 "Content-Type",
                 &format!("multipart/form-data; boundary={boundary}"),
             )
-            .send(&body)
-            .map_err(|err| self.handle_error(err))?;
+            .send(&multipart_body)
+            .context("connection error")
+            .and_then(|r| self.check_response(r))?;
 
         pb.finish_and_clear();
 
@@ -133,12 +177,5 @@ impl ApiClient {
             .read_to_string()
             .context("failed to read response")?;
         serde_json::from_str(&body).context("failed to parse upload response")
-    }
-
-    fn handle_error(&self, err: ureq::Error) -> anyhow::Error {
-        match err {
-            ureq::Error::StatusCode(code) => anyhow!("request failed with status {code}"),
-            _ => anyhow!("connection error: {err}"),
-        }
     }
 }
