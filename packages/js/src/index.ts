@@ -1,5 +1,5 @@
 export { defineEvent } from "./event.ts";
-export { defineFold } from "./fold.ts";
+export { defineFold, scopedEvent } from "./fold.ts";
 export { defineRule } from "./rule.ts";
 export { defineCommand, exportCommand } from "./command.ts";
 export { exportProjector } from "./projector.ts";

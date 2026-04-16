@@ -411,7 +411,11 @@ pub fn output(entries: &[LogEntry]) -> Markup {
     }
 }
 
-pub fn env_vars_panel(module_type: ModuleType, name: &str, vars: &HashMap<String, String>) -> Markup {
+pub fn env_vars_panel(
+    module_type: ModuleType,
+    name: &str,
+    vars: &HashMap<String, String>,
+) -> Markup {
     let type_path = match module_type {
         ModuleType::Command => "commands",
         ModuleType::Policy => "policies",
@@ -421,10 +425,8 @@ pub fn env_vars_panel(module_type: ModuleType, name: &str, vars: &HashMap<String
     let panel_id = format!("env-panel-{type_path}-{name}");
     let post_url = format!("/ui/{type_path}/{name}/env");
 
-    let mut sorted_vars: Vec<(&str, &str)> = vars
-        .iter()
-        .map(|(k, v)| (k.as_str(), v.as_str()))
-        .collect();
+    let mut sorted_vars: Vec<(&str, &str)> =
+        vars.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
     sorted_vars.sort_by_key(|(k, _)| *k);
 
     html! {
@@ -776,97 +778,110 @@ pub fn execute_form(name: &str, schema: Option<&Schema>) -> Markup {
         let form_id = format!("exec-{name}");
         let execute_url = format!("/ui/commands/{name}/execute");
         let fn_name = name.replace('-', "_");
+        let fields_div_id = format!("exec-fields-{name}");
+        let raw_div_id = format!("exec-raw-{name}");
+        let raw_textarea_id = format!("exec-raw-ta-{name}");
+        let raw_toggle_id = format!("exec-raw-toggle-{name}");
         html! {
             section class="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-5 mt-6" {
                 h3 class="text-base font-semibold text-gray-700 dark:text-gray-300 mb-3 mt-0" { "Execute Command" }
                 form id=(form_id) class="flex flex-col gap-4" {
                     input type="hidden" name="payload";
-                    @for field in &fields {
-                        label class="flex flex-col gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" {
-                            span {
-                                (field.label)
-                                @if field.required {
-                                    span class="text-red-500 ml-1" { "*" }
+                    div id=(fields_div_id) class="flex flex-col gap-4" {
+                        @for field in &fields {
+                            label class="flex flex-col gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" {
+                                span {
+                                    (field.label)
+                                    @if field.required {
+                                        span class="text-red-500 ml-1" { "*" }
+                                    }
                                 }
-                            }
-                            @if let Some(desc) = &field.description {
-                                span class="text-gray-400 dark:text-gray-500 text-xs font-normal" { (desc) }
-                            }
-                            @match &field.input_type {
-                                InputType::Text => {
-                                    input type="text"
-                                        name=(field.key)
-                                        data-field=(field.key)
-                                        data-type="string"
-                                        placeholder=[field.placeholder]
-                                        required[field.required]
-                                        minlength=[field.min_length]
-                                        maxlength=[field.max_length]
-                                        pattern=[field.pattern.as_deref()]
-                                        class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
+                                @if let Some(desc) = &field.description {
+                                    span class="text-gray-400 dark:text-gray-500 text-xs font-normal" { (desc) }
                                 }
-                                InputType::Email => {
-                                    input type="email"
-                                        name=(field.key)
-                                        data-field=(field.key)
-                                        data-type="string"
-                                        placeholder="user@example.com"
-                                        required[field.required]
-                                        minlength=[field.min_length]
-                                        maxlength=[field.max_length]
-                                        class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
-                                }
-                                InputType::Date => {
-                                    input type="date"
-                                        name=(field.key)
-                                        data-field=(field.key)
-                                        data-type="string"
-                                        required[field.required]
-                                        class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
-                                }
-                                InputType::DateTime => {
-                                    input type="datetime-local"
-                                        name=(field.key)
-                                        data-field=(field.key)
-                                        data-type="string"
-                                        required[field.required]
-                                        class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
-                                }
-                                InputType::Number { integer } => {
-                                    input type="number"
-                                        name=(field.key)
-                                        data-field=(field.key)
-                                        data-type=(if *integer { "integer" } else { "number" })
-                                        step=(if *integer { "1" } else { "any" })
-                                        min=[field.min]
-                                        max=[field.max]
-                                        placeholder=[field.placeholder]
-                                        required[field.required]
-                                        class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
-                                }
-                                InputType::Checkbox => {
-                                    input type="checkbox"
-                                        name=(field.key)
-                                        data-field=(field.key)
-                                        data-type="boolean"
-                                        class="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500";
-                                }
-                                InputType::Select(options) => {
-                                    select name=(field.key)
-                                        data-field=(field.key)
-                                        data-type="string"
-                                        required[field.required]
-                                        class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                                    {
-                                        @if !field.required {
-                                            option value="" { "" }
-                                        }
-                                        @for opt in options {
-                                            option value=(opt) { (opt) }
+                                @match &field.input_type {
+                                    InputType::Text => {
+                                        input type="text"
+                                            name=(field.key)
+                                            data-field=(field.key)
+                                            data-type="string"
+                                            placeholder=[field.placeholder]
+                                            required[field.required]
+                                            minlength=[field.min_length]
+                                            maxlength=[field.max_length]
+                                            pattern=[field.pattern.as_deref()]
+                                            class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
+                                    }
+                                    InputType::Email => {
+                                        input type="email"
+                                            name=(field.key)
+                                            data-field=(field.key)
+                                            data-type="string"
+                                            placeholder="user@example.com"
+                                            required[field.required]
+                                            minlength=[field.min_length]
+                                            maxlength=[field.max_length]
+                                            class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
+                                    }
+                                    InputType::Date => {
+                                        input type="date"
+                                            name=(field.key)
+                                            data-field=(field.key)
+                                            data-type="string"
+                                            required[field.required]
+                                            class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
+                                    }
+                                    InputType::DateTime => {
+                                        input type="datetime-local"
+                                            name=(field.key)
+                                            data-field=(field.key)
+                                            data-type="string"
+                                            required[field.required]
+                                            class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
+                                    }
+                                    InputType::Number { integer } => {
+                                        input type="number"
+                                            name=(field.key)
+                                            data-field=(field.key)
+                                            data-type=(if *integer { "integer" } else { "number" })
+                                            step=(if *integer { "1" } else { "any" })
+                                            min=[field.min]
+                                            max=[field.max]
+                                            placeholder=[field.placeholder]
+                                            required[field.required]
+                                            class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
+                                    }
+                                    InputType::Checkbox => {
+                                        input type="checkbox"
+                                            name=(field.key)
+                                            data-field=(field.key)
+                                            data-type="boolean"
+                                            class="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500";
+                                    }
+                                    InputType::Select(options) => {
+                                        select name=(field.key)
+                                            data-field=(field.key)
+                                            data-type="string"
+                                            required[field.required]
+                                            class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                        {
+                                            @if !field.required {
+                                                option value="" { "" }
+                                            }
+                                            @for opt in options {
+                                                option value=(opt) { (opt) }
+                                            }
                                         }
                                     }
                                 }
                             }
+                        }
+                    }
+                    div id=(raw_div_id) class="hidden" {
+                        label class="flex flex-col gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" {
+                            "JSON Payload"
+                            textarea id=(raw_textarea_id) rows="8" placeholder="{}"
+                                class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm font-mono dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" {}
                         }
                     }
                     div class="flex items-center justify-between" {
@@ -876,10 +891,18 @@ pub fn execute_form(name: &str, schema: Option<&Schema>) -> Markup {
                             }
                             class="self-start inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
                             { "Execute" }
-                        label class="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500 font-normal cursor-pointer" {
-                            input type="checkbox" data-bypass-validation
-                                class="h-3.5 w-3.5 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500";
-                            "Bypass validation"
+                        div class="flex items-center gap-4" {
+                            label class="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500 font-normal cursor-pointer" {
+                                input type="checkbox" id=(raw_toggle_id)
+                                    onchange={"umariToggleRaw_" (fn_name) "(this)"}
+                                    class="h-3.5 w-3.5 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500";
+                                "Raw JSON"
+                            }
+                            label class="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500 font-normal cursor-pointer" {
+                                input type="checkbox" data-bypass-validation
+                                    class="h-3.5 w-3.5 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500";
+                                "Bypass validation"
+                            }
                         }
                     }
                 }
@@ -888,6 +911,15 @@ pub fn execute_form(name: &str, schema: Option<&Schema>) -> Markup {
                     (PreEscaped(format!(
                         r#"function umariExec_{fn_name}(btn) {{
   const form = btn.closest('form');
+  const rawMode = form.querySelector('#{raw_toggle_id}')?.checked;
+  if (rawMode) {{
+    const raw = document.getElementById('{raw_textarea_id}').value || '{{}}';
+    htmx.ajax('POST', '{execute_url}', {{
+      target: '#execute-result', swap: 'innerHTML',
+      values: {{ payload: raw }}
+    }});
+    return;
+  }}
   const bypass = form.querySelector('[data-bypass-validation]')?.checked;
   if (!bypass && !form.reportValidity()) return;
   const obj = {{}};
@@ -905,6 +937,31 @@ pub fn execute_form(name: &str, schema: Option<&Schema>) -> Markup {
     swap: 'innerHTML',
     values: {{ payload: JSON.stringify(obj) }}
   }});
+}}
+function umariToggleRaw_{fn_name}(checkbox) {{
+  const form = checkbox.closest('form');
+  const fieldsDiv = document.getElementById('{fields_div_id}');
+  const rawDiv = document.getElementById('{raw_div_id}');
+  const ta = document.getElementById('{raw_textarea_id}');
+  if (checkbox.checked) {{
+    const obj = {{}};
+    form.querySelectorAll('[data-field]').forEach(el => {{
+      const key = el.dataset.field;
+      const type = el.dataset.type;
+      if (type === 'boolean') {{ obj[key] = el.checked; return; }}
+      if (el.value !== '') {{
+        obj[key] = (type === 'integer') ? parseInt(el.value, 10)
+                 : (type === 'number')  ? parseFloat(el.value)
+                 : el.value;
+      }}
+    }});
+    ta.value = JSON.stringify(obj, null, 2);
+    fieldsDiv.classList.add('hidden');
+    rawDiv.classList.remove('hidden');
+  }} else {{
+    fieldsDiv.classList.remove('hidden');
+    rawDiv.classList.add('hidden');
+  }}
 }}"#
                     )))
                 }

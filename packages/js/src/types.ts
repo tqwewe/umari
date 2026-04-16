@@ -56,16 +56,46 @@ export type EventUnion<TDefs extends readonly EventDef<any, any, any>[]> = {
     : never;
 }[number];
 
+// ─── Fold Event Entry (plain EventDef or scoped { event, scope }) ────────────
+
+export type ScopedFoldEntry<E extends EventDef<any, any, any>> = {
+  readonly event: E;
+  readonly scope: readonly E["domainIds"][number][];
+};
+
+export type FoldEventEntry<E extends EventDef<any, any, any>> =
+  | E
+  | ScopedFoldEntry<E>;
+
+type EntryToEventDef<T> =
+  T extends EventDef<any, any, any>
+    ? T
+    : T extends { readonly event: infer E }
+      ? E
+      : never;
+
+export type FoldEventUnion<
+  TEntries extends readonly FoldEventEntry<EventDef<any, any, any>>[],
+> = {
+  [K in keyof TEntries]: EntryToEventDef<TEntries[K]> extends EventDef<
+    infer Type,
+    infer Data,
+    any
+  >
+    ? TypedEvent<Type, Data>
+    : never;
+}[number];
+
 // ─── Fold Definition ─────────────────────────────────────────────────────────
 
 export type FoldDef<
-  TEvents extends readonly EventDef<any, any, any>[],
+  TEntries extends readonly FoldEventEntry<EventDef<any, any, any>>[],
   TState,
 > = {
   readonly _tag: "fold";
-  readonly _events: TEvents;
+  readonly _events: TEntries;
   readonly _initial: TState | (() => TState);
-  readonly _apply: (state: TState, event: EventUnion<TEvents>) => TState;
+  readonly _apply: (state: TState, event: FoldEventUnion<TEntries>) => TState;
 };
 
 // Extract state type from a FoldDef

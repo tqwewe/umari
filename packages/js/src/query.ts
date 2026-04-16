@@ -5,28 +5,49 @@ import type {
   EventFilter,
   EventQuery,
   FoldDef,
+  FoldEventEntry,
   RuleDef,
 } from "./types.ts";
 
+type ResolvedEventDef = { type: string; domainIds: readonly string[] };
+
+function effectiveDomainIds(
+  entry: FoldEventEntry<EventDef<any, any, any>>,
+): readonly string[] {
+  return "event" in entry ? entry.scope : entry.domainIds;
+}
+
+function entryEventType(entry: FoldEventEntry<EventDef<any, any, any>>): string {
+  return "event" in entry ? entry.event.type : entry.type;
+}
+
 /**
- * Collect all EventDefs from command state folds + rule folds.
+ * Collect resolved event definitions (type + effective domainIds) from command
+ * state folds + rule folds. Scoped entries use the scope instead of the event's
+ * full domainIds.
  */
 export function collectFoldEvents(
   stateFolds: Record<string, FoldDef<any, any>>,
   rules: readonly RuleDef[],
-): EventDef<any, any, any>[] {
-  const events: EventDef<any, any, any>[] = [];
+): ResolvedEventDef[] {
+  const events: ResolvedEventDef[] = [];
 
   for (const fold of Object.values(stateFolds)) {
-    events.push(...fold._events);
+    for (const entry of fold._events as FoldEventEntry<EventDef<any, any, any>>[]) {
+      events.push({ type: entryEventType(entry), domainIds: effectiveDomainIds(entry) });
+    }
   }
 
   for (const rule of rules) {
     if (rule._kind === "single") {
-      events.push(...rule._fold._events);
+      for (const entry of rule._fold._events as FoldEventEntry<EventDef<any, any, any>>[]) {
+        events.push({ type: entryEventType(entry), domainIds: effectiveDomainIds(entry) });
+      }
     } else {
       for (const fold of Object.values(rule._folds)) {
-        events.push(...(fold as FoldDef<any, any>)._events);
+        for (const entry of (fold as FoldDef<any, any>)._events as FoldEventEntry<EventDef<any, any, any>>[]) {
+          events.push({ type: entryEventType(entry), domainIds: effectiveDomainIds(entry) });
+        }
       }
     }
   }
@@ -53,7 +74,8 @@ export function extractBindings(
 }
 
 /**
- * Build the full EventQuery from a list of EventDefs and domain ID bindings.
+ * Build the full EventQuery from a list of resolved event definitions and domain
+ * ID bindings.
  *
  * Steps:
  * 1. Deduplicate events by type (avoid querying same event type twice)
@@ -67,12 +89,12 @@ export function extractBindings(
  * This is the JavaScript equivalent of build_query_items_from_domain_ids() in command.rs.
  */
 export function buildQueryItems(
-  events: EventDef<any, any, any>[],
+  events: ResolvedEventDef[],
   bindings: DomainIdBindings,
 ): EventQuery {
   // 1. Deduplicate by event type (keep first occurrence)
   const seen = new Set<string>();
-  const deduped: EventDef<any, any, any>[] = [];
+  const deduped: ResolvedEventDef[] = [];
   for (const event of events) {
     if (!seen.has(event.type)) {
       seen.add(event.type);
@@ -82,7 +104,7 @@ export function buildQueryItems(
 
   // 2. Group events by their domain ID signature
   //    Signature = sorted domainIds joined (e.g. "order_id,shop_id")
-  const groups = new Map<string, EventDef<any, any, any>[]>();
+  const groups = new Map<string, ResolvedEventDef[]>();
   for (const event of deduped) {
     const sig = [...event.domainIds].sort().join(",");
     if (!groups.has(sig)) groups.set(sig, []);
@@ -93,7 +115,7 @@ export function buildQueryItems(
   const filtersMap = new Map<string, EventFilter>();
 
   for (const [, group] of groups) {
-    const eventDomainIds = group[0]!.domainIds as readonly string[];
+    const eventDomainIds = group[0]!.domainIds;
     const types = group.map((e) => e.type);
 
     // Effective bindings: only domain ID fields that exist in the input bindings

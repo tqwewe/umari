@@ -2,6 +2,7 @@ import type {
   DomainIdBindings,
   EventDef,
   FoldDef,
+  FoldEventEntry,
   RuleDef,
   StatesOf,
   StoredEventRaw,
@@ -85,16 +86,24 @@ export function applyEventsToFolds<T extends Record<string, FoldDef<any, any>>>(
     const typed = deserializeEvent(raw);
 
     for (const [key, fold] of Object.entries(folds)) {
-      // Find the EventDef in this fold that matches the incoming event type
-      const matchingDef = (fold._events as EventDef<any, any, any>[]).find(
-        (def) => def.type === raw.eventType,
+      // Find the entry in this fold that matches the incoming event type
+      const matchingEntry = (
+        fold._events as FoldEventEntry<EventDef<any, any, any>>[]
+      ).find((entry) =>
+        "event" in entry
+          ? entry.event.type === raw.eventType
+          : entry.type === raw.eventType,
       );
-      if (!matchingDef) continue;
+      if (!matchingEntry) continue;
+
+      // Resolve effective domain IDs — scoped entries use scope, plain entries use domainIds
+      const domainIds =
+        "event" in matchingEntry
+          ? matchingEntry.scope
+          : matchingEntry.domainIds;
 
       // Check domain ID bindings filter
-      if (
-        !matchesFoldQuery(bindings, raw.tags, matchingDef.domainIds as string[])
-      )
+      if (!matchesFoldQuery(bindings, raw.tags, domainIds as string[]))
         continue;
 
       // Apply to this fold
