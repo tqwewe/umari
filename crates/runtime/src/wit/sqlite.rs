@@ -233,11 +233,11 @@ fn rusqlite_to_sqlite_error(err: rusqlite::Error) -> Result<SqliteError, String>
                 // Use the extended error code to identify the constraint type.
                 // Values are SQLITE_CONSTRAINT | (N<<8), where SQLITE_CONSTRAINT = 19.
                 let kind = match sqlite_err.extended_code {
-                    275 => ConstraintViolationKind::Check,      // SQLITE_CONSTRAINT_CHECK
+                    275 => ConstraintViolationKind::Check, // SQLITE_CONSTRAINT_CHECK
                     787 => ConstraintViolationKind::ForeignKey, // SQLITE_CONSTRAINT_FOREIGNKEY
-                    1299 => ConstraintViolationKind::NotNull,   // SQLITE_CONSTRAINT_NOTNULL
+                    1299 => ConstraintViolationKind::NotNull, // SQLITE_CONSTRAINT_NOTNULL
                     1555 => ConstraintViolationKind::PrimaryKey, // SQLITE_CONSTRAINT_PRIMARYKEY
-                    2067 => ConstraintViolationKind::Unique,    // SQLITE_CONSTRAINT_UNIQUE
+                    2067 => ConstraintViolationKind::Unique, // SQLITE_CONSTRAINT_UNIQUE
                     _ => ConstraintViolationKind::Other,
                 };
                 Ok(SqliteError::ConstraintViolation(ConstraintViolation {

@@ -128,11 +128,13 @@ pub async fn list_events(
     let mut correlation_colors: HashMap<Uuid, usize> = HashMap::new();
     let mut next_color = 0usize;
     for ev in &events {
-        correlation_colors.entry(ev.correlation_id).or_insert_with(|| {
-            let idx = next_color % CORRELATION_BORDER_COLORS.len();
-            next_color += 1;
-            idx
-        });
+        correlation_colors
+            .entry(ev.correlation_id)
+            .or_insert_with(|| {
+                let idx = next_color % CORRELATION_BORDER_COLORS.len();
+                next_color += 1;
+                idx
+            });
     }
 
     // Pre-compute per-row metadata
@@ -145,7 +147,10 @@ pub async fn list_events(
     for ev in &events {
         let color_idx = correlation_colors[&ev.correlation_id];
         let show_separator = prev_causation.is_some_and(|p| p != ev.causation_id);
-        row_meta.push(RowMeta { color_idx, show_separator });
+        row_meta.push(RowMeta {
+            color_idx,
+            show_separator,
+        });
         prev_causation = Some(ev.causation_id);
     }
 

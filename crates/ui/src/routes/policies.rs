@@ -12,7 +12,9 @@ use umari_runtime::{
     },
     module_store::{
         ModuleType,
-        actor::{GetActiveModule, GetAllActiveModules, GetAllModuleNames, GetEnvVars, GetModuleVersions},
+        actor::{
+            GetActiveModule, GetAllActiveModules, GetAllModuleNames, GetEnvVars, GetModuleVersions,
+        },
     },
 };
 

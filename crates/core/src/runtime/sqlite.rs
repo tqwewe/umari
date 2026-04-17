@@ -1,4 +1,3 @@
-
 pub use self::umari::sqlite::connection::{
     execute, execute_batch, last_insert_rowid, query_one, query_row,
 };

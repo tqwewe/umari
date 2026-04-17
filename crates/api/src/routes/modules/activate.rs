@@ -250,7 +250,10 @@ pub async fn replay_projector(
     Path(name): Path<String>,
 ) -> Result<Json<ReplayResponse>, Error> {
     let name_arc: Arc<str> = name.clone().into();
-    state.projector_supervisor_ref.ask(Reset { name: name_arc }).await?;
+    state
+        .projector_supervisor_ref
+        .ask(Reset { name: name_arc })
+        .await?;
     Ok(Json(ReplayResponse {
         module_type: ModuleType::Projector.to_string(),
         name,
@@ -276,7 +279,10 @@ pub async fn replay_policy(
     Path(name): Path<String>,
 ) -> Result<Json<ReplayResponse>, Error> {
     let name_arc: Arc<str> = name.clone().into();
-    state.policy_supervisor_ref.ask(Reset { name: name_arc }).await?;
+    state
+        .policy_supervisor_ref
+        .ask(Reset { name: name_arc })
+        .await?;
     Ok(Json(ReplayResponse {
         module_type: ModuleType::Policy.to_string(),
         name,
@@ -302,7 +308,10 @@ pub async fn replay_effect(
     Path(name): Path<String>,
 ) -> Result<Json<ReplayResponse>, Error> {
     let name_arc: Arc<str> = name.clone().into();
-    state.effect_supervisor_ref.ask(Reset { name: name_arc }).await?;
+    state
+        .effect_supervisor_ref
+        .ask(Reset { name: name_arc })
+        .await?;
     Ok(Json(ReplayResponse {
         module_type: ModuleType::Effect.to_string(),
         name,

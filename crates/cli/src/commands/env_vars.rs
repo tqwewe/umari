@@ -10,7 +10,13 @@ pub fn list(client: &ApiClient, module_type: &str, name: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn set(client: &ApiClient, module_type: &str, name: &str, key: &str, value: &str) -> Result<()> {
+pub fn set(
+    client: &ApiClient,
+    module_type: &str,
+    name: &str,
+    key: &str,
+    value: &str,
+) -> Result<()> {
     let path = format!("/{module_type}/{name}/env/{key}");
     let body = SetEnvVarRequest {
         value: value.to_string(),

@@ -478,9 +478,7 @@ fn main() -> Result<()> {
             EffectsSubcommand::Activate { name, version } => {
                 commands::effects::activate(&client, name, version)
             }
-            EffectsSubcommand::Deactivate { name } => {
-                commands::effects::deactivate(&client, name)
-            }
+            EffectsSubcommand::Deactivate { name } => commands::effects::deactivate(&client, name),
             EffectsSubcommand::Replay { name } => commands::effects::replay(&client, name),
             EffectsSubcommand::Env { name, action } => match action {
                 EnvAction::List => commands::env_vars::list(&client, "effects", &name),

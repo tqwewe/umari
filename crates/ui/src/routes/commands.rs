@@ -9,7 +9,9 @@ use umari_runtime::{
     command::actor::ActiveCommands,
     module_store::{
         ModuleType,
-        actor::{GetActiveModule, GetAllActiveModules, GetAllModuleNames, GetEnvVars, GetModuleVersions},
+        actor::{
+            GetActiveModule, GetAllActiveModules, GetAllModuleNames, GetEnvVars, GetModuleVersions,
+        },
     },
     output::LogEntry,
 };
@@ -17,8 +19,8 @@ use umari_runtime::{
 use crate::{
     UiState,
     components::{
-        ModuleHealth, env_vars_panel, execute_form, module_summary_table, output, tabs, upload_form,
-        versions_table,
+        ModuleHealth, env_vars_panel, execute_form, module_summary_table, output, tabs,
+        upload_form, versions_table,
     },
     error::HtmlError,
     htmx::respond,

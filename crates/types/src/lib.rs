@@ -7,7 +7,7 @@ pub use error::{ErrorBody, ErrorCode, ErrorResponse};
 pub use execute::{EmittedEventInfo, ExecuteResponse};
 pub use modules::{
     ActivateRequest, ActivateResponse, ActiveModuleInfo, ActiveModuleStatus, ActiveModulesResponse,
-    DeleteEnvVarResponse, DeactivateResponse, GetEnvVarsResponse, ListModulesResponse,
+    DeactivateResponse, DeleteEnvVarResponse, GetEnvVarsResponse, ListModulesResponse,
     ModuleDetailsResponse, ModuleHealthResponse, ModuleSummary, ReplayResponse, SetEnvVarRequest,
     SetEnvVarResponse, UploadResponse, VersionDetailsResponse, VersionInfo,
 };

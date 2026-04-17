@@ -41,21 +41,30 @@ impl DeriveEventSet {
         let Self { ident, events } = self;
 
         let event_types = events.iter().map(|QueryEvent { ty, .. }| ty);
-        let event_domain_ids = events.iter().map(|QueryEvent { scope, ty, .. }| {
-            match scope {
+        let event_domain_ids = events
+            .iter()
+            .map(|QueryEvent { scope, ty, .. }| match scope {
                 Some(scope) => {
-                    let dynamic: Vec<_> = scope.iter().filter_map(|e| match e {
-                        ScopeEntry::Dynamic(id) => Some(LitStr::new(&id.to_string(), id.span())),
-                        ScopeEntry::Static(..) => None,
-                    }).collect();
+                    let dynamic: Vec<_> = scope
+                        .iter()
+                        .filter_map(|e| match e {
+                            ScopeEntry::Dynamic(id) => {
+                                Some(LitStr::new(&id.to_string(), id.span()))
+                            }
+                            ScopeEntry::Static(..) => None,
+                        })
+                        .collect();
 
-                    let static_pairs: Vec<_> = scope.iter().filter_map(|e| match e {
-                        ScopeEntry::Static(id, val) => {
-                            let field = LitStr::new(&id.to_string(), id.span());
-                            Some(quote! { (#field, #val) })
-                        },
-                        ScopeEntry::Dynamic(_) => None,
-                    }).collect();
+                    let static_pairs: Vec<_> = scope
+                        .iter()
+                        .filter_map(|e| match e {
+                            ScopeEntry::Static(id, val) => {
+                                let field = LitStr::new(&id.to_string(), id.span());
+                                Some(quote! { (#field, #val) })
+                            }
+                            ScopeEntry::Dynamic(_) => None,
+                        })
+                        .collect();
 
                     quote! {
                         ::umari_core::event::EventDomainId {
@@ -64,7 +73,7 @@ impl DeriveEventSet {
                             static_fields: &[ #(#static_pairs,)* ],
                         }
                     }
-                },
+                }
                 None => {
                     quote! {
                         ::umari_core::event::EventDomainId {
@@ -73,9 +82,8 @@ impl DeriveEventSet {
                             static_fields: &[],
                         }
                     }
-                },
-            }
-        });
+                }
+            });
 
         let match_arms = events.iter().map(
             |QueryEvent {

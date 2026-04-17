@@ -28,8 +28,8 @@ where
             let color = match *meta.level() {
                 Level::TRACE => "\x1b[35m",
                 Level::DEBUG => "\x1b[34m",
-                Level::INFO  => "\x1b[32m",
-                Level::WARN  => "\x1b[1m\x1b[33m",
+                Level::INFO => "\x1b[32m",
+                Level::WARN => "\x1b[1m\x1b[33m",
                 Level::ERROR => "\x1b[1m\x1b[31m",
             };
             write!(writer, "{}{:>5}\x1b[0m ", color, meta.level())?;
@@ -53,7 +53,12 @@ where
                 }
             }
             _ => {
-                let max_key = visitor.fields.iter().map(|(k, _)| k.len()).max().unwrap_or(0);
+                let max_key = visitor
+                    .fields
+                    .iter()
+                    .map(|(k, _)| k.len())
+                    .max()
+                    .unwrap_or(0);
                 for (key, val) in &visitor.fields {
                     if ansi {
                         write!(writer, "\n      \x1b[2m{key:<max_key$}\x1b[0m  {val}")?;

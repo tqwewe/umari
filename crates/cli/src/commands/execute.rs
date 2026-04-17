@@ -5,14 +5,10 @@ use umari_types::ExecuteResponse;
 
 use crate::client::ApiClient;
 
-pub fn execute(
-    client: &ApiClient,
-    name: String,
-    input_json: String,
-) -> Result<()> {
+pub fn execute(client: &ApiClient, name: String, input_json: String) -> Result<()> {
     // Parse input JSON
-    let input: serde_json::Value = serde_json::from_str(&input_json)
-        .context("failed to parse input JSON")?;
+    let input: serde_json::Value =
+        serde_json::from_str(&input_json).context("failed to parse input JSON")?;
 
     // Build command payload
     let payload = json!({

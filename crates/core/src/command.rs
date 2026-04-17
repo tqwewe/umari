@@ -8,12 +8,8 @@ use umadb_dcb::DcbQueryItem;
 use uuid::Uuid;
 
 use crate::{
-    domain_id::DomainIdBindings,
-    emit::Emit,
-    error::CommandExecuteError,
-    event::EventDomainId,
-    folds::FoldSet,
-    rules::RuleSet,
+    domain_id::DomainIdBindings, emit::Emit, error::CommandExecuteError, event::EventDomainId,
+    folds::FoldSet, rules::RuleSet,
 };
 
 /// Trait for command input structs that declare domain ID bindings.
@@ -381,8 +377,16 @@ mod tests {
 
         fn event_domain_ids() -> Vec<EventDomainId> {
             vec![
-                EventDomainId { event_type: "EventA", dynamic_fields: &["user_id"], static_fields: &[] },
-                EventDomainId { event_type: "EventB", dynamic_fields: &["user_id"], static_fields: &[] },
+                EventDomainId {
+                    event_type: "EventA",
+                    dynamic_fields: &["user_id"],
+                    static_fields: &[],
+                },
+                EventDomainId {
+                    event_type: "EventB",
+                    dynamic_fields: &["user_id"],
+                    static_fields: &[],
+                },
             ]
         }
 
@@ -401,9 +405,21 @@ mod tests {
 
         fn event_domain_ids() -> Vec<EventDomainId> {
             vec![
-                EventDomainId { event_type: "UserRegistered", dynamic_fields: &["user_id"], static_fields: &[] },
-                EventDomainId { event_type: "UserCompletedOnboarding", dynamic_fields: &["user_id"], static_fields: &[] },
-                EventDomainId { event_type: "BetTracked", dynamic_fields: &["bet_id", "user_id"], static_fields: &[] },
+                EventDomainId {
+                    event_type: "UserRegistered",
+                    dynamic_fields: &["user_id"],
+                    static_fields: &[],
+                },
+                EventDomainId {
+                    event_type: "UserCompletedOnboarding",
+                    dynamic_fields: &["user_id"],
+                    static_fields: &[],
+                },
+                EventDomainId {
+                    event_type: "BetTracked",
+                    dynamic_fields: &["bet_id", "user_id"],
+                    static_fields: &[],
+                },
             ]
         }
 
@@ -422,8 +438,16 @@ mod tests {
 
         fn event_domain_ids() -> Vec<EventDomainId> {
             vec![
-                EventDomainId { event_type: "TransferSent", dynamic_fields: &["account_id", "region_id"], static_fields: &[] },
-                EventDomainId { event_type: "TransferReceived", dynamic_fields: &["account_id", "region_id"], static_fields: &[] },
+                EventDomainId {
+                    event_type: "TransferSent",
+                    dynamic_fields: &["account_id", "region_id"],
+                    static_fields: &[],
+                },
+                EventDomainId {
+                    event_type: "TransferReceived",
+                    dynamic_fields: &["account_id", "region_id"],
+                    static_fields: &[],
+                },
             ]
         }
 
@@ -442,8 +466,16 @@ mod tests {
 
         fn event_domain_ids() -> Vec<EventDomainId> {
             vec![
-                EventDomainId { event_type: "UserEvent", dynamic_fields: &["user_id"], static_fields: &[] },
-                EventDomainId { event_type: "OrderEvent", dynamic_fields: &["order_id"], static_fields: &[] },
+                EventDomainId {
+                    event_type: "UserEvent",
+                    dynamic_fields: &["user_id"],
+                    static_fields: &[],
+                },
+                EventDomainId {
+                    event_type: "OrderEvent",
+                    dynamic_fields: &["order_id"],
+                    static_fields: &[],
+                },
             ]
         }
 
@@ -461,9 +493,11 @@ mod tests {
         }
 
         fn event_domain_ids() -> Vec<EventDomainId> {
-            vec![
-                EventDomainId { event_type: "GlobalEvent", dynamic_fields: &[], static_fields: &[] },
-            ]
+            vec![EventDomainId {
+                event_type: "GlobalEvent",
+                dynamic_fields: &[],
+                static_fields: &[],
+            }]
         }
 
         fn from_event(_: &str, _: Value) -> Option<Result<Self::Item, SerializationError>> {

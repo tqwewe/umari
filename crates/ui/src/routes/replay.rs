@@ -13,27 +13,21 @@ pub async fn replay(
     let name_arc: Arc<str> = name.clone().into();
 
     let result = match module_type_str.as_str() {
-        "projectors" => {
-            state
-                .projector_supervisor_ref
-                .ask(Reset { name: name_arc })
-                .await
-                .map_err(HtmlError::from)
-        }
-        "policies" => {
-            state
-                .policy_supervisor_ref
-                .ask(Reset { name: name_arc })
-                .await
-                .map_err(HtmlError::from)
-        }
-        "effects" => {
-            state
-                .effect_supervisor_ref
-                .ask(Reset { name: name_arc })
-                .await
-                .map_err(HtmlError::from)
-        }
+        "projectors" => state
+            .projector_supervisor_ref
+            .ask(Reset { name: name_arc })
+            .await
+            .map_err(HtmlError::from),
+        "policies" => state
+            .policy_supervisor_ref
+            .ask(Reset { name: name_arc })
+            .await
+            .map_err(HtmlError::from),
+        "effects" => state
+            .effect_supervisor_ref
+            .ask(Reset { name: name_arc })
+            .await
+            .map_err(HtmlError::from),
         other => Err(HtmlError::bad_request(format!(
             "unknown module type: {other}"
         ))),

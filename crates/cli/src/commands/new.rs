@@ -118,9 +118,15 @@ pub fn generate_js(module_type: &str, name: &str) -> Result<()> {
 
     let type_name = kebab_to_pascal(name);
 
-    fs::write(module_dir.join("package.json"), package_json_content(module_type, name))?;
+    fs::write(
+        module_dir.join("package.json"),
+        package_json_content(module_type, name),
+    )?;
     fs::write(module_dir.join("tsconfig.json"), tsconfig_json_content())?;
-    fs::write(src_dir.join("index.ts"), index_ts_content(module_type, &type_name))?;
+    fs::write(
+        src_dir.join("index.ts"),
+        index_ts_content(module_type, &type_name),
+    )?;
 
     println!("created {plural}/{name}");
     println!("  {plural}/{name}/package.json");

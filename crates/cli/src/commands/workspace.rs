@@ -113,8 +113,8 @@ fn discover_modules(filter_paths: &[PathBuf], debug: bool) -> Result<(Vec<AnyMod
         return Err(anyhow!("cargo metadata failed: {stderr}"));
     }
 
-    let metadata: CargoMetadata =
-        serde_json::from_slice(&output.stdout).map_err(|err| anyhow!("failed to parse cargo metadata: {err}"))?;
+    let metadata: CargoMetadata = serde_json::from_slice(&output.stdout)
+        .map_err(|err| anyhow!("failed to parse cargo metadata: {err}"))?;
 
     let profile = if debug { "debug" } else { "release" };
 
@@ -143,7 +143,9 @@ fn discover_modules(filter_paths: &[PathBuf], debug: bool) -> Result<(Vec<AnyMod
 
         if !canonicalized_filters.is_empty() {
             let pkg_dir = pkg.manifest_path.parent().unwrap_or(&pkg.manifest_path);
-            let canonical_pkg_dir = pkg_dir.canonicalize().unwrap_or_else(|_| pkg_dir.to_path_buf());
+            let canonical_pkg_dir = pkg_dir
+                .canonicalize()
+                .unwrap_or_else(|_| pkg_dir.to_path_buf());
 
             let mut matches = false;
             for (i, filter) in canonicalized_filters.iter().enumerate() {
@@ -207,7 +209,9 @@ fn discover_modules(filter_paths: &[PathBuf], debug: bool) -> Result<(Vec<AnyMod
             };
 
             if !canonicalized_filters.is_empty() {
-                let canonical_dir = module_dir.canonicalize().unwrap_or_else(|_| module_dir.clone());
+                let canonical_dir = module_dir
+                    .canonicalize()
+                    .unwrap_or_else(|_| module_dir.clone());
                 let mut matches = false;
                 for (i, filter) in canonicalized_filters.iter().enumerate() {
                     if canonical_dir.starts_with(filter) {
@@ -220,7 +224,9 @@ fn discover_modules(filter_paths: &[PathBuf], debug: bool) -> Result<(Vec<AnyMod
                 }
             }
 
-            let wasm_rel = umari_config.wasm.unwrap_or_else(|| "dist/module.wasm".to_string());
+            let wasm_rel = umari_config
+                .wasm
+                .unwrap_or_else(|| "dist/module.wasm".to_string());
             let wasm_path = module_dir.join(&wasm_rel);
 
             modules.push(AnyModule::Js(JsModule {
@@ -235,7 +241,10 @@ fn discover_modules(filter_paths: &[PathBuf], debug: bool) -> Result<(Vec<AnyMod
 
     for (i, filter) in filter_paths.iter().enumerate() {
         if !matched_filters[i] {
-            eprintln!("warning: no modules found matching path '{}'", filter.display());
+            eprintln!(
+                "warning: no modules found matching path '{}'",
+                filter.display()
+            );
         }
     }
 
@@ -285,7 +294,12 @@ pub fn build(paths: Vec<PathBuf>, debug: bool) -> Result<()> {
     Ok(())
 }
 
-pub fn deploy(client: &ApiClient, paths: Vec<PathBuf>, no_activate: bool, debug: bool) -> Result<()> {
+pub fn deploy(
+    client: &ApiClient,
+    paths: Vec<PathBuf>,
+    no_activate: bool,
+    debug: bool,
+) -> Result<()> {
     let (modules, _workspace_root) = discover_modules(&paths, debug)?;
 
     if modules.is_empty() {
