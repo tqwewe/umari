@@ -109,7 +109,8 @@ impl AsErrorCode for umari_runtime::module_store::ModuleStoreError {
             umari_runtime::module_store::ModuleStoreError::InvalidName(_) => {
                 ErrorCode::InvalidInput
             }
-            umari_runtime::module_store::ModuleStoreError::ModuleAlreadyExists => {
+            umari_runtime::module_store::ModuleStoreError::ModuleAlreadyExists
+            | umari_runtime::module_store::ModuleStoreError::ModuleExistsWithSameHash => {
                 ErrorCode::Duplicate
             }
             umari_runtime::module_store::ModuleStoreError::ModuleNotFound { .. } => {

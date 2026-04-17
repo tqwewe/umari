@@ -5,11 +5,12 @@ use axum::{
     extract::{Multipart, Path, Query, State},
     http::StatusCode,
 };
+use kameo::error::SendError;
 use semver::Version;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use umari_runtime::module_store::{
-    ModuleType,
+    ModuleStoreError, ModuleType,
     actor::{ActivateModule, SaveModule},
 };
 
@@ -36,6 +37,7 @@ pub struct UploadQuery {
     ),
     request_body(content = String, description = "WASM binary file", content_type = "multipart/form-data"),
     responses(
+        (status = 200, description = "Module already exists with the same content (idempotent)", body = UploadResponse),
         (status = 201, description = "Module uploaded successfully", body = UploadResponse),
         (status = 400, description = "Invalid input", body = crate::error::ErrorResponse),
         (status = 409, description = "Module version already exists", body = crate::error::ErrorResponse)
@@ -69,6 +71,7 @@ pub async fn upload_command(
     ),
     request_body(content = String, description = "WASM binary file", content_type = "multipart/form-data"),
     responses(
+        (status = 200, description = "Module already exists with the same content (idempotent)", body = UploadResponse),
         (status = 201, description = "Module uploaded successfully", body = UploadResponse),
         (status = 400, description = "Invalid input", body = crate::error::ErrorResponse),
         (status = 409, description = "Module version already exists", body = crate::error::ErrorResponse)
@@ -102,6 +105,7 @@ pub async fn upload_projector(
     ),
     request_body(content = String, description = "WASM binary file", content_type = "multipart/form-data"),
     responses(
+        (status = 200, description = "Module already exists with the same content (idempotent)", body = UploadResponse),
         (status = 201, description = "Module uploaded successfully", body = UploadResponse),
         (status = 400, description = "Invalid input", body = crate::error::ErrorResponse),
         (status = 409, description = "Module version already exists", body = crate::error::ErrorResponse)
@@ -135,6 +139,7 @@ pub async fn upload_policy(
     ),
     request_body(content = String, description = "WASM binary file", content_type = "multipart/form-data"),
     responses(
+        (status = 200, description = "Module already exists with the same content (idempotent)", body = UploadResponse),
         (status = 201, description = "Module uploaded successfully", body = UploadResponse),
         (status = 400, description = "Invalid input", body = crate::error::ErrorResponse),
         (status = 409, description = "Module version already exists", body = crate::error::ErrorResponse)
@@ -206,7 +211,7 @@ async fn upload_module(
     let name_arc: Arc<str> = name.clone().into();
     let wasm_arc: Arc<[u8]> = wasm_bytes.into();
 
-    state
+    let idempotent = match state
         .module_store_ref
         .ask(SaveModule {
             module_type,
@@ -214,7 +219,12 @@ async fn upload_module(
             version: version.clone(),
             wasm_bytes: wasm_arc,
         })
-        .await?;
+        .await
+    {
+        Ok(()) => false,
+        Err(SendError::HandlerError(ModuleStoreError::ModuleExistsWithSameHash)) => true,
+        Err(err) => return Err(err.into()),
+    };
 
     // Activate if requested
     if activate {
@@ -228,8 +238,13 @@ async fn upload_module(
             .await?;
     }
 
+    let status = if idempotent {
+        StatusCode::OK
+    } else {
+        StatusCode::CREATED
+    };
     Ok((
-        StatusCode::CREATED,
+        status,
         Json(UploadResponse {
             module_type: module_type.to_string(),
             name,

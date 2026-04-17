@@ -69,29 +69,42 @@ impl SqliteModuleStore {
         }
 
         let sha256 = hex::encode(Sha256::digest(wasm_bytes));
-        self.conn
-            .execute(
-                r#"
-                INSERT INTO modules (
-                    module_type,
-                    name,
-                    version,
-                    wasm_bytes,
-                    sha256
-                ) VALUES (?1, ?2, ?3, ?4, ?5)
-                "#,
-                params![module_type, name, version.to_string(), wasm_bytes, sha256],
-            )
-            .map_err(|err| match err {
-                rusqlite::Error::SqliteFailure(err, _msg)
-                    if err.code == ErrorCode::ConstraintViolation =>
-                {
-                    ModuleStoreError::ModuleAlreadyExists
-                }
-                err => ModuleStoreError::Database(err),
-            })?;
+        let result = self.conn.execute(
+            r#"
+            INSERT INTO modules (
+                module_type,
+                name,
+                version,
+                wasm_bytes,
+                sha256
+            ) VALUES (?1, ?2, ?3, ?4, ?5)
+            "#,
+            params![module_type, name, version.to_string(), wasm_bytes, sha256],
+        );
 
-        Ok(())
+        match result {
+            Ok(_) => Ok(()),
+            Err(rusqlite::Error::SqliteFailure(err, _))
+                if err.code == ErrorCode::ConstraintViolation =>
+            {
+                let existing: Option<String> = self
+                    .conn
+                    .query_row(
+                        "SELECT sha256 FROM modules WHERE module_type = ?1 AND name = ?2 AND version = ?3",
+                        params![module_type, name, version.to_string()],
+                        |row| row.get(0),
+                    )
+                    .optional()
+                    .unwrap_or(None);
+
+                if existing.as_deref() == Some(&sha256) {
+                    Err(ModuleStoreError::ModuleExistsWithSameHash)
+                } else {
+                    Err(ModuleStoreError::ModuleAlreadyExists)
+                }
+            }
+            Err(err) => Err(ModuleStoreError::Database(err)),
+        }
     }
 
     pub fn load_module(

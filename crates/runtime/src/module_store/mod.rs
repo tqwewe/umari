@@ -63,6 +63,9 @@ pub enum ModuleStoreError {
     #[error("module already exists")]
     ModuleAlreadyExists,
 
+    #[error("module already exists with the same hash")]
+    ModuleExistsWithSameHash,
+
     #[error("module not found: {module_type}/{name}/{version}")]
     ModuleNotFound {
         module_type: ModuleType,
