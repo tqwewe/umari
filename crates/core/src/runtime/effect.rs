@@ -61,8 +61,9 @@ where
     where
         Self: Sized,
     {
+        let state = T::init().expect("effect init failed");
         EffectState {
-            inner: RefCell::new(T::default()),
+            inner: RefCell::new(state),
         }
     }
 

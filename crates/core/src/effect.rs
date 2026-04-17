@@ -2,11 +2,19 @@ use std::fmt;
 
 use umadb_dcb::{DcbQuery, DcbQueryItem};
 
-use crate::event::{EventSet, StoredEvent};
+use crate::{
+    error::SqliteError,
+    event::{EventSet, StoredEvent},
+};
 
-pub trait Effect: Default {
+pub trait Effect: Sized {
     type Query: EventSet;
     type Error: fmt::Display;
+
+    /// Idempotently initialise the database.
+    ///
+    /// This is called on startup.
+    fn init() -> Result<Self, SqliteError>;
 
     /// Query describing what events this effect should receive
     fn query(&self) -> DcbQuery {
