@@ -1,6 +1,7 @@
 [package]
 name = "umari-server"
 edition = "2024"
+license.workspace = true
 
 [[bin]]
 name = "umari-server"

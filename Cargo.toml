@@ -11,6 +11,9 @@ members = [
   "crates/ui",
 ]
 
+[workspace.package]
+license = "Apache-2.0"
+
 [workspace.dependencies]
 umari-api = { path = "crates/api" }
 umari-core = { path = "crates/core" }

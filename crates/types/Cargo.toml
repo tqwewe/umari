@@ -1,6 +1,7 @@
 [package]
 name = "umari-types"
 edition = "2024"
+license.workspace = true
 
 [dependencies]
 serde.workspace = true

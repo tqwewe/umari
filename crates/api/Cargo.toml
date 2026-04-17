@@ -1,6 +1,7 @@
 [package]
 name = "umari-api"
 edition = "2024"
+license.workspace = true
 
 [dependencies]
 umari-core.workspace = true
