@@ -5,9 +5,7 @@ interface connection {
 
     execute: func(sql: sql, params: list<value>) -> result<s64, sqlite-error>;
     execute-batch: func(sql: sql) -> result<_, sqlite-error>;
-    last-insert-rowid: func() -> result<s64, sqlite-error>;
-    /// Returns the single matching row. Errors if more than one row is returned.
-    query-one: func(sql: sql, params: list<value>) -> result<option<row>, sqlite-error>;
-    /// Returns the first matching row or `none`, ignoring any additional rows.
-    query-row: func(sql: sql, params: list<value>) -> result<option<row>, sqlite-error>;
+    last-insert-rowid: func() -> option<s64>;
+    query-one: func(sql: sql, params: list<value>) -> row;
+    query-row: func(sql: sql, params: list<value>) -> option<row>;
 }

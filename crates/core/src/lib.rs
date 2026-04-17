@@ -106,7 +106,9 @@ pub mod prelude {
     pub use crate::projector::*;
     pub use crate::rules::*;
     pub use crate::sqlite::*;
-    pub use crate::{emit, export_command, export_effect, export_policy, export_projector, reject};
+    pub use crate::{
+        emit, export_command, export_effect, export_policy, export_projector, params, reject,
+    };
     pub use umari_macros::{CommandInput, Event, EventSet};
 }
 

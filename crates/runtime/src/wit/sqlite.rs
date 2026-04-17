@@ -1,8 +1,12 @@
 use std::mem;
 
-use rusqlite::{OptionalExtension, Statement, params_from_iter};
+use rusqlite::{Statement, params_from_iter};
 use slotmap::DefaultKey;
-use wasmtime::component::{Resource, bindgen};
+use wasmtime::{
+    bail,
+    component::{Resource, bindgen},
+    error::Context,
+};
 
 pub use self::umari::sqlite::{types::*, *};
 use super::EventHandlerComponentState;
@@ -10,6 +14,7 @@ use super::EventHandlerComponentState;
 bindgen!({
     path: "../../wit/sqlite",
     world: "sqlite",
+    imports: { default: tracing | trappable },
     exports: { default: async },
     with: {
         "umari:sqlite/statement.stmt": Stmt,
@@ -25,7 +30,11 @@ pub struct Stmt {
 impl umari::sqlite::types::Host for EventHandlerComponentState {}
 
 impl umari::sqlite::connection::Host for EventHandlerComponentState {
-    fn execute(&mut self, sql: Sql, params: Vec<Value>) -> Result<i64, SqliteError> {
+    fn execute(
+        &mut self,
+        sql: Sql,
+        params: Vec<Value>,
+    ) -> wasmtime::Result<Result<i64, SqliteError>> {
         self.check_thread();
         let params = params
             .into_iter()
@@ -34,22 +43,25 @@ impl umari::sqlite::connection::Host for EventHandlerComponentState {
         self.conn
             .execute(&sql, params_from_iter(params.iter()))
             .map(|n| n as i64)
-            .map_err(|err| rusqlite_to_sqlite_error(err).unwrap_or_else(|trap| panic!("{trap}")))
+            .rusqlite_to_sqlite_error()
     }
 
-    fn execute_batch(&mut self, sql: Sql) -> Result<(), SqliteError> {
+    fn execute_batch(&mut self, sql: Sql) -> wasmtime::Result<Result<(), SqliteError>> {
         self.check_thread();
-        self.conn
-            .execute_batch(&sql)
-            .map_err(|err| rusqlite_to_sqlite_error(err).unwrap_or_else(|trap| panic!("{trap}")))
+        self.conn.execute_batch(&sql).rusqlite_to_sqlite_error()
     }
 
-    fn last_insert_rowid(&mut self) -> Result<i64, SqliteError> {
+    fn last_insert_rowid(&mut self) -> wasmtime::Result<Option<i64>> {
         self.check_thread();
-        Ok(self.conn.last_insert_rowid())
+        let rowid = self.conn.last_insert_rowid();
+        if rowid == 0 {
+            Ok(None)
+        } else {
+            Ok(Some(rowid))
+        }
     }
 
-    fn query_one(&mut self, sql: Sql, params: Vec<Value>) -> Result<Option<Row>, SqliteError> {
+    fn query_one(&mut self, sql: Sql, params: Vec<Value>) -> wasmtime::Result<Row> {
         self.check_thread();
         let params = params
             .into_iter()
@@ -57,11 +69,10 @@ impl umari::sqlite::connection::Host for EventHandlerComponentState {
             .collect::<Vec<rusqlite::types::Value>>();
         self.conn
             .query_one(&sql, params_from_iter(params.iter()), map_row)
-            .optional()
-            .map_err(|err| rusqlite_to_sqlite_error(err).unwrap_or_else(|trap| panic!("{trap}")))
+            .rusqlite_to_infallible()
     }
 
-    fn query_row(&mut self, sql: Sql, params: Vec<Value>) -> Result<Option<Row>, SqliteError> {
+    fn query_row(&mut self, sql: Sql, params: Vec<Value>) -> wasmtime::Result<Option<Row>> {
         self.check_thread();
         let params = params
             .into_iter()
@@ -69,8 +80,7 @@ impl umari::sqlite::connection::Host for EventHandlerComponentState {
             .collect::<Vec<rusqlite::types::Value>>();
         self.conn
             .query_row(&sql, params_from_iter(params.iter()), map_row)
-            .optional()
-            .map_err(|err| rusqlite_to_sqlite_error(err).unwrap_or_else(|trap| panic!("{trap}")))
+            .rusqlite_to_sqlite_infallible_optional()
     }
 }
 
@@ -111,12 +121,9 @@ fn execute_stmt(stmt: &mut Statement<'_>, params: Vec<Value>) -> Vec<Row> {
 impl umari::sqlite::statement::Host for EventHandlerComponentState {}
 
 impl umari::sqlite::statement::HostStmt for EventHandlerComponentState {
-    fn new(&mut self, sql: Sql) -> Result<Resource<Stmt>, SqliteError> {
+    fn new(&mut self, sql: Sql) -> wasmtime::Result<Resource<Stmt>> {
         self.check_thread();
-        let stmt = self
-            .conn
-            .prepare(&sql)
-            .map_err(|err| rusqlite_to_sqlite_error(err).unwrap_or_else(|trap| panic!("{trap}")))?;
+        let stmt = self.conn.prepare(&sql).rusqlite_to_infallible()?;
 
         // SAFETY: We transmute the lifetime to 'static
         // This is safe because ComponentRunStates owns both the connection
@@ -125,24 +132,21 @@ impl umari::sqlite::statement::HostStmt for EventHandlerComponentState {
         let stmt: Statement<'static> = unsafe { mem::transmute(stmt) };
 
         let key = self.statements.insert(Box::new(stmt));
-        let resource = self
-            .resource_table
-            .push(Stmt { key })
-            .unwrap_or_else(|err| panic!("resource table full: {err}"));
+        let resource = self.resource_table.push(Stmt { key })?;
         Ok(resource)
     }
 
-    fn execute(&mut self, self_: Resource<Stmt>, params: Vec<Value>) -> Result<i64, SqliteError> {
+    fn execute(
+        &mut self,
+        self_: Resource<Stmt>,
+        params: Vec<Value>,
+    ) -> wasmtime::Result<Result<i64, SqliteError>> {
         self.check_thread();
-        let stmt_resource = self
-            .resource_table
-            .get(&self_)
-            .unwrap_or_else(|err| panic!("invalid stmt resource: {err}"));
-
+        let stmt_resource = self.resource_table.get(&self_)?;
         let stmt = self
             .statements
             .get_mut(stmt_resource.key)
-            .unwrap_or_else(|| panic!("statement resource does not exist"));
+            .context("statement resource does not exist")?;
 
         let params = params
             .into_iter()
@@ -150,70 +154,51 @@ impl umari::sqlite::statement::HostStmt for EventHandlerComponentState {
             .collect::<Vec<rusqlite::types::Value>>();
         stmt.execute(params_from_iter(params.iter()))
             .map(|n| n as i64)
-            .map_err(|err| rusqlite_to_sqlite_error(err).unwrap_or_else(|trap| panic!("{trap}")))
+            .rusqlite_to_sqlite_error()
     }
 
-    fn query(
-        &mut self,
-        self_: Resource<Stmt>,
-        params: Vec<Value>,
-    ) -> Result<Vec<Row>, SqliteError> {
+    fn query(&mut self, self_: Resource<Stmt>, params: Vec<Value>) -> wasmtime::Result<Vec<Row>> {
         self.check_thread();
-        let stmt_resource = self
-            .resource_table
-            .get(&self_)
-            .unwrap_or_else(|err| panic!("invalid stmt resource: {err}"));
+        let stmt_resource = self.resource_table.get(&self_)?;
         let stmt = self
             .statements
             .get_mut(stmt_resource.key)
-            .unwrap_or_else(|| panic!("statement resource does not exist"));
+            .context("statement resource does not exist")?;
         Ok(execute_stmt(stmt, params))
     }
 
-    fn query_one(
-        &mut self,
-        self_: Resource<Stmt>,
-        params: Vec<Value>,
-    ) -> Result<Option<Row>, SqliteError> {
+    fn query_one(&mut self, self_: Resource<Stmt>, params: Vec<Value>) -> wasmtime::Result<Row> {
         self.check_thread();
-        let stmt_resource = self
-            .resource_table
-            .get(&self_)
-            .unwrap_or_else(|err| panic!("invalid stmt resource: {err}"));
+        let stmt_resource = self.resource_table.get(&self_)?;
         let stmt = self
             .statements
             .get_mut(stmt_resource.key)
-            .unwrap_or_else(|| panic!("statement resource does not exist"));
+            .context("statement resource does not exist")?;
         let params = params
             .into_iter()
             .map(|value| value.into())
             .collect::<Vec<rusqlite::types::Value>>();
         stmt.query_one(params_from_iter(params.iter()), map_row)
-            .optional()
-            .map_err(|err| rusqlite_to_sqlite_error(err).unwrap_or_else(|trap| panic!("{trap}")))
+            .rusqlite_to_infallible()
     }
 
     fn query_row(
         &mut self,
         self_: Resource<Stmt>,
         params: Vec<Value>,
-    ) -> Result<Option<Row>, SqliteError> {
+    ) -> wasmtime::Result<Option<Row>> {
         self.check_thread();
-        let stmt_resource = self
-            .resource_table
-            .get(&self_)
-            .unwrap_or_else(|err| panic!("invalid stmt resource: {err}"));
+        let stmt_resource = self.resource_table.get(&self_)?;
         let stmt = self
             .statements
             .get_mut(stmt_resource.key)
-            .unwrap_or_else(|| panic!("statement resource does not exist"));
+            .context("statement resource does not exist")?;
         let params = params
             .into_iter()
             .map(|value| value.into())
             .collect::<Vec<rusqlite::types::Value>>();
         stmt.query_row(params_from_iter(params.iter()), map_row)
-            .optional()
-            .map_err(|err| rusqlite_to_sqlite_error(err).unwrap_or_else(|trap| panic!("{trap}")))
+            .rusqlite_to_sqlite_infallible_optional()
     }
 
     fn drop(&mut self, rep: Resource<Stmt>) -> wasmtime::Result<()> {
@@ -224,35 +209,57 @@ impl umari::sqlite::statement::HostStmt for EventHandlerComponentState {
     }
 }
 
-/// Convert a rusqlite error to a SqliteError for constraint violations,
-/// or return an error message for everything else (caller should trap/panic).
-fn rusqlite_to_sqlite_error(err: rusqlite::Error) -> Result<SqliteError, String> {
-    match err {
-        rusqlite::Error::SqliteFailure(sqlite_err, msg) => {
-            if sqlite_err.code == rusqlite::ErrorCode::ConstraintViolation {
-                // Use the extended error code to identify the constraint type.
-                // Values are SQLITE_CONSTRAINT | (N<<8), where SQLITE_CONSTRAINT = 19.
-                let kind = match sqlite_err.extended_code {
-                    275 => ConstraintViolationKind::Check, // SQLITE_CONSTRAINT_CHECK
-                    787 => ConstraintViolationKind::ForeignKey, // SQLITE_CONSTRAINT_FOREIGNKEY
-                    1299 => ConstraintViolationKind::NotNull, // SQLITE_CONSTRAINT_NOTNULL
-                    1555 => ConstraintViolationKind::PrimaryKey, // SQLITE_CONSTRAINT_PRIMARYKEY
-                    2067 => ConstraintViolationKind::Unique, // SQLITE_CONSTRAINT_UNIQUE
-                    _ => ConstraintViolationKind::Other,
-                };
-                Ok(SqliteError::ConstraintViolation(ConstraintViolation {
-                    kind,
-                    message: msg.unwrap_or_default(),
-                }))
-            } else {
-                Err(format!(
-                    "sqlite error ({}): {}",
-                    sqlite_err.extended_code,
-                    msg.unwrap_or_default()
-                ))
+trait RusqliteSqliteExtension<T> {
+    fn rusqlite_to_sqlite_error(self) -> wasmtime::Result<Result<T, SqliteError>>;
+    fn rusqlite_to_infallible(self) -> wasmtime::Result<T>;
+    fn rusqlite_to_sqlite_infallible_optional(self) -> wasmtime::Result<Option<T>>;
+}
+
+impl<T> RusqliteSqliteExtension<T> for Result<T, rusqlite::Error> {
+    fn rusqlite_to_sqlite_error(self) -> wasmtime::Result<Result<T, SqliteError>> {
+        match self {
+            Ok(value) => Ok(Ok(value)),
+            Err(rusqlite::Error::SqliteFailure(sqlite_err, msg)) => {
+                if sqlite_err.code == rusqlite::ErrorCode::ConstraintViolation {
+                    // Use the extended error code to identify the constraint type.
+                    // Values are SQLITE_CONSTRAINT | (N<<8), where SQLITE_CONSTRAINT = 19.
+                    let kind = match sqlite_err.extended_code {
+                        275 => ConstraintViolationKind::Check, // SQLITE_CONSTRAINT_CHECK
+                        787 => ConstraintViolationKind::ForeignKey, // SQLITE_CONSTRAINT_FOREIGNKEY
+                        1299 => ConstraintViolationKind::NotNull, // SQLITE_CONSTRAINT_NOTNULL
+                        1555 => ConstraintViolationKind::PrimaryKey, // SQLITE_CONSTRAINT_PRIMARYKEY
+                        2067 => ConstraintViolationKind::Unique, // SQLITE_CONSTRAINT_UNIQUE
+                        _ => ConstraintViolationKind::Other,
+                    };
+                    Ok(Err(SqliteError::ConstraintViolation(ConstraintViolation {
+                        kind,
+                        message: msg.unwrap_or_default(),
+                    })))
+                } else {
+                    bail!(
+                        "sqlite error ({}): {}",
+                        sqlite_err.extended_code,
+                        msg.unwrap_or_default()
+                    );
+                }
             }
+            Err(err) => bail!("sqlite error: {err}"),
         }
-        err => Err(format!("sqlite error: {err}")),
+    }
+
+    fn rusqlite_to_infallible(self) -> wasmtime::Result<T> {
+        match self {
+            Ok(value) => Ok(value),
+            Err(err) => bail!("sqlite error: {err}"),
+        }
+    }
+
+    fn rusqlite_to_sqlite_infallible_optional(self) -> wasmtime::Result<Option<T>> {
+        match self {
+            Ok(value) => Ok(Some(value)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(err) => bail!("sqlite error: {err}"),
+        }
     }
 }
 
@@ -313,11 +320,5 @@ impl From<rusqlite::types::ValueRef<'_>> for Value {
             }
             rusqlite::types::ValueRef::Blob(blob) => Value::Blob(blob.to_vec()),
         }
-    }
-}
-
-impl From<rusqlite::Error> for SqliteError {
-    fn from(err: rusqlite::Error) -> Self {
-        rusqlite_to_sqlite_error(err).unwrap_or_else(|trap| panic!("{trap}"))
     }
 }

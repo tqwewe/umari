@@ -37,7 +37,7 @@ interface types {
         message: string,
     }
 
-    /// SQLite error - only constraint violations are surfaced; all other errors trap the actor.
+    /// SQLite error - only constraint violation errors are surfaced; all other errors trap the actor.
     variant sqlite-error {
         constraint-violation(constraint-violation),
     }

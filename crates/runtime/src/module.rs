@@ -20,7 +20,7 @@ pub enum ModuleError {
     #[error("concurrent modification")]
     ConcurrentModification,
     #[error("database error: {0}")]
-    Database(#[from] umari_core::error::SqliteError),
+    Database(#[from] rusqlite::Error),
     #[error("failed to deserialize event: {0}")]
     DeserializeEvent(serde_json::Error),
     #[error("event store error: {0}")]
@@ -42,13 +42,6 @@ pub enum ModuleError {
 impl<M> From<SendError<M, ModuleStoreError>> for ModuleError {
     fn from(err: SendError<M, ModuleStoreError>) -> Self {
         ModuleError::ModuleStore(err.map_msg(|_| ()))
-    }
-}
-
-impl From<rusqlite::Error> for ModuleError {
-    fn from(err: rusqlite::Error) -> Self {
-        let wit_err = wit::sqlite::SqliteError::from(err);
-        ModuleError::Database(wit_err.into())
     }
 }
 
