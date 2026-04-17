@@ -8,6 +8,9 @@
 
 # Devenv
 .devenv*
+devenv.nix
+devenv.yaml
+devenv.lock
 devenv.local.nix
 devenv.local.yaml
 
