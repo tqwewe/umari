@@ -16,14 +16,23 @@ pub fn upload(
     file: PathBuf,
     activate: bool,
 ) -> Result<()> {
-    let response = client.upload_wasm("effects", &name, &version, &file, activate)?;
+    let (idempotent, response) = client.upload_wasm("effects", &name, &version, &file, activate)?;
 
-    println!(
-        "{} uploaded {} v{}",
-        "✓".green(),
-        response.name,
-        response.version
-    );
+    if idempotent {
+        println!(
+            "{} {} v{} already up to date",
+            "✓".green(),
+            response.name,
+            response.version
+        );
+    } else {
+        println!(
+            "{} uploaded {} v{}",
+            "✓".green(),
+            response.name,
+            response.version
+        );
+    }
     println!("  sha256: {}", response.sha256);
     println!(
         "  activated: {}",

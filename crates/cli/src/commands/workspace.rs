@@ -350,7 +350,7 @@ pub fn deploy(
             ));
         }
 
-        client.upload_wasm(
+        let (idempotent, _) = client.upload_wasm(
             module.module_type(),
             module.name(),
             module.version(),
@@ -358,13 +358,23 @@ pub fn deploy(
             !no_activate,
         )?;
 
-        println!(
-            "{} deployed {} v{} ({})",
-            "✓".green(),
-            module.name(),
-            module.version(),
-            module.module_type()
-        );
+        if idempotent {
+            println!(
+                "{} {} v{} ({}) already up to date",
+                "✓".green(),
+                module.name(),
+                module.version(),
+                module.module_type()
+            );
+        } else {
+            println!(
+                "{} deployed {} v{} ({})",
+                "✓".green(),
+                module.name(),
+                module.version(),
+                module.module_type()
+            );
+        }
     }
 
     println!("{} module(s) deployed", modules.len());

@@ -120,7 +120,7 @@ impl ApiClient {
         version: &str,
         file_path: &Path,
         activate: bool,
-    ) -> Result<UploadResponse> {
+    ) -> Result<(bool, UploadResponse)> {
         // Read file and show progress
         let file_size = std::fs::metadata(file_path)
             .with_context(|| format!("failed to read file metadata: {}", file_path.display()))?
@@ -172,10 +172,12 @@ impl ApiClient {
 
         pb.finish_and_clear();
 
+        let idempotent = response.status().as_u16() == 200;
         let body = response
             .into_body()
             .read_to_string()
             .context("failed to read response")?;
-        serde_json::from_str(&body).context("failed to parse upload response")
+        let upload_response = serde_json::from_str(&body).context("failed to parse upload response")?;
+        Ok((idempotent, upload_response))
     }
 }
