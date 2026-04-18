@@ -42,7 +42,7 @@ proc-macro2 = "1.0"
 quote = "1.0"
 rand = "0.8"
 rusqlite = "0.39"
-schemars = { path = "/home/ari/dev/GREsau/schemars/schemars", version = "1.2" }
+schemars = "1.2"
 semver = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
