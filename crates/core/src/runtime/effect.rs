@@ -28,13 +28,13 @@ wit_bindgen::generate!({
 #[macro_export]
 macro_rules! export_effect {
     ($ty:path) => {
-        // type ExportedEffect = $crate::runtime::effect::EffectExport<$ty>;
-        // $crate::runtime::effect::export!(ExportedEffect with_types_in $crate::runtime::effect);
+        type ExportedEffect = $crate::runtime::effect::EffectExport<$ty>;
+        $crate::runtime::effect::export!(ExportedEffect with_types_in $crate::runtime::effect);
 
-        $crate::runtime::effect::export!({
-            ty: $crate::runtime::effect::EffectExport<$ty>,
-            with_types_in: $crate::runtime::effect,
-        });
+        // $crate::runtime::effect::export!({
+        //     ty: $crate::runtime::effect::EffectExport<$ty>,
+        //     with_types_in: $crate::runtime::effect,
+        // });
     };
 }
 

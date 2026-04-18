@@ -3436,7 +3436,7 @@ dependencies = [
  "umari-macros",
  "uuid",
  "wasip2",
- "wit-bindgen 0.55.0",
+ "wit-bindgen 0.56.0",
 ]
 
 [[package]]
@@ -4585,10 +4585,12 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen"
-version = "0.55.0"
+version = "0.56.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7607d30e7e5e8fd5a0695f7cb8b2128829e0bf9dca7a1fe8c4d6ed3ca1058fce"
 dependencies = [
  "bitflags",
- "wit-bindgen-rust-macro 0.55.0",
+ "wit-bindgen-rust-macro 0.56.0",
 ]
 
 [[package]]
@@ -4604,7 +4606,9 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen-core"
-version = "0.55.0"
+version = "0.56.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fda3a4ce47c08d27f575d451a60102bab5251776abd0a7a323d1f038eb6339ab"
 dependencies = [
  "anyhow",
  "heck",
@@ -4629,7 +4633,9 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen-rust"
-version = "0.55.0"
+version = "0.56.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "920a1c8c0f89397431db4900a7bf7c511b78e1b7068289fe812dc76e993f1491"
 dependencies = [
  "anyhow",
  "heck",
@@ -4637,7 +4643,7 @@ dependencies = [
  "prettyplease",
  "syn",
  "wasm-metadata 0.246.2",
- "wit-bindgen-core 0.55.0",
+ "wit-bindgen-core 0.56.0",
  "wit-component 0.246.2",
 ]
 
@@ -4658,7 +4664,9 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen-rust-macro"
-version = "0.55.0"
+version = "0.56.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "857a143d2373abfcd31ad946393efe775ed8c90a2a365ce73c61bf38f36a1000"
 dependencies = [
  "anyhow",
  "macro-string",
@@ -4666,8 +4674,8 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
- "wit-bindgen-core 0.55.0",
- "wit-bindgen-rust 0.55.0",
+ "wit-bindgen-core 0.56.0",
+ "wit-bindgen-rust 0.56.0",
 ]
 
 [[package]]

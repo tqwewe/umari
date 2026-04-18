@@ -91,4 +91,4 @@ wasmtime = { version = "43.0", default-features = false, features = [
 ] }
 wasmtime-wasi = "43.0"
 wasmtime-wasi-http = "43.0"
-wit-bindgen = { path = "/home/ari/dev/bytecodealliance/wit-bindgen/crates/guest-rust" } # "0.53"
+wit-bindgen = "0.56"
