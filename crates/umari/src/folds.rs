@@ -48,7 +48,6 @@ impl_tuple_folds!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10);
 impl_tuple_folds!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10, L:11);
 
 pub trait FoldSet: Default {
-    fn event_types() -> Vec<&'static str>;
     fn event_domain_ids() -> Vec<EventDomainId>;
 
     fn apply(
@@ -62,10 +61,6 @@ pub trait FoldSet: Default {
 }
 
 impl FoldSet for () {
-    fn event_types() -> Vec<&'static str> {
-        vec![]
-    }
-
     fn event_domain_ids() -> Vec<EventDomainId> {
         vec![]
     }
@@ -90,14 +85,6 @@ macro_rules! impl_tuple_fold_sets {
                 $t: Fold,
             )+
         {
-            fn event_types() -> Vec<&'static str> {
-                let mut types = Vec::new();
-                $(
-                    types.extend_from_slice(&$t::Events::event_types());
-                )+
-                types
-            }
-
             fn event_domain_ids() -> Vec<EventDomainId> {
                 let mut ids = Vec::new();
                 $(

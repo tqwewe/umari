@@ -37,6 +37,25 @@ macro_rules! emit {
     };
 }
 
+/// Creates a tuple of [`FoldRunner`]s from a list of rule functions or closures.
+///
+/// Each expression is automatically wrapped in [`runner()`], so rules are written
+/// as plain functions or closures without any boilerplate.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// fn rules(input: &Self::Input) -> impl RuleSet {
+///     rules!(must_be_open, min_balance(input.amount))
+/// }
+/// ```
+#[macro_export]
+macro_rules! rules {
+    ($($rule:expr),* $(,)?) => {
+        ($($crate::rules::runner($rule),)*)
+    };
+}
+
 #[macro_export]
 macro_rules! reject {
     ($s:literal, $($t:tt)*) => {{

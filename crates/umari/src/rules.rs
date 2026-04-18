@@ -1,103 +1,193 @@
 use std::{fmt, marker::PhantomData};
 
-use anyhow::{Context as _, bail};
+use anyhow::Context as _;
 use serde_json::Value;
 
 use crate::{
     command::EventMeta,
     domain_id::DomainIdBindings,
     error::SerializationError,
-    event::{EventDomainId, EventSet},
-    folds::{Fold, matches_fold_query},
+    event::EventDomainId,
+    folds::{Fold, FoldSet},
 };
 
-pub trait Rule {
-    type State: Fold;
-
-    fn check(self, state: Self::State) -> anyhow::Result<()>;
+pub trait Rule<S> {
+    fn check(self, state: &S) -> anyhow::Result<()>;
 }
 
-pub struct RuleFn<F, A> {
-    f: F,
-    phantom: PhantomData<A>,
-}
-
-impl<F, A> RuleFn<F, A> {
-    pub fn new(f: F) -> Self {
-        RuleFn {
-            f,
-            phantom: PhantomData,
-        }
+impl<S> Rule<S> for () {
+    fn check(self, _state: &S) -> anyhow::Result<()> {
+        Ok(())
     }
 }
 
-macro_rules! impl_rule_fns {
-    ($( $t:ident ),*) => {
-        impl<$($t),*> Rule for fn($($t),*) -> anyhow::Result<()>
+macro_rules! impl_rule_fn {
+    ($( $T:ident:$n:tt ),*) => {
+        impl<Func, Err, $($T,)*> Rule<($($T,)*)> for Func
         where
+            Func: FnOnce($(&$T,)*) -> Result<(), Err>,
+            Err: Into<anyhow::Error>,
             $(
-              $t: Fold,
+              $T: Fold,
             )*
         {
-            type State = ($($t,)*);
-
-            #[allow(non_snake_case)]
-            fn check(self, ($($t,)*): Self::State) -> anyhow::Result<()> {
-                self($($t),*)
-            }
-        }
-
-        impl<$($t),*> Rule for Box<dyn FnOnce($($t),*) -> anyhow::Result<()>>
-        where
-            $(
-              $t: Fold,
-            )*
-        {
-            type State = ($($t,)*);
-
-            #[allow(non_snake_case)]
-            fn check(self, ($($t,)*): Self::State) -> anyhow::Result<()> {
-                self($($t),*)
-            }
-        }
-
-        impl<Func, $($t),*> Rule for RuleFn<Func, ($($t,)*)>
-        where
-            Func: FnOnce($($t),*) -> anyhow::Result<()>,
-            $(
-              $t: Fold,
-            )*
-        {
-            type State = ($($t,)*);
-
-            #[allow(non_snake_case)]
-            fn check(self, ($($t,)*): Self::State) -> anyhow::Result<()> {
-                (self.f)($($t),*)
+            fn check(self, _state: &($($T,)*)) -> anyhow::Result<()> {
+                self($(&_state.$n,)*).map_err(Into::into)
             }
         }
     };
 }
 
-impl_rule_fns!(A);
-impl_rule_fns!(A, B);
-impl_rule_fns!(A, B, C);
-impl_rule_fns!(A, B, C, D);
-impl_rule_fns!(A, B, C, D, E);
-impl_rule_fns!(A, B, C, D, E, F);
-impl_rule_fns!(A, B, C, D, E, F, G);
-impl_rule_fns!(A, B, C, D, E, F, G, H);
-impl_rule_fns!(A, B, C, D, E, F, G, H, I);
-impl_rule_fns!(A, B, C, D, E, F, G, H, I, J);
-impl_rule_fns!(A, B, C, D, E, F, G, H, I, J, K);
-impl_rule_fns!(A, B, C, D, E, F, G, H, I, J, K, L);
+impl_rule_fn!();
+impl_rule_fn!(A:0);
+impl_rule_fn!(A:0, B:1);
+impl_rule_fn!(A:0, B:1, C:2);
+impl_rule_fn!(A:0, B:1, C:2, D:3);
+impl_rule_fn!(A:0, B:1, C:2, D:3, E:4);
+impl_rule_fn!(A:0, B:1, C:2, D:3, E:4, F:5);
+impl_rule_fn!(A:0, B:1, C:2, D:3, E:4, F:5, G:6);
+impl_rule_fn!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7);
 
-pub trait RuleSet {
-    type Runner: RuleSetRunner;
-
-    fn into_runner(self) -> Self::Runner;
+macro_rules! impl_tuple_rules {
+    ($( $t:ident:$n:tt ),+) => {
+        impl<S, $($t,)+> Rule<S> for ($($t,)+)
+        where
+            $(
+                $t: Rule<S>,
+            )+
+        {
+            fn check(self, state: &S) -> anyhow::Result<()> {
+                $(self.$n.check(state)?;)+
+                Ok(())
+            }
+        }
+    };
 }
 
-pub trait RuleSetRunner {
+impl_tuple_rules!(A:0);
+impl_tuple_rules!(A:0, B:1);
+impl_tuple_rules!(A:0, B:1, C:2);
+impl_tuple_rules!(A:0, B:1, C:2, D:3);
+impl_tuple_rules!(A:0, B:1, C:2, D:3, E:4);
+impl_tuple_rules!(A:0, B:1, C:2, D:3, E:4, F:5);
+impl_tuple_rules!(A:0, B:1, C:2, D:3, E:4, F:5, G:6);
+impl_tuple_rules!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7);
+impl_tuple_rules!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8);
+impl_tuple_rules!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9);
+impl_tuple_rules!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10);
+impl_tuple_rules!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10, L:11);
+
+pub trait RuleExt<S>: Rule<S> + Sized {
+    fn context<C>(self, context: C) -> Context<Self, S, C>
+    where
+        C: fmt::Display + Send + Sync + 'static;
+
+    fn with_context<C, F>(self, f: F) -> WithContext<Self, S, C, F>
+    where
+        C: fmt::Display + Send + Sync + 'static,
+        F: FnOnce() -> C;
+}
+
+impl<T, S> RuleExt<S> for T
+where
+    T: Rule<S>,
+{
+    fn context<C>(self, context: C) -> Context<Self, S, C>
+    where
+        C: fmt::Display + Send + Sync + 'static,
+    {
+        Context {
+            rule: self,
+            context,
+            _phantom: PhantomData,
+        }
+    }
+
+    fn with_context<C, F>(self, f: F) -> WithContext<Self, S, C, F>
+    where
+        C: fmt::Display + Send + Sync + 'static,
+        F: FnOnce() -> C,
+    {
+        WithContext {
+            rule: self,
+            f,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+/// Wrap the error value with additional context.
+pub struct Context<T, S, C>
+where
+    T: Rule<S>,
+    C: fmt::Display + Send + Sync + 'static,
+{
+    rule: T,
+    context: C,
+    _phantom: PhantomData<fn(&S)>,
+}
+
+impl<T, S, C> Rule<S> for Context<T, S, C>
+where
+    T: Rule<S>,
+    C: fmt::Display + Send + Sync + 'static,
+{
+    fn check(self, state: &S) -> anyhow::Result<()> {
+        self.rule.check(state).context(self.context)
+    }
+}
+
+/// Wrap the error value with additional context that is evaluated lazily only once an error does occur.
+pub struct WithContext<T, S, C, F>
+where
+    T: Rule<S>,
+    C: fmt::Display + Send + Sync + 'static,
+    F: FnOnce() -> C,
+{
+    rule: T,
+    f: F,
+    _phantom: PhantomData<fn(&S)>,
+}
+
+impl<T, S, C, F> Rule<S> for WithContext<T, S, C, F>
+where
+    T: Rule<S>,
+    C: fmt::Display + Send + Sync + 'static,
+    F: FnOnce() -> C,
+{
+    fn check(self, state: &S) -> anyhow::Result<()> {
+        self.rule.check(state).with_context(self.f)
+    }
+}
+
+/// Requires the fold to equal the expected value.
+pub fn is_equal<T>(expected: T) -> impl FnOnce(&T) -> anyhow::Result<()>
+where
+    T: Fold + PartialEq,
+{
+    move |state: &T| {
+        if &expected != state {
+            anyhow::bail!("state is not equal to expected")
+        }
+        Ok(())
+    }
+}
+
+/// Requires the fold to not equal the expected value.
+pub fn is_not_equal<T>(expected: T) -> impl FnOnce(&T) -> anyhow::Result<()>
+where
+    T: Fold + PartialEq,
+{
+    move |state: &T| {
+        if &expected == state {
+            anyhow::bail!("state should not equal expected")
+        }
+        Ok(())
+    }
+}
+
+/// A non-generic rule runner that accumulates its own event state and checks rules against it.
+pub trait RuleSet {
     fn event_domain_ids(&self) -> Vec<EventDomainId>;
 
     fn apply_event(
@@ -112,18 +202,7 @@ pub trait RuleSetRunner {
     fn check(self) -> anyhow::Result<()>;
 }
 
-pub struct RuleRunner<R, S> {
-    pub rules: R,
-    pub states: S,
-}
-
 impl RuleSet for () {
-    type Runner = ();
-
-    fn into_runner(self) {}
-}
-
-impl RuleSetRunner for () {
     fn event_domain_ids(&self) -> Vec<EventDomainId> {
         vec![]
     }
@@ -148,31 +227,11 @@ macro_rules! impl_tuple_rule_sets {
     ($( $t:ident:$n:tt ),+) => {
         impl<$($t,)+> RuleSet for ($($t,)+)
         where
-            $(
-                $t: Rule,
-            )+
-        {
-            type Runner = RuleRunner<($($t,)+), ($($t::State,)+)>;
-
-            fn into_runner(self) -> Self::Runner {
-                RuleRunner {
-                    rules: self,
-                    states: Default::default(),
-                }
-            }
-        }
-
-        impl<$($t,)+> RuleSetRunner for RuleRunner<($($t,)+), ($($t::State,)+)>
-        where
-            $(
-                $t: Rule,
-            )+
+            $($t: RuleSet,)+
         {
             fn event_domain_ids(&self) -> Vec<EventDomainId> {
                 let mut ids = Vec::new();
-                $(
-                    ids.extend(<<$t as Rule>::State as Fold>::Events::event_domain_ids());
-                )+
+                $(ids.extend(self.$n.event_domain_ids());)+
                 ids
             }
 
@@ -184,21 +243,12 @@ macro_rules! impl_tuple_rule_sets {
                 bindings: &DomainIdBindings,
                 meta: EventMeta,
             ) -> Result<(), SerializationError> {
-                $(
-                    if matches_fold_query::<<$t as Rule>::State>(event_type, tags, bindings)
-                        && let Some(event) = <<$t as Rule>::State as Fold>::Events::from_event(event_type, data.clone()).transpose()?
-                    {
-                        self.states.$n.apply(&event, meta);
-                    }
-                )+
+                $(self.$n.apply_event(event_type, data.clone(), tags, bindings, meta)?;)+
                 Ok(())
             }
 
             fn check(self) -> anyhow::Result<()> {
-                let Self { rules, states } = self;
-                $(
-                    rules.$n.check(states.$n)?;
-                )+
+                $(self.$n.check()?;)+
                 Ok(())
             }
         }
@@ -216,110 +266,47 @@ impl_tuple_rule_sets!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7);
 impl_tuple_rule_sets!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8);
 impl_tuple_rule_sets!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9);
 impl_tuple_rule_sets!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10);
+impl_tuple_rule_sets!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10, L:11);
 
-pub trait RuleExt: Rule + Sized {
-    fn context<C>(self, context: C) -> Context<Self, C>
-    where
-        C: fmt::Display + Send + Sync + 'static;
-    fn with_context<C, F>(self, f: F) -> WithContext<Self, C, F>
-    where
-        C: fmt::Display + Send + Sync + 'static,
-        F: FnOnce() -> C;
+/// A rule runner that pairs a `Rule<S>` with its own independently accumulated `FoldSet` state.
+pub struct FoldRunner<R, S> {
+    rule: R,
+    state: S,
 }
 
-impl<T> RuleExt for T
+/// Creates a [`FoldRunner`] that accumulates `S` state from events and checks `rule` against it.
+pub fn runner<R, S>(rule: R) -> FoldRunner<R, S>
 where
-    T: Rule,
+    R: Rule<S>,
+    S: FoldSet + Default,
 {
-    fn context<C>(self, context: C) -> Context<Self, C>
-    where
-        C: fmt::Display + Send + Sync + 'static,
-    {
-        Context {
-            rule: self,
-            context,
-        }
-    }
-
-    fn with_context<C, F>(self, f: F) -> WithContext<Self, C, F>
-    where
-        C: fmt::Display + Send + Sync + 'static,
-        F: FnOnce() -> C,
-    {
-        WithContext { rule: self, f }
+    FoldRunner {
+        rule,
+        state: S::default(),
     }
 }
 
-/// Wrap the error value with additional context.
-pub struct Context<T, C>
+impl<R, S> RuleSet for FoldRunner<R, S>
 where
-    T: Rule,
-    C: fmt::Display + Send + Sync + 'static,
+    R: Rule<S>,
+    S: FoldSet,
 {
-    rule: T,
-    context: C,
-}
-
-impl<T, C> Rule for Context<T, C>
-where
-    T: Rule,
-    C: fmt::Display + Send + Sync + 'static,
-{
-    type State = T::State;
-
-    fn check(self, state: Self::State) -> anyhow::Result<()> {
-        self.rule.check(state).context(self.context)
+    fn event_domain_ids(&self) -> Vec<EventDomainId> {
+        S::event_domain_ids()
     }
-}
 
-/// Wrap the error value with additional context that is evaluated lazily only once an error does occur.
-pub struct WithContext<T, C, F>
-where
-    T: Rule,
-    C: fmt::Display + Send + Sync + 'static,
-    F: FnOnce() -> C,
-{
-    rule: T,
-    f: F,
-}
-
-impl<T, C, F> Rule for WithContext<T, C, F>
-where
-    T: Rule,
-    C: fmt::Display + Send + Sync + 'static,
-    F: FnOnce() -> C,
-{
-    type State = T::State;
-
-    fn check(self, state: Self::State) -> anyhow::Result<()> {
-        self.rule.check(state).with_context(self.f)
+    fn apply_event(
+        &mut self,
+        event_type: &str,
+        data: Value,
+        tags: &[String],
+        bindings: &DomainIdBindings,
+        meta: EventMeta,
+    ) -> Result<(), SerializationError> {
+        self.state.apply(event_type, data, tags, bindings, meta)
     }
-}
 
-/// Requires the fold to equal the expected value.
-pub fn is_equal<T>(expected: &T) -> impl Rule
-where
-    T: Fold + PartialEq,
-{
-    RuleFn::new(move |state: T| {
-        if expected != &state {
-            bail!("state is not equal to expected")
-        }
-
-        Ok(())
-    })
-}
-
-/// Requires the fold to not equal the expected value.
-pub fn is_not_equal<T>(expected: &T) -> impl Rule
-where
-    T: Fold + PartialEq,
-{
-    RuleFn::new(move |state: T| {
-        if expected == &state {
-            bail!("state should not equal expected")
-        }
-
-        Ok(())
-    })
+    fn check(self) -> anyhow::Result<()> {
+        self.rule.check(&self.state)
+    }
 }

@@ -106,7 +106,9 @@ pub trait Command {
 
     type State: FoldSet;
 
-    fn rules(_input: &Self::Input) -> impl RuleSet {}
+    fn rules(_input: &Self::Input) -> impl RuleSet {
+        ()
+    }
 
     fn emit(state: Self::State, input: Self::Input) -> Emit;
 }

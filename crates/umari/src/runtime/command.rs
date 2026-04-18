@@ -8,7 +8,7 @@ use validator::Validate;
 use crate::{
     command::{Command, CommandInput, EventMeta, build_query_items_from_domain_ids},
     folds::FoldSet,
-    rules::{RuleSet, RuleSetRunner},
+    rules::RuleSet,
 };
 
 pub use self::umari::command::types::*;
@@ -61,9 +61,9 @@ where
             .validate()
             .map_err(|err| Error::Rejected(err.to_string()))?;
 
-        let runner = T::rules(&input).into_runner();
+        let rules = T::rules(&input);
         let mut event_domain_ids = <T::State as FoldSet>::event_domain_ids();
-        event_domain_ids.extend(runner.event_domain_ids());
+        event_domain_ids.extend(rules.event_domain_ids());
         let items = build_query_items_from_domain_ids(
             &event_domain_ids,
             &<T::Input as CommandInput>::domain_id_bindings(&input),
@@ -78,7 +78,7 @@ where
 
         let bindings = <T::Input as CommandInput>::domain_id_bindings(&input);
         let mut state = T::State::default();
-        let mut runner = T::rules(&input).into_runner();
+        let mut rules = T::rules(&input);
 
         for stored_event in events {
             let event: crate::event::StoredEvent<serde_json::Value> = stored_event.into();
@@ -96,12 +96,13 @@ where
                 meta,
             )
             .unwrap_or_else(|err| panic!("failed to deserialize event data: {}", err.message));
-            runner
+
+            rules
                 .apply_event(&event.event_type, event.data, &event.tags, &bindings, meta)
-                .unwrap_or_else(|err| panic!("failed to deserialize event data: {}", err.message));
+                .unwrap_or_else(|err| panic!("failed to deserialize rule event data: {}", err.message));
         }
 
-        runner
+        rules
             .check()
             .map_err(|err| Error::Rejected(err.to_string()))?;
         let emitted_events = T::emit(state, input)
