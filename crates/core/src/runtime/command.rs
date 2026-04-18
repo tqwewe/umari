@@ -1,9 +1,9 @@
 use std::marker::PhantomData;
 
-use garde::Validate;
 use serde::de::DeserializeOwned;
 use umadb_dcb::DcbQuery;
 use uuid::Uuid;
+use validator::Validate;
 
 use crate::{
     command::{Command, CommandInput, EventMeta, build_query_items_from_domain_ids},
@@ -47,7 +47,6 @@ impl<T: Command> Guest for CommandExport<T>
 where
     T: Command,
     T::Input: DeserializeOwned,
-    <<T as Command>::Input as Validate>::Context: Default,
 {
     fn schema() -> Option<Json> {
         let schema = schemars::schema_for!(T::Input);

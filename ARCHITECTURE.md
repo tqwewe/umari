@@ -256,14 +256,13 @@ use umari_core::prelude::*;
 #[derive(CommandInput, Validate, JsonSchema, Serialize, Deserialize)]
 pub struct Input {
     #[domain_id]
-    #[garde(skip)]
     pub shop_id: u64,
     #[domain_id]
-    #[garde(custom(non_nil_uuid))]
+    #[validate(custom(function = "non_nil_uuid"))]
     pub widget_id: Uuid,
-    #[garde(length(min = 1, max = 100))]
+    #[validate(length(min = 1, max = 100))]
     pub name: String,
-    #[garde(range(min = 1, max = 60))]
+    #[validate(range(min = 1.0, max = 60.0))]
     pub duration_months: u32,
 }
 
@@ -344,12 +343,13 @@ emit![EventA { .. }, EventB { .. }]  // multiple events
 
 ### Validation
 
-Input validation uses `garde`. The `#[derive(Validate)]` macro and `#[garde(...)]` attributes handle field-level constraints. Custom validators are plain functions:
+Input validation uses `validator`. The `#[derive(Validate)]` macro and `#[validate(...)]` attributes handle field-level constraints. Custom validators are plain functions:
 
 ```rust
-fn non_nil_uuid(value: &Uuid, _: &()) -> garde::Result {
+fn non_nil_uuid(value: &Uuid) -> Result<(), validator::ValidationError> {
     if value.is_nil() {
-        return Err(garde::Error::new("must not be nil"));
+        return Err(validator::ValidationError::new("uuid")
+            .with_message("must not be nil".into()));
     }
     Ok(())
 }
@@ -735,7 +735,7 @@ Each command/projector/policy/effect crate adds the shared library as a dependen
 [dependencies]
 my-project.workspace = true
 umari-core.workspace = true
-garde.workspace = true
+validator.workspace = true
 ```
 
 ---

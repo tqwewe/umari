@@ -8,7 +8,6 @@ umari-macros.workspace = true
 
 anyhow.workspace = true
 chrono.workspace = true
-garde.workspace = true
 indexmap.workspace = true
 libc.workspace = true
 schemars.workspace = true
@@ -18,5 +17,6 @@ thiserror.workspace = true
 tracing.workspace = true
 umadb-dcb.workspace = true
 uuid.workspace = true
+validator.workspace = true
 wasip2.workspace = true
 wit-bindgen.workspace = true

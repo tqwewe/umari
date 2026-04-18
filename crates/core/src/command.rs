@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
-use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use umadb_dcb::DcbQueryItem;
 use uuid::Uuid;
+use validator::Validate;
 
 use crate::{
     domain_id::DomainIdBindings, emit::Emit, error::CommandExecuteError, event::EventDomainId,
