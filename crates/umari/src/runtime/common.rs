@@ -7,7 +7,7 @@ use crate::event::EventSet;
 pub use self::umari::common::types::*;
 
 wit_bindgen::generate!({
-    path: "../../wit/common",
+    path: "wit/common",
     world: "common",
     additional_derives: [PartialEq, Clone, serde::Serialize, serde::Deserialize],
     generate_unused_types: true,

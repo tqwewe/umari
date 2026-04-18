@@ -32,9 +32,9 @@ dependencies = ["clean"]
 [tasks.update-wit]
 command = "wit-deps"
 args = [
-  "-d", "./wit/${WIT}/deps",
-  "-m", "./wit/${WIT}/deps.toml",
-  "-l", "./wit/${WIT}/deps.lock",
+  "-d", "./crates/umari/wit/${WIT}/deps",
+  "-m", "./crates/umari/wit/${WIT}/deps.toml",
+  "-l", "./crates/umari/wit/${WIT}/deps.lock",
 ]
 
 [tasks.update-wit-command]
@@ -74,7 +74,7 @@ dependencies = [
 
 [tasks.clean-wit-deps]
 command = "rm"
-args = ["-rf", "./wit/${WIT}/deps"]
+args = ["-rf", "./crates/umari/wit/${WIT}/deps"]
 
 [tasks.clean-wit-deps-command]
 extend = "clean-wit-deps"

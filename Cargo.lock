@@ -3347,6 +3347,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "umari"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "indexmap",
+ "libc",
+ "schemars",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tracing",
+ "umadb-dcb",
+ "umari-macros",
+ "uuid",
+ "validator",
+ "wasip2",
+ "wit-bindgen 0.56.0",
+]
+
+[[package]]
 name = "umari-api"
 version = "0.0.0"
 dependencies = [
@@ -3360,7 +3381,7 @@ dependencies = [
  "tokio",
  "tracing",
  "umadb-client",
- "umari-core",
+ "umari",
  "umari-runtime",
  "umari-types",
  "umari-ui",
@@ -3386,29 +3407,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "umari-core"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "chrono",
- "indexmap",
- "libc",
- "schemars",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tracing",
- "umadb-dcb",
- "umari-macros",
- "uuid",
- "validator",
- "wasip2",
- "wit-bindgen 0.56.0",
-]
-
-[[package]]
 name = "umari-macros"
-version = "0.1.0"
+version = "0.0.2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3441,7 +3441,7 @@ dependencies = [
  "tracing-subscriber",
  "umadb-client",
  "umadb-dcb",
- "umari-core",
+ "umari",
  "utoipa",
  "uuid",
  "wasmtime",
@@ -3495,7 +3495,7 @@ dependencies = [
  "tracing",
  "umadb-client",
  "umadb-dcb",
- "umari-core",
+ "umari",
  "umari-runtime",
  "umari-types",
  "uuid",

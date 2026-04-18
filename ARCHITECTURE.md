@@ -60,7 +60,7 @@ Events are the immutable facts of the system. They represent things that happene
 - Derives `Event`, `Serialize`, `Deserialize`
 
 ```rust
-use umari_core::prelude::*;
+use umari::prelude::*;
 
 #[derive(Clone, Debug, Event, Serialize, Deserialize)]
 #[event_type("widget.created")]
@@ -92,7 +92,7 @@ pub struct WidgetArchived {
 A **fold** defines how to derive a piece of state by replaying events in order. Folds are used exclusively by commands — to inform decisions in `emit()` and to provide state for rule checks.
 
 ```rust
-use umari_core::prelude::*;
+use umari::prelude::*;
 
 // The state type
 #[derive(Default)]
@@ -168,7 +168,7 @@ This causes the runtime to fetch and replay events for all folds together and pa
 A **rule** is a named invariant that validates fold state before a command emits events. Rules are defined separately from commands so they can be reused across multiple commands.
 
 ```rust
-use umari_core::prelude::*;
+use umari::prelude::*;
 
 pub struct WidgetExists;
 
@@ -251,7 +251,7 @@ Commands are the **only way to write events** to the event store. A command:
 4. Emits zero or more events (`fn emit`)
 
 ```rust
-use umari_core::prelude::*;
+use umari::prelude::*;
 
 #[derive(CommandInput, Validate, JsonSchema, Serialize, Deserialize)]
 pub struct Input {
@@ -366,7 +366,7 @@ A projector:
 - Implements `handle()` to process each event and update the database
 
 ```rust
-use umari_core::prelude::*;
+use umari::prelude::*;
 
 #[derive(EventSet)]
 enum Query {
@@ -453,7 +453,7 @@ Policies react to events and **return commands** to be executed by the runtime. 
 The runtime handles policy idempotency automatically: it hashes the returned command name and its index within the response for each event, and skips re-execution if that combination has already been processed.
 
 ```rust
-use umari_core::prelude::*;
+use umari::prelude::*;
 
 #[derive(EventSet)]
 enum Query {
@@ -546,7 +546,7 @@ Effects react to events and perform **side effects** directly. Unlike policies, 
 Effects may use SQLite for internal state, but that state is **not** the idempotency mechanism. The SQLite database can be wiped and the effect will reprocess all events correctly. Idempotency is guaranteed entirely through the event store via commands — effects use a **schedule → side effect → record** pattern.
 
 ```rust
-use umari_core::prelude::*;
+use umari::prelude::*;
 
 #[derive(EventSet)]
 enum Query {
@@ -734,7 +734,7 @@ Each command/projector/policy/effect crate adds the shared library as a dependen
 ```toml
 [dependencies]
 my-project.workspace = true
-umari-core.workspace = true
+umari.workspace = true
 validator.workspace = true
 ```
 

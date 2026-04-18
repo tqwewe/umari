@@ -67,8 +67,8 @@ impl DeriveEventSet {
                         .collect();
 
                     quote! {
-                        ::umari_core::event::EventDomainId {
-                            event_type: <#ty as ::umari_core::event::Event>::EVENT_TYPE,
+                        ::umari::event::EventDomainId {
+                            event_type: <#ty as ::umari::event::Event>::EVENT_TYPE,
                             dynamic_fields: &[ #(#dynamic,)* ],
                             static_fields: &[ #(#static_pairs,)* ],
                         }
@@ -76,9 +76,9 @@ impl DeriveEventSet {
                 }
                 None => {
                     quote! {
-                        ::umari_core::event::EventDomainId {
-                            event_type: <#ty as ::umari_core::event::Event>::EVENT_TYPE,
-                            dynamic_fields: <#ty as ::umari_core::event::Event>::DOMAIN_ID_FIELDS,
+                        ::umari::event::EventDomainId {
+                            event_type: <#ty as ::umari::event::Event>::EVENT_TYPE,
+                            dynamic_fields: <#ty as ::umari::event::Event>::DOMAIN_ID_FIELDS,
                             static_fields: &[],
                         }
                     }
@@ -92,11 +92,11 @@ impl DeriveEventSet {
                  ..
              }| {
                 quote! {
-                    <#ty as ::umari_core::event::Event>::EVENT_TYPE => {
+                    <#ty as ::umari::event::Event>::EVENT_TYPE => {
                         ::std::option::Option::Some(
-                            ::umari_core::__private::serde_json::from_value::<#ty>(data)
+                            ::umari::__private::serde_json::from_value::<#ty>(data)
                                 .map(#ident::#variant_ident)
-                                .map_err(::umari_core::error::SerializationError::from)
+                                .map_err(::umari::error::SerializationError::from)
                         )
                     }
                 }
@@ -111,7 +111,7 @@ impl DeriveEventSet {
              }| {
                 quote! {
                     #[automatically_derived]
-                    impl ::umari_core::event::AsEvent<#ty> for #ident {
+                    impl ::umari::event::AsEvent<#ty> for #ident {
                         fn as_event(&self) -> ::std::option::Option<&#ty> {
                             match self {
                                 #ident::#variant_ident(ev) => ::std::option::Option::Some(ev),
@@ -121,7 +121,7 @@ impl DeriveEventSet {
                     }
 
                     #[automatically_derived]
-                    impl ::umari_core::event::IntoEvent<#ty> for #ident {
+                    impl ::umari::event::IntoEvent<#ty> for #ident {
                         fn into_event(self) -> ::std::option::Option<#ty> {
                             match self {
                                 #ident::#variant_ident(ev) => ::std::option::Option::Some(ev),
@@ -166,7 +166,7 @@ impl DeriveEventSet {
                                 true
                             }
 
-                            if !contains_str(<#ty as ::umari_core::event::Event>::DOMAIN_ID_FIELDS, #field_str) {
+                            if !contains_str(<#ty as ::umari::event::Event>::DOMAIN_ID_FIELDS, #field_str) {
                                 panic!(concat!("Domain ID '", #field_str, "' not found in ", stringify!(#ty), "::DOMAIN_ID_FIELDS"));
                             }
                         };
@@ -181,18 +181,18 @@ impl DeriveEventSet {
 
         quote! {
             #[automatically_derived]
-            impl ::umari_core::event::EventSet for #ident {
+            impl ::umari::event::EventSet for #ident {
                 type Item = Self;
 
                 fn event_types() -> ::std::vec::Vec<&'static str> {
-                    ::std::vec![ #( <#event_types as ::umari_core::event::Event>::EVENT_TYPE, )* ]
+                    ::std::vec![ #( <#event_types as ::umari::event::Event>::EVENT_TYPE, )* ]
                 }
 
-                fn event_domain_ids() -> ::std::vec::Vec<::umari_core::event::EventDomainId> {
+                fn event_domain_ids() -> ::std::vec::Vec<::umari::event::EventDomainId> {
                     ::std::vec![ #( #event_domain_ids , )* ]
                 }
 
-                fn from_event(event_type: &str, data: ::umari_core::__private::serde_json::Value) -> ::std::option::Option<::std::result::Result<Self::Item, ::umari_core::error::SerializationError>> {
+                fn from_event(event_type: &str, data: ::umari::__private::serde_json::Value) -> ::std::option::Option<::std::result::Result<Self::Item, ::umari::error::SerializationError>> {
                     match event_type {
                         #( #match_arms )*
                         _ => ::std::option::Option::None

@@ -3,12 +3,12 @@ resolver = "3"
 members = [
   "crates/api",
   "crates/cli",
-  "crates/core",
   "crates/macros",
   "crates/runtime",
   "crates/server",
   "crates/types",
   "crates/ui",
+  "crates/umari",
 ]
 
 [workspace.package]
@@ -16,8 +16,8 @@ license = "Apache-2.0"
 
 [workspace.dependencies]
 umari-api = { path = "crates/api" }
-umari-core = { path = "crates/core" }
-umari-macros = { path = "crates/macros" }
+umari-core = { path = "crates/umari", package = "umari" }
+umari-macros = { path = "crates/macros", version = "0.0.2" }
 umari-runtime = { path = "crates/runtime" }
 umari-types = { path = "crates/types" }
 umari-ui = { path = "crates/ui" }

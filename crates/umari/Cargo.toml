@@ -1,6 +1,8 @@
 [package]
-name = "umari-core"
+name = "umari"
+version = "0.0.1"
 edition = "2024"
+description = "SDK for building event-sourced WASM components for the Umari runtime"
 license.workspace = true
 
 [dependencies]

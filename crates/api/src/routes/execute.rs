@@ -3,7 +3,7 @@ use axum::{
     extract::{Path, State},
     http::HeaderMap,
 };
-use umari_core::prelude::CommandContext;
+use umari_core::command::CommandContext;
 use umari_runtime::command::actor::{CommandPayload, Execute};
 use umari_types::{EmittedEventInfo, ErrorCode, ExecuteResponse};
 use uuid::Uuid;

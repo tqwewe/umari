@@ -7,7 +7,7 @@ use crate::{
 };
 
 wit_bindgen::generate!({
-    path: "../../wit/projector",
+    path: "wit/projector",
     additional_derives: [PartialEq, Clone, serde::Serialize, serde::Deserialize],
     pub_export_macro: true,
     with: {

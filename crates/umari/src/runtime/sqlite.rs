@@ -5,7 +5,7 @@ pub use self::umari::sqlite::statement::Stmt;
 pub use self::umari::sqlite::types::*;
 
 wit_bindgen::generate!({
-    path: "../../wit/sqlite",
+    path: "wit/sqlite",
     world: "sqlite",
     additional_derives: [PartialEq, Clone, serde::Serialize, serde::Deserialize],
     generate_unused_types: true,

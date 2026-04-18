@@ -7,7 +7,7 @@ use crate::{
 };
 
 wit_bindgen::generate!({
-    path: "../../wit/effect",
+    path: "wit/effect",
     pub_export_macro: true,
     with: {
         "umari:command/executor@0.1.0": crate::runtime::command,

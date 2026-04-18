@@ -18,7 +18,7 @@ impl DeriveCommandInput {
 
         let domain_ids_inserts = domain_ids.into_iter().map(|(ident, domain_id)| {
             quote! {
-                if let ::umari_core::domain_id::DomainIdValue::Value(domain_id) = ::std::convert::Into::into(::std::clone::Clone::clone(&self.#ident)) {
+                if let ::umari::domain_id::DomainIdValue::Value(domain_id) = ::std::convert::Into::into(::std::clone::Clone::clone(&self.#ident)) {
                     bindings
                         .entry(#domain_id)
                         .or_insert_with(::std::vec::Vec::new)
@@ -29,9 +29,9 @@ impl DeriveCommandInput {
 
         quote! {
             #[automatically_derived]
-            impl ::umari_core::command::CommandInput for #ident {
-                fn domain_id_bindings(&self) -> ::umari_core::domain_id::DomainIdBindings {
-                    let mut bindings: ::umari_core::domain_id::DomainIdBindings = ::std::collections::HashMap::new();
+            impl ::umari::command::CommandInput for #ident {
+                fn domain_id_bindings(&self) -> ::umari::domain_id::DomainIdBindings {
+                    let mut bindings: ::umari::domain_id::DomainIdBindings = ::std::collections::HashMap::new();
                     #( #domain_ids_inserts )*
                     bindings
                 }

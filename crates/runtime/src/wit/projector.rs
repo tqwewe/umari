@@ -12,7 +12,7 @@ use crate::{
 pub use self::exports::umari::projector::projector::Error;
 
 bindgen!({
-    path: "../../wit/projector",
+    path: "../umari/wit/projector",
     imports: { default: tracing | trappable },
     exports: { default: async },
     with: {

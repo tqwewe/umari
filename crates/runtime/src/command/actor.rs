@@ -12,9 +12,9 @@ use tracing::{debug, error, info, warn};
 use umadb_client::AsyncUmaDbClient;
 use umadb_dcb::{DcbAppendCondition, DcbEvent, DcbEventStoreAsync, DcbQuery};
 use umari_core::{
+    command::CommandContext,
     emit::encode_with_envelope,
     event::{EventEnvelope, StoredEventData},
-    prelude::CommandContext,
 };
 use uuid::Uuid;
 use wasmtime::{

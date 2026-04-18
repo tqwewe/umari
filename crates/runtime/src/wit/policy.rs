@@ -1,7 +1,7 @@
 use std::mem;
 
 use kameo::actor::ActorRef;
-use umari_core::prelude::CommandContext;
+use umari_core::command::CommandContext;
 use uuid::{Uuid, uuid};
 use wasmtime::{
     Store,
@@ -21,7 +21,7 @@ pub use self::exports::umari::policy::policy::Error;
 const POLICY_IDEMPOTENCY_NAMESPACE: Uuid = uuid!("74ef686a-96c5-589f-b7cb-a258ea5517b7");
 
 bindgen!({
-    path: "../../wit/policy",
+    path: "../umari/wit/policy",
     imports: { default: tracing | trappable },
     exports: { default: async },
     with: {

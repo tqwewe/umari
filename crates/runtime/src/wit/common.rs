@@ -6,7 +6,7 @@ pub use self::umari::common::{types::*, *};
 use super::EventHandlerComponentState;
 
 bindgen!({
-    path: "../../wit/common",
+    path: "../umari/wit/common",
     world: "common",
     imports: { default: tracing | trappable },
     exports: { default: async },

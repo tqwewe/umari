@@ -1,5 +1,5 @@
 use kameo::error::SendError;
-use umari_core::prelude::CommandContext;
+use umari_core::command::CommandContext;
 use uuid::Uuid;
 use wasmtime::{component::bindgen, error::Context};
 
@@ -11,7 +11,7 @@ use crate::{
 };
 
 bindgen!({
-    path: "../../wit/command",
+    path: "../umari/wit/command",
     world: "command",
     imports: {
         "umari:command/executor.execute": async | trappable,

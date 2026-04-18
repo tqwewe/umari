@@ -17,7 +17,7 @@ Umari provides a runtime and SDK for event-sourced applications. Business logic 
 
 | Crate | Description |
 |---|---|
-| `umari-core` | SDK traits and types for writing WASM modules |
+| `umari` | SDK traits and types for writing WASM modules |
 | `umari-macros` | Derive macros (`Event`, `EventSet`, `CommandInput`) |
 | `umari-runtime` | Wasmtime-based module runner |
 | `umari-api` | HTTP API for managing and executing modules |

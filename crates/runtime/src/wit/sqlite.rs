@@ -12,7 +12,7 @@ pub use self::umari::sqlite::{types::*, *};
 use super::EventHandlerComponentState;
 
 bindgen!({
-    path: "../../wit/sqlite",
+    path: "../umari/wit/sqlite",
     world: "sqlite",
     imports: { default: tracing | trappable },
     exports: { default: async },

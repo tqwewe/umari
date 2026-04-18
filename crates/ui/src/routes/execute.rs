@@ -4,7 +4,7 @@ use axum::{
 };
 use maud::{Markup, html};
 use serde::Deserialize;
-use umari_core::prelude::CommandContext;
+use umari_core::command::CommandContext;
 use umari_runtime::command::actor::{CommandPayload, Execute};
 
 use crate::{UiState, error::HtmlError};

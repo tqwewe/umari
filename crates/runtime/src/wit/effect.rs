@@ -12,7 +12,7 @@ use crate::{
 pub use self::exports::umari::effect::effect::Error;
 
 bindgen!({
-    path: "../../wit/effect",
+    path: "../umari/wit/effect",
     imports: {
         default: tracing | trappable,
     },
