@@ -41,7 +41,7 @@ my-project/
 ├── projectors/
 │   └── widgets/
 ├── policies/
-│   └── on-widget-created/
+│   └── record-warranty-sales/
 ├── effects/
 │   └── notify-external-service/
 └── Cargo.toml
@@ -156,7 +156,7 @@ pub enum WidgetStateEvents {
 **Folds can be composed as tuples** in commands:
 
 ```rust
-type State = (WidgetState, AllWidgetNames);
+type State = (WidgetState, WidgetNamesState);
 ```
 
 This causes the runtime to fetch and replay events for all folds together and pass the combined state to the command.
@@ -203,7 +203,7 @@ Rules can be **parameterized** to check against specific values:
 pub struct WidgetNameIsUnique<'a>(pub &'a str);
 
 impl<'a> Rule for WidgetNameIsUnique<'a> {
-    type State = AllWidgetNames;
+    type State = WidgetNamesState;
 
     fn check(self, state: Self::State) -> anyhow::Result<()> {
         if state.names.values().any(|n| n == self.0) {
@@ -308,9 +308,9 @@ pub struct ConnectShop;
 
 impl Command for ConnectShop {
     type Input = Input;
-    type State = (ShopExists,);
+    type State = (ShopExistsState,);
 
-    fn emit((ShopExists(exists),): Self::State, input: Self::Input) -> Emit {
+    fn emit((ShopExistsState(exists),): Self::State, input: Self::Input) -> Emit {
         if !exists {
             emit![ShopConnected { /* ... */ }]
         } else {
@@ -462,13 +462,13 @@ enum Query {
     OrderPlaced(OrderPlaced),
 }
 
-struct OnOrderPlaced {
+struct RecordWarrantySales {
     insert_widget: Statement,
     delete_widget: Statement,
     get_widget: Statement,
 }
 
-impl Policy for OnOrderPlaced {
+impl Policy for RecordWarrantySales {
     type Query = Query;
 
     fn init() -> Result<Self, SqliteError> {
@@ -480,7 +480,7 @@ impl Policy for OnOrderPlaced {
             (),
         )?;
 
-        Ok(OnOrderPlaced {
+        Ok(RecordWarrantySales {
             insert_widget: prepare("INSERT INTO widgets (widget_id, duration_months) VALUES (?1, ?2)")?,
             delete_widget: prepare("DELETE FROM widgets WHERE widget_id = ?1")?,
             get_widget: prepare("SELECT duration_months FROM widgets WHERE widget_id = ?1")?,
@@ -529,7 +529,7 @@ impl Policy for OnOrderPlaced {
     }
 }
 
-export_policy!(OnOrderPlaced);
+export_policy!(RecordWarrantySales);
 ```
 
 Key characteristics:
@@ -719,9 +719,9 @@ my-project/
 │   │   └── widget.rs         # WidgetCreated, WidgetArchived, ...
 │   ├── folds/
 │   │   ├── mod.rs
-│   │   ├── shop_exists.rs
+│   │   ├── shop_exists_state.rs
 │   │   ├── widget_state.rs
-│   │   └── all_widget_names.rs
+│   │   └── widget_names_state.rs
 │   └── rules/
 │       ├── mod.rs
 │       ├── shop_exists.rs
@@ -740,6 +740,24 @@ validator.workspace = true
 
 ---
 
+## Naming Conventions
+
+All module crates use **kebab-case** names (e.g., `create-widget`, `record-warranty-sales`, `register-webhooks`). The corresponding Rust structs inside each crate use **PascalCase** (e.g., `CreateWidget`, `RecordWarrantySales`, `RegisterWebhooks`).
+
+| Type | Crate name | Rust struct | Examples |
+|------|------------|-------------|---------|
+| Events | — (defined in shared lib) | PascalCase past-tense verb phrase; `#[event_type]` uses `object.verb` dot notation | struct `WidgetCreated` with `#[event_type("widget.created")]`, struct `ShopConnected` with `#[event_type("shop.connected")]` |
+| Commands | kebab-case imperative verb phrase | PascalCase imperative verb phrase | crate `create-widget`, struct `CreateWidget` |
+| Projectors | kebab-case plural noun | PascalCase plural noun | crate `widgets`, struct `Widgets` |
+| Policies | kebab-case descriptive verb phrase | PascalCase descriptive verb phrase | crate `record-warranty-sales`, struct `RecordWarrantySales` |
+| Effects | kebab-case verb phrase | PascalCase verb phrase | crate `register-webhooks`, struct `RegisterWebhooks` |
+| Folds | — (defined in shared lib) | PascalCase noun phrase with `State` suffix | `WidgetState`, `ShopExistsState`, `WidgetNamesState` |
+| Rules | — (defined in shared lib) | PascalCase present-tense assertion, no suffix | `ShopExists`, `WidgetIsNotArchived`, `WidgetNameIsUnique` |
+| Command input struct | — | Always `Input`, local to the command crate | `Input` |
+| EventSet query enum | — | Always `Query` | `Query` |
+
+---
+
 ## Complete Data Flow
 
 ```
@@ -747,7 +765,7 @@ External Trigger (HTTP, webhook, scheduled job)
     │
     ▼
 Command
-  ├── validates input (garde)
+  ├── validates input (validator)
   ├── fetches events from store (DCB — by domain ID tags)
   ├── applies events to folds → state
   ├── checks rules against fold state
