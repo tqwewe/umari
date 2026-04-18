@@ -1,3 +1,15 @@
+[config]
+default_to_workspace = false
+
+[tasks.default]
+clear = true
+workspace = false
+dependencies = ["update-wit-all", "build-server"]
+
+[tasks.build-server]
+command = "cargo"
+args = ["build", "--package", "umari-server"]
+
 [tasks.format]
 install_crate = "rustfmt"
 command = "cargo"
@@ -85,7 +97,7 @@ extend = "clean-wit-deps"
 env = { WIT = "projector" }
 
 [tasks.clean-wit-deps-sqlite]
-extend = "update-wit"
+extend = "clean-wit-deps"
 env = { WIT = "sqlite" }
 
 [tasks.clean-wit-deps-all]

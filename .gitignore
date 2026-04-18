@@ -3,9 +3,6 @@
 /umari-data
 /umari-data-*
 
-# Wit
-/wit/**/deps/
-
 # Devenv
 .devenv*
 devenv.nix

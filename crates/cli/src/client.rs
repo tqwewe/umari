@@ -177,7 +177,8 @@ impl ApiClient {
             .into_body()
             .read_to_string()
             .context("failed to read response")?;
-        let upload_response = serde_json::from_str(&body).context("failed to parse upload response")?;
+        let upload_response =
+            serde_json::from_str(&body).context("failed to parse upload response")?;
         Ok((idempotent, upload_response))
     }
 }

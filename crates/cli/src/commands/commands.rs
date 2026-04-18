@@ -15,7 +15,8 @@ pub fn upload(
     file: PathBuf,
     activate: bool,
 ) -> Result<()> {
-    let (idempotent, response) = client.upload_wasm("commands", &name, &version, &file, activate)?;
+    let (idempotent, response) =
+        client.upload_wasm("commands", &name, &version, &file, activate)?;
 
     if idempotent {
         println!(
