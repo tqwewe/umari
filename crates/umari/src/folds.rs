@@ -13,40 +13,6 @@ pub trait Fold: Default {
     fn apply(&mut self, event: &<Self::Events as EventSet>::Item, meta: EventMeta);
 }
 
-macro_rules! impl_tuple_folds {
-    ($( $t:ident:$n:tt ),*) => {
-        impl<$($t,)*> Fold for ($($t,)*)
-        where
-            $(
-                $t: Fold,
-            )*
-        {
-            type Events = ($($t::Events,)*);
-
-            fn apply(&mut self, event: &<Self::Events as EventSet>::Item, meta: EventMeta) {
-                $(
-                    if let Some(ref e) = event.$n {
-                        self.$n.apply(e, meta);
-                    }
-                )*
-            }
-        }
-    };
-}
-
-impl_tuple_folds!(A:0);
-impl_tuple_folds!(A:0, B:1);
-impl_tuple_folds!(A:0, B:1, C:2);
-impl_tuple_folds!(A:0, B:1, C:2, D:3);
-impl_tuple_folds!(A:0, B:1, C:2, D:3, E:4);
-impl_tuple_folds!(A:0, B:1, C:2, D:3, E:4, F:5);
-impl_tuple_folds!(A:0, B:1, C:2, D:3, E:4, F:5, G:6);
-impl_tuple_folds!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7);
-impl_tuple_folds!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8);
-impl_tuple_folds!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9);
-impl_tuple_folds!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10);
-impl_tuple_folds!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10, L:11);
-
 pub trait FoldSet: Default {
     fn event_domain_ids() -> Vec<EventDomainId>;
 
@@ -58,6 +24,28 @@ pub trait FoldSet: Default {
         bindings: &DomainIdBindings,
         meta: EventMeta,
     ) -> Result<(), SerializationError>;
+}
+
+impl<F: Fold> FoldSet for F {
+    fn event_domain_ids() -> Vec<EventDomainId> {
+        F::Events::event_domain_ids()
+    }
+
+    fn apply(
+        &mut self,
+        event_type: &str,
+        data: Value,
+        tags: &[String],
+        bindings: &DomainIdBindings,
+        meta: EventMeta,
+    ) -> Result<(), SerializationError> {
+        if matches_fold_query::<F>(event_type, tags, bindings) {
+            if let Some(event) = F::Events::from_event(event_type, data).transpose()? {
+                Fold::apply(self, &event, meta);
+            }
+        }
+        Ok(())
+    }
 }
 
 impl FoldSet for () {
