@@ -1,6 +1,43 @@
+use std::fmt;
+
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-pub use crate::runtime::sqlite::SqliteError;
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Error)]
+pub enum SqliteError {
+    #[error("{0}")]
+    ConstraintViolation(ConstraintViolation),
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Error)]
+#[error("{kind}: {message}")]
+pub struct ConstraintViolation {
+    pub kind: ConstraintViolationKind,
+    pub message: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ConstraintViolationKind {
+    Unique,
+    PrimaryKey,
+    NotNull,
+    ForeignKey,
+    Check,
+    Other,
+}
+
+impl fmt::Display for ConstraintViolationKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Unique => f.write_str("unique"),
+            Self::PrimaryKey => f.write_str("primary-key"),
+            Self::NotNull => f.write_str("not-null"),
+            Self::ForeignKey => f.write_str("foreign-key"),
+            Self::Check => f.write_str("check"),
+            Self::Other => f.write_str("other"),
+        }
+    }
+}
 
 #[derive(Clone, Debug, Error)]
 #[error("command rejected: {0}")]

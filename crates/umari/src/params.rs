@@ -1,6 +1,6 @@
 use uuid::Uuid;
 
-use crate::runtime::sqlite::Value;
+use crate::sqlite::Value;
 
 pub trait Params {
     fn into_params(self) -> Vec<Value>;

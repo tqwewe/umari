@@ -33,11 +33,6 @@ macro_rules! export_command {
 
         type ExportedCommand = $crate::runtime::command::CommandExport<$ty>;
         $crate::runtime::command::export!(ExportedCommand with_types_in $crate::runtime::command);
-
-        // $crate::runtime::command::export!({
-        //     ty: $crate::runtime::command::CommandExport<$ty>,
-        //     with_types_in: $crate::runtime::command,
-        // });
     };
 }
 

@@ -91,6 +91,7 @@ pub mod params;
 pub mod policy;
 pub mod projector;
 pub mod rules;
+#[cfg(target_arch = "wasm32")]
 pub mod runtime;
 pub mod sqlite;
 
@@ -106,9 +107,7 @@ pub mod prelude {
     pub use crate::projector::*;
     pub use crate::rules::*;
     pub use crate::sqlite::*;
-    pub use crate::{
-        emit, export_command, export_effect, export_policy, export_projector, params, reject, rules,
-    };
+    pub use crate::{emit, export_command, export_effect, export_policy, export_projector, params, reject, rules};
     pub use umari_macros::{CommandInput, Event, EventSet};
 }
 

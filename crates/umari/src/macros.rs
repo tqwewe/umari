@@ -56,6 +56,34 @@ macro_rules! rules {
     };
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+#[macro_export]
+macro_rules! export_command {
+    ($ty:path) => {
+        impl $crate::command::CommandName for $ty {
+            const COMMAND_NAME: &'static str = env!("CARGO_PKG_NAME");
+        }
+    };
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[macro_export]
+macro_rules! export_policy {
+    ($ty:path) => {};
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[macro_export]
+macro_rules! export_projector {
+    ($ty:path) => {};
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[macro_export]
+macro_rules! export_effect {
+    ($ty:path) => {};
+}
+
 #[macro_export]
 macro_rules! reject {
     ($s:literal, $($t:tt)*) => {{

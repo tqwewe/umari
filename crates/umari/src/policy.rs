@@ -1,10 +1,16 @@
+use serde::{Deserialize, Serialize};
 use umadb_dcb::{DcbQuery, DcbQueryItem};
 
-pub use crate::runtime::policy::CommandSubmission;
 use crate::{
     error::SqliteError,
     event::{EventSet, StoredEvent},
 };
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CommandSubmission {
+    pub command_type: String,
+    pub input: String,
+}
 
 pub trait Policy: Sized {
     type Query: EventSet;

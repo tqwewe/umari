@@ -1,10 +1,66 @@
-use std::ops;
-
-use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
-pub use crate::runtime::sqlite::Value;
 use crate::{error::SqliteError, params::Params};
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum Value {
+    Null,
+    Integer(i64),
+    Real(f64),
+    Text(String),
+    Blob(Vec<u8>),
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Column {
+    pub name: String,
+    pub value: Value,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Row {
+    pub columns: Vec<Column>,
+}
+
+impl Row {
+    /// Get a column value by name or index, converting it to the expected type.
+    ///
+    /// Traps if the column does not exist or the value is not of the expected type.
+    pub fn get<I: ColumnIndex, T: FromValue>(&self, column: I) -> T {
+        T::from_value(column.get_value(&self.columns).clone())
+    }
+
+    /// Unpack the row into a tuple, with each element corresponding to a column by position.
+    ///
+    /// Traps if the row has fewer columns than the tuple, or any value is not of the expected type.
+    pub fn tuple<T: FromRow>(&self) -> T {
+        T::from_row(self)
+    }
+}
+
+/// Allows indexing into a [`Row`] by column name or position.
+pub trait ColumnIndex {
+    fn get_value<'a>(&self, columns: &'a [Column]) -> &'a Value;
+}
+
+impl ColumnIndex for &str {
+    fn get_value<'a>(&self, columns: &'a [Column]) -> &'a Value {
+        columns
+            .iter()
+            .find(|col| col.name == *self)
+            .map(|col| &col.value)
+            .unwrap_or_else(|| panic!("column '{self}' not found"))
+    }
+}
+
+impl ColumnIndex for usize {
+    fn get_value<'a>(&self, columns: &'a [Column]) -> &'a Value {
+        &columns
+            .get(*self)
+            .unwrap_or_else(|| panic!("column index {self} out of bounds"))
+            .value
+    }
+}
 
 /// Extracts a typed value from a SQLite [`Value`].
 ///
@@ -82,92 +138,32 @@ impl_from_row!(0 => A, 1 => B, 2 => C, 3 => D, 4 => E, 5 => F);
 impl_from_row!(0 => A, 1 => B, 2 => C, 3 => D, 4 => E, 5 => F, 6 => G);
 impl_from_row!(0 => A, 1 => B, 2 => C, 3 => D, 4 => E, 5 => F, 6 => G, 7 => H);
 
-/// Allows indexing into a [`Row`] by column name or position.
-pub trait ColumnIndex {
-    fn get_value<'a>(&self, columns: &'a IndexMap<String, Value>) -> &'a Value;
-}
-
-impl ColumnIndex for &str {
-    fn get_value<'a>(&self, columns: &'a IndexMap<String, Value>) -> &'a Value {
-        columns
-            .get(*self)
-            .unwrap_or_else(|| panic!("column '{self}' not found"))
-    }
-}
-
-impl ColumnIndex for usize {
-    fn get_value<'a>(&self, columns: &'a IndexMap<String, Value>) -> &'a Value {
-        columns
-            .get_index(*self)
-            .unwrap_or_else(|| panic!("column index {self} out of bounds"))
-            .1
-    }
-}
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct Row {
-    pub columns: IndexMap<String, Value>,
-}
-
-impl Row {
-    /// Get a column value by name or index, converting it to the expected type.
-    ///
-    /// Traps if the column does not exist or the value is not of the expected type.
-    pub fn get<I: ColumnIndex, T: FromValue>(&self, column: I) -> T {
-        T::from_value(column.get_value(&self.columns).clone())
-    }
-
-    /// Unpack the row into a tuple, with each element corresponding to a column by position.
-    ///
-    /// Traps if the row has fewer columns than the tuple, or any value is not of the expected type.
-    pub fn tuple<T: FromRow>(&self) -> T {
-        T::from_row(self)
-    }
-}
-
-impl ops::Deref for Row {
-    type Target = IndexMap<String, Value>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.columns
-    }
-}
-
-impl ops::DerefMut for Row {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.columns
-    }
-}
-
-impl From<crate::runtime::sqlite::Row> for Row {
-    fn from(row: crate::runtime::sqlite::Row) -> Self {
-        Row {
-            columns: row
-                .columns
-                .into_iter()
-                .map(|column| (column.name, column.value))
-                .collect(),
-        }
-    }
-}
-
 #[derive(Debug)]
 pub struct Statement {
+    #[cfg(target_arch = "wasm32")]
     inner: crate::runtime::sqlite::Stmt,
+    #[cfg(not(target_arch = "wasm32"))]
+    _priv: (),
 }
 
 impl Statement {
     /// Execute the prepared statement.
     ///
     /// On success, returns the number of rows that were changed or inserted or deleted.
-    pub fn execute<P: Params>(&self, params: P) -> Result<usize, SqliteError> {
-        Ok(self.inner.execute(&params.into_params())? as usize)
+    pub fn execute<P: Params>(&self, _params: P) -> Result<usize, SqliteError> {
+        #[cfg(not(target_arch = "wasm32"))]
+        unimplemented!("sqlite is only available on wasm32 targets");
+        #[cfg(target_arch = "wasm32")]
+        Ok(self.inner.execute(&_params.into_params())? as usize)
     }
 
     /// Execute the prepared statement, returning the resulting rows.
-    pub fn query<P: Params>(&self, params: P) -> Vec<Row> {
+    pub fn query<P: Params>(&self, _params: P) -> Vec<Row> {
+        #[cfg(not(target_arch = "wasm32"))]
+        unimplemented!("sqlite is only available on wasm32 targets");
+        #[cfg(target_arch = "wasm32")]
         self.inner
-            .query(&params.into_params())
+            .query(&_params.into_params())
             .into_iter()
             .map(|row| row.into())
             .collect()
@@ -176,8 +172,11 @@ impl Statement {
     /// Convenience method to execute a query that is expected to return exactly one row.
     ///
     /// Traps if the query returns no rows or more than one row.
-    pub fn query_one<P: Params>(&self, params: P) -> Row {
-        self.inner.query_one(&params.into_params()).into()
+    pub fn query_one<P: Params>(&self, _params: P) -> Row {
+        #[cfg(not(target_arch = "wasm32"))]
+        unimplemented!("sqlite is only available on wasm32 targets");
+        #[cfg(target_arch = "wasm32")]
+        self.inner.query_one(&_params.into_params()).into()
     }
 
     /// Convenience method to execute a query that is expected to return a
@@ -185,15 +184,21 @@ impl Statement {
     ///
     /// If the query returns more than one row, all rows except the first are
     /// ignored.
-    pub fn query_row<P: Params>(&self, params: P) -> Option<Row> {
-        self.inner.query_row(&params.into_params()).map(Row::from)
+    pub fn query_row<P: Params>(&self, _params: P) -> Option<Row> {
+        #[cfg(not(target_arch = "wasm32"))]
+        unimplemented!("sqlite is only available on wasm32 targets");
+        #[cfg(target_arch = "wasm32")]
+        self.inner.query_row(&_params.into_params()).map(Row::from)
     }
 }
 
 /// Prepare a SQL statement for execution.
-pub fn prepare(sql: &str) -> Statement {
+pub fn prepare(_sql: &str) -> Statement {
+    #[cfg(not(target_arch = "wasm32"))]
+    unimplemented!("sqlite is only available on wasm32 targets");
+    #[cfg(target_arch = "wasm32")]
     Statement {
-        inner: crate::runtime::sqlite::Stmt::new(sql),
+        inner: crate::runtime::sqlite::Stmt::new(_sql),
     }
 }
 
@@ -201,25 +206,37 @@ pub fn prepare(sql: &str) -> Statement {
 ///
 /// On success, returns the number of rows that were changed or inserted or
 /// deleted.
-pub fn execute<P: Params>(sql: &str, params: P) -> Result<usize, SqliteError> {
-    Ok(crate::runtime::sqlite::execute(sql, &params.into_params())? as usize)
+pub fn execute<P: Params>(_sql: &str, _params: P) -> Result<usize, SqliteError> {
+    #[cfg(not(target_arch = "wasm32"))]
+    unimplemented!("sqlite is only available on wasm32 targets");
+    #[cfg(target_arch = "wasm32")]
+    Ok(crate::runtime::sqlite::execute(_sql, &_params.into_params())? as usize)
 }
 
 /// Convenience method to run multiple SQL statements.
-pub fn execute_batch(sql: &str) -> Result<(), SqliteError> {
-    crate::runtime::sqlite::execute_batch(sql)
+pub fn execute_batch(_sql: &str) -> Result<(), SqliteError> {
+    #[cfg(not(target_arch = "wasm32"))]
+    unimplemented!("sqlite is only available on wasm32 targets");
+    #[cfg(target_arch = "wasm32")]
+    crate::runtime::sqlite::execute_batch(_sql)
 }
 
 /// Get the SQLite rowid of the most recent successful INSERT.
 pub fn last_insert_rowid() -> Option<i64> {
+    #[cfg(not(target_arch = "wasm32"))]
+    unimplemented!("sqlite is only available on wasm32 targets");
+    #[cfg(target_arch = "wasm32")]
     crate::runtime::sqlite::last_insert_rowid()
 }
 
 /// Convenience method to execute a query that is expected to return exactly one row.
 ///
 /// Traps if the query returns no rows or more than one row.
-pub fn query_one<P: Params>(sql: &str, params: P) -> Row {
-    crate::runtime::sqlite::query_one(sql, &params.into_params()).into()
+pub fn query_one<P: Params>(_sql: &str, _params: P) -> Row {
+    #[cfg(not(target_arch = "wasm32"))]
+    unimplemented!("sqlite is only available on wasm32 targets");
+    #[cfg(target_arch = "wasm32")]
+    crate::runtime::sqlite::query_one(_sql, &_params.into_params()).into()
 }
 
 /// Convenience method to execute a query that is expected to return a
@@ -227,6 +244,9 @@ pub fn query_one<P: Params>(sql: &str, params: P) -> Row {
 ///
 /// If the query returns more than one row, all rows except the first are
 /// ignored.
-pub fn query_row<P: Params>(sql: &str, params: P) -> Option<Row> {
-    crate::runtime::sqlite::query_row(sql, &params.into_params()).map(Row::from)
+pub fn query_row<P: Params>(_sql: &str, _params: P) -> Option<Row> {
+    #[cfg(not(target_arch = "wasm32"))]
+    unimplemented!("sqlite is only available on wasm32 targets");
+    #[cfg(target_arch = "wasm32")]
+    crate::runtime::sqlite::query_row(_sql, &_params.into_params()).map(Row::from)
 }

@@ -268,25 +268,25 @@ impl From<SqliteError> for umari_core::error::SqliteError {
         match err {
             SqliteError::ConstraintViolation(v) => {
                 umari_core::error::SqliteError::ConstraintViolation(
-                    umari_core::runtime::sqlite::ConstraintViolation {
+                    umari_core::error::ConstraintViolation {
                         kind: match v.kind {
                             ConstraintViolationKind::Unique => {
-                                umari_core::runtime::sqlite::ConstraintViolationKind::Unique
+                                umari_core::error::ConstraintViolationKind::Unique
                             }
                             ConstraintViolationKind::PrimaryKey => {
-                                umari_core::runtime::sqlite::ConstraintViolationKind::PrimaryKey
+                                umari_core::error::ConstraintViolationKind::PrimaryKey
                             }
                             ConstraintViolationKind::NotNull => {
-                                umari_core::runtime::sqlite::ConstraintViolationKind::NotNull
+                                umari_core::error::ConstraintViolationKind::NotNull
                             }
                             ConstraintViolationKind::ForeignKey => {
-                                umari_core::runtime::sqlite::ConstraintViolationKind::ForeignKey
+                                umari_core::error::ConstraintViolationKind::ForeignKey
                             }
                             ConstraintViolationKind::Check => {
-                                umari_core::runtime::sqlite::ConstraintViolationKind::Check
+                                umari_core::error::ConstraintViolationKind::Check
                             }
                             ConstraintViolationKind::Other => {
-                                umari_core::runtime::sqlite::ConstraintViolationKind::Other
+                                umari_core::error::ConstraintViolationKind::Other
                             }
                         },
                         message: v.message,

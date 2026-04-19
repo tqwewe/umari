@@ -1,8 +1,8 @@
 use std::{cell::RefCell, marker::PhantomData};
 
-pub use self::exports::umari::policy::policy::{CommandSubmission, Guest, GuestPolicy};
+pub use self::exports::umari::policy::policy::{Guest, GuestPolicy};
 use crate::{
-    policy::Policy,
+    policy::{CommandSubmission, Policy},
     runtime::common::{self, EventQuery, StoredEvent},
 };
 
@@ -15,6 +15,7 @@ wit_bindgen::generate!({
         "umari:sqlite/types@0.1.0": crate::runtime::sqlite,
         "umari:sqlite/connection@0.1.0": crate::runtime::sqlite,
         "umari:sqlite/statement@0.1.0": crate::runtime::sqlite,
+        "umari:policy/policy@0.1.0/command-submission": crate::policy::CommandSubmission,
     },
 });
 
@@ -23,11 +24,6 @@ macro_rules! export_policy {
     ($ty:path) => {
         type ExportedPolicy = $crate::runtime::policy::PolicyExport<$ty>;
         $crate::runtime::policy::export!(ExportedPolicy with_types_in $crate::runtime::policy);
-
-        // $crate::runtime::policy::export!({
-        //     ty: $crate::runtime::policy::PolicyExport<$ty>,
-        //     with_types_in: $crate::runtime::policy,
-        // });
     };
 }
 

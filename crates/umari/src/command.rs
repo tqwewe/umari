@@ -128,39 +128,51 @@ where
     T::Input: Serialize,
 {
     #[inline(always)]
-    fn execute(input: &Self::Input) -> Result<CommandReceipt, CommandExecuteError> {
-        use crate::runtime::command::umari::command::executor::CommandContext;
-
-        execute_inner::<T>(
-            T::COMMAND_NAME,
-            input,
-            &CommandContext {
-                correlation_id: None,
-                triggering_event_id: None,
-                idempotency_key: None,
-            },
-        )
+    fn execute(_input: &Self::Input) -> Result<CommandReceipt, CommandExecuteError> {
+        #[cfg(not(target_arch = "wasm32"))]
+        unimplemented!("command execution is only available on wasm32 targets");
+        #[cfg(target_arch = "wasm32")]
+        {
+            use crate::runtime::command::umari::command::executor::CommandContext;
+            execute_inner::<T>(
+                T::COMMAND_NAME,
+                _input,
+                &CommandContext {
+                    correlation_id: None,
+                    triggering_event_id: None,
+                    idempotency_key: None,
+                },
+            )
+        }
     }
 
     #[inline(always)]
     fn execute_with(
-        input: &Self::Input,
-        ctx: CommandContext,
+        _input: &Self::Input,
+        _ctx: CommandContext,
     ) -> Result<CommandReceipt, CommandExecuteError> {
-        use crate::runtime::command::umari::command::executor::CommandContext;
-
-        execute_inner::<T>(
-            T::COMMAND_NAME,
-            input,
-            &CommandContext {
-                correlation_id: ctx.correlation_id.as_ref().map(ToString::to_string),
-                triggering_event_id: ctx.triggering_event_id.as_ref().map(ToString::to_string),
-                idempotency_key: ctx.idempotency_key.as_ref().map(ToString::to_string),
-            },
-        )
+        #[cfg(not(target_arch = "wasm32"))]
+        unimplemented!("command execution is only available on wasm32 targets");
+        #[cfg(target_arch = "wasm32")]
+        {
+            use crate::runtime::command::umari::command::executor::CommandContext;
+            execute_inner::<T>(
+                T::COMMAND_NAME,
+                _input,
+                &CommandContext {
+                    correlation_id: _ctx.correlation_id.as_ref().map(ToString::to_string),
+                    triggering_event_id: _ctx
+                        .triggering_event_id
+                        .as_ref()
+                        .map(ToString::to_string),
+                    idempotency_key: _ctx.idempotency_key.as_ref().map(ToString::to_string),
+                },
+            )
+        }
     }
 }
 
+#[cfg(target_arch = "wasm32")]
 fn execute_inner<T>(
     name: &str,
     input: &T::Input,
@@ -242,6 +254,7 @@ pub struct EmittedEventRef {
     pub tags: Vec<String>,
 }
 
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 pub(crate) fn build_query_items_from_domain_ids(
     event_domain_ids: &[EventDomainId],
     bindings: &DomainIdBindings,
