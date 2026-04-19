@@ -1,6 +1,6 @@
 [package]
 name = "umari"
-version = "0.1.0"
+version = "0.2.1"
 edition = "2024"
 description = "SDK for building event-sourced WASM components for the Umari runtime"
 license.workspace = true
@@ -20,5 +20,7 @@ tracing.workspace = true
 umadb-dcb.workspace = true
 uuid.workspace = true
 validator.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
 wasip2.workspace = true
 wit-bindgen.workspace = true
