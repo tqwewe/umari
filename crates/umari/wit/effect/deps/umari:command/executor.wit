@@ -10,16 +10,5 @@ interface executor {
         idempotency-key: option<uuid>,
     }
 
-    record command-receipt {
-        position: option<u64>,
-        events: list<emitted-event>,
-    }
-
-    record emitted-event {
-        id: uuid,
-        event-type: event-type,
-        tags: list<string>,
-    }
-
-    execute: func(command: string, input: json, context: command-context) -> result<command-receipt, string>;
+    execute: func(command: string, input: json, context: command-context);
 }

@@ -23,6 +23,9 @@ umari-types = { path = "crates/types" }
 umari-ui = { path = "crates/ui" }
 
 anyhow = "1.0"
+base64 = "0.22"
+http-body-util = "0.1"
+hyper = { version = "1", features = ["full"] }
 axum = { version = "0.8", features = ["multipart"] }
 bytes = "1.11"
 chrono = { version = "0.4", features = ["serde"] }

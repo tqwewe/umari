@@ -26,6 +26,21 @@ pub enum ConstraintViolationKind {
     Other,
 }
 
+impl ConstraintViolationKind {
+    #[doc(hidden)]
+    pub fn _lift(n: u8) -> Self {
+        match n {
+            0 => Self::Unique,
+            1 => Self::PrimaryKey,
+            2 => Self::NotNull,
+            3 => Self::ForeignKey,
+            4 => Self::Check,
+            5 => Self::Other,
+            _ => panic!("unknown constraint-violation-kind"),
+        }
+    }
+}
+
 impl fmt::Display for ConstraintViolationKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

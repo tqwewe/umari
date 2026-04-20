@@ -8,8 +8,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::{
-    domain_id::DomainIdBindings, emit::Emit, error::CommandExecuteError, event::EventDomainId,
-    folds::FoldSet, rules::RuleSet,
+    domain_id::DomainIdBindings, emit::Emit, event::EventDomainId, folds::FoldSet, rules::RuleSet,
 };
 
 /// Trait for command input structs that declare domain ID bindings.
@@ -112,12 +111,8 @@ pub trait Command {
 }
 
 pub trait CommandExecute: Command + CommandName {
-    fn execute(input: &Self::Input) -> Result<CommandReceipt, CommandExecuteError>;
-
-    fn execute_with(
-        input: &Self::Input,
-        ctx: CommandContext,
-    ) -> Result<CommandReceipt, CommandExecuteError>;
+    fn execute(input: &Self::Input);
+    fn execute_with(input: &Self::Input, ctx: CommandContext);
 }
 
 impl<T> CommandExecute for T
@@ -126,7 +121,7 @@ where
     T::Input: Serialize,
 {
     #[inline(always)]
-    fn execute(_input: &Self::Input) -> Result<CommandReceipt, CommandExecuteError> {
+    fn execute(_input: &Self::Input) {
         #[cfg(not(target_arch = "wasm32"))]
         unimplemented!("command execution is only available on wasm32 targets");
         #[cfg(target_arch = "wasm32")]
@@ -145,10 +140,7 @@ where
     }
 
     #[inline(always)]
-    fn execute_with(
-        _input: &Self::Input,
-        _ctx: CommandContext,
-    ) -> Result<CommandReceipt, CommandExecuteError> {
+    fn execute_with(_input: &Self::Input, _ctx: CommandContext) {
         #[cfg(not(target_arch = "wasm32"))]
         unimplemented!("command execution is only available on wasm32 targets");
         #[cfg(target_arch = "wasm32")]
@@ -172,22 +164,18 @@ fn execute_inner<T>(
     name: &str,
     input: &T::Input,
     ctx: &crate::runtime::command::umari::command::executor::CommandContext,
-) -> Result<CommandReceipt, CommandExecuteError>
-where
+) where
     T: Command,
     T::Input: Serialize,
 {
     use crate::runtime::command::umari::command::executor::execute;
 
-    let result = execute(
+    execute(
         name,
         &serde_json::to_string(input)
             .unwrap_or_else(|err| panic!("failed to serialize input: {err}")),
         ctx,
     )
-    .map_err(CommandExecuteError)?;
-
-    Ok(result.into())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
