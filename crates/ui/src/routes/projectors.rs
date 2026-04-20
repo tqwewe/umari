@@ -6,7 +6,6 @@ use axum::{
     http::HeaderMap,
 };
 use maud::{Markup, html};
-use rusqlite::{Connection, OpenFlags};
 use serde::Deserialize;
 use umari_runtime::{
     module::{
@@ -24,8 +23,8 @@ use umari_runtime::{
 use crate::{
     UiState,
     components::{
-        ModuleHealth, env_vars_panel, module_status_card, module_summary_table, output, tabs,
-        upload_form, versions_table,
+        ModuleHealth, default_sql_query, env_vars_panel, module_status_card, module_summary_table,
+        output, run_sql_query, sql_query_section, tabs, upload_form, versions_table,
     },
     error::HtmlError,
     htmx::respond,
@@ -125,25 +124,7 @@ pub async fn get_projector(
     };
 
     let db_path = state.data_dir.join(format!("projector-{name}.sqlite"));
-    let default_query = tokio::task::spawn_blocking({
-        let db_path = db_path.clone();
-        move || -> Option<String> {
-            let conn = Connection::open_with_flags(
-                &db_path,
-                OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-            )
-            .ok()?;
-            conn.query_row(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name != 'module_meta' ORDER BY name LIMIT 1",
-                [],
-                |row| row.get::<_, String>(0),
-            )
-            .ok()
-            .map(|table| format!("SELECT * FROM {table} LIMIT 100"))
-        }
-    })
-    .await
-    .unwrap_or(None);
+    let default_query = default_sql_query(&db_path).await;
 
     let query_url = format!("/ui/projectors/{name}/query");
 
@@ -185,37 +166,9 @@ pub async fn get_projector(
     Ok(respond(&headers, &name, content))
 }
 
-fn sql_query_section(query_url: &str, default_query: Option<&str>) -> Markup {
-    let placeholder = default_query.unwrap_or("SELECT * FROM ...");
-    html! {
-        section {
-            @if default_query.is_none() {
-                p class="text-sm text-gray-400 italic mb-3" { "no database found" }
-            }
-            form
-                hx-post=(query_url)
-                hx-target="#sql-results"
-                hx-swap="innerHTML"
-                class="flex flex-col gap-2"
-            {
-                textarea
-                    name="sql"
-                    rows="3"
-                    placeholder=(placeholder)
-                    class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-500 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                    { (default_query.unwrap_or("")) }
-                button type="submit"
-                    class="self-start inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
-                    { "Run" }
-            }
-            div id="sql-results" class="mt-3" {}
-        }
-    }
-}
-
 #[derive(Deserialize)]
 pub struct SqlQueryForm {
-    sql: String,
+    pub sql: String,
 }
 
 pub async fn query_projector(
@@ -223,97 +176,6 @@ pub async fn query_projector(
     Path(name): Path<String>,
     Form(form): Form<SqlQueryForm>,
 ) -> Markup {
-    match query_projector_inner(state, name, form).await {
-        Ok(markup) => markup,
-        Err(err) => html! {
-            div class="rounded-md bg-red-50 border border-red-200 p-4 text-sm text-red-800" {
-                p class="font-semibold mb-1" { "Error" }
-                p { (err.message) }
-            }
-        },
-    }
-}
-
-async fn query_projector_inner(
-    state: UiState,
-    name: String,
-    form: SqlQueryForm,
-) -> Result<Markup, HtmlError> {
-    let sql = form.sql.trim().to_string();
-    if !sql.to_ascii_lowercase().starts_with("select") {
-        return Err(HtmlError::bad_request("only SELECT queries are allowed"));
-    }
-
     let db_path = state.data_dir.join(format!("projector-{name}.sqlite"));
-    if !db_path.exists() {
-        return Err(HtmlError::not_found("no database found for this projector"));
-    }
-
-    let result = tokio::task::spawn_blocking(move || -> Result<Markup, String> {
-        let conn = Connection::open_with_flags(
-            &db_path,
-            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-        )
-        .map_err(|err| err.to_string())?;
-
-        let mut stmt = conn.prepare(&sql).map_err(|err| err.to_string())?;
-        let column_names: Vec<String> = stmt.column_names().iter().map(|s| s.to_string()).collect();
-
-        let rows: Vec<Vec<String>> = stmt
-            .query_map([], |row| {
-                let values = (0..column_names.len())
-                    .map(|i| {
-                        row.get_ref(i)
-                            .map(|v| match v {
-                                rusqlite::types::ValueRef::Null => "NULL".to_string(),
-                                rusqlite::types::ValueRef::Integer(n) => n.to_string(),
-                                rusqlite::types::ValueRef::Real(n) => n.to_string(),
-                                rusqlite::types::ValueRef::Text(s) => {
-                                    String::from_utf8_lossy(s).into_owned()
-                                }
-                                rusqlite::types::ValueRef::Blob(b) => {
-                                    format!("<blob {} bytes>", b.len())
-                                }
-                            })
-                            .unwrap_or_else(|_| "?".to_string())
-                    })
-                    .collect();
-                Ok(values)
-            })
-            .map_err(|err| err.to_string())?
-            .collect::<Result<_, _>>()
-            .map_err(|err: rusqlite::Error| err.to_string())?;
-
-        Ok(html! {
-            @if rows.is_empty() {
-                p class="text-sm text-gray-400 italic" { "no rows returned" }
-            } @else {
-                div class="overflow-x-auto overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" {
-                    table class="w-full text-xs font-mono" {
-                        thead {
-                            tr class="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700" {
-                                @for col in &column_names {
-                                    th class="px-3 py-2 text-left font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap" { (col) }
-                                }
-                            }
-                        }
-                        tbody {
-                            @for row in &rows {
-                                tr class="border-b border-gray-100 dark:border-gray-700/50 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800" {
-                                    @for cell in row {
-                                        td class="px-3 py-1.5 text-gray-800 dark:text-gray-200 whitespace-nowrap" { (cell) }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        })
-    })
-    .await
-    .map_err(|err| HtmlError::internal(err.to_string()))?
-    .map_err(HtmlError::internal)?;
-
-    Ok(result)
+    run_sql_query(db_path, form.sql, "projector").await
 }

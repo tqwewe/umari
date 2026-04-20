@@ -1,6 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use axum::{
+    Form,
     extract::{Path, State},
     http::HeaderMap,
 };
@@ -21,11 +22,12 @@ use umari_runtime::{
 use crate::{
     UiState,
     components::{
-        ModuleHealth, env_vars_panel, module_status_card, module_summary_table, output, tabs,
-        upload_form, versions_table,
+        ModuleHealth, default_sql_query, env_vars_panel, module_status_card, module_summary_table,
+        output, run_sql_query, sql_query_section, tabs, upload_form, versions_table,
     },
     error::HtmlError,
     htmx::respond,
+    routes::projectors::SqlQueryForm,
 };
 
 pub async fn list_policies(
@@ -129,11 +131,16 @@ pub async fn get_policy(
         })
         .await?;
 
+    let db_path = state.data_dir.join(format!("policy-{name}.sqlite"));
+    let default_query = default_sql_query(&db_path).await;
+    let query_url = format!("/ui/policies/{name}/query");
+
     let versions_panel = html! {
         (versions_table(ModuleType::Policy, &name, versions, active_version.as_ref()))
         (upload_form(ModuleType::Policy, Some(&name)))
     };
     let output_panel = output(&entries);
+    let sql_panel = sql_query_section(&query_url, default_query.as_deref());
     let env_panel = env_vars_panel(ModuleType::Policy, &name, &env_vars);
 
     let content = html! {
@@ -149,10 +156,20 @@ pub async fn get_policy(
             (tabs(&format!("tabs-policy-{name}"), vec![
                 ("Versions", versions_panel),
                 ("Output", output_panel),
+                ("SQL", sql_panel),
                 ("Environment", env_panel),
             ]))
         }
     };
 
     Ok(respond(&headers, &name, content))
+}
+
+pub async fn query_policy(
+    State(state): State<UiState>,
+    Path(name): Path<String>,
+    Form(form): Form<SqlQueryForm>,
+) -> Markup {
+    let db_path = state.data_dir.join(format!("policy-{name}.sqlite"));
+    run_sql_query(db_path, form.sql, "policy").await
 }

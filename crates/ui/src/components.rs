@@ -1,6 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use maud::{Markup, PreEscaped, html};
+use rusqlite::{Connection, OpenFlags};
 use schemars::Schema;
 use semver::Version;
 use umari_runtime::{
@@ -990,5 +991,153 @@ function umariToggleRaw_{fn_name}(checkbox) {{
                 div #execute-result {}
             }
         }
+    }
+}
+
+pub fn sql_query_section(query_url: &str, default_query: Option<&str>) -> Markup {
+    let placeholder = default_query.unwrap_or("SELECT * FROM ...");
+    html! {
+        section {
+            @if default_query.is_none() {
+                p class="text-sm text-gray-400 italic mb-3" { "no database found" }
+            }
+            form
+                hx-post=(query_url)
+                hx-target="#sql-results"
+                hx-swap="innerHTML"
+                class="flex flex-col gap-2"
+            {
+                textarea
+                    name="sql"
+                    rows="3"
+                    placeholder=(placeholder)
+                    class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-500 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    { (default_query.unwrap_or("")) }
+                button type="submit"
+                    class="self-start inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+                    { "Run" }
+            }
+            div id="sql-results" class="mt-3" {}
+        }
+    }
+}
+
+/// Returns the default SELECT query for a module's SQLite database (the first non-meta table).
+pub async fn default_sql_query(db_path: &PathBuf) -> Option<String> {
+    let db_path = db_path.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = Connection::open_with_flags(
+            &db_path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )
+        .ok()?;
+        conn.query_row(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name != 'module_meta' ORDER BY name LIMIT 1",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .ok()
+        .map(|table| format!("SELECT * FROM {table} LIMIT 100"))
+    })
+    .await
+    .unwrap_or(None)
+}
+
+/// Executes a read-only SQL query against a module SQLite database and returns an HTML result table.
+pub async fn run_sql_query(db_path: PathBuf, sql: String, module_label: &'static str) -> Markup {
+    let sql = sql.trim().to_string();
+    if !sql.to_ascii_lowercase().starts_with("select") {
+        return html! {
+            div class="rounded-md bg-red-50 border border-red-200 p-4 text-sm text-red-800" {
+                p class="font-semibold mb-1" { "Error" }
+                p { "only SELECT queries are allowed" }
+            }
+        };
+    }
+    if !db_path.exists() {
+        return html! {
+            div class="rounded-md bg-red-50 border border-red-200 p-4 text-sm text-red-800" {
+                p class="font-semibold mb-1" { "Error" }
+                p { "no database found for this " (module_label) }
+            }
+        };
+    }
+
+    let err_html = |msg: String| html! {
+        div class="rounded-md bg-red-50 border border-red-200 p-4 text-sm text-red-800" {
+            p class="font-semibold mb-1" { "Error" }
+            p { (msg) }
+        }
+    };
+
+    let result = tokio::task::spawn_blocking(move || -> Result<Markup, String> {
+        let conn = Connection::open_with_flags(
+            &db_path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )
+        .map_err(|err| err.to_string())?;
+
+        let mut stmt = conn.prepare(&sql).map_err(|err| err.to_string())?;
+        let column_names: Vec<String> =
+            stmt.column_names().iter().map(|s| s.to_string()).collect();
+
+        let rows: Vec<Vec<String>> = stmt
+            .query_map([], |row| {
+                let values = (0..column_names.len())
+                    .map(|i| {
+                        row.get_ref(i)
+                            .map(|v| match v {
+                                rusqlite::types::ValueRef::Null => "NULL".to_string(),
+                                rusqlite::types::ValueRef::Integer(n) => n.to_string(),
+                                rusqlite::types::ValueRef::Real(n) => n.to_string(),
+                                rusqlite::types::ValueRef::Text(s) => {
+                                    String::from_utf8_lossy(s).into_owned()
+                                }
+                                rusqlite::types::ValueRef::Blob(b) => {
+                                    format!("<blob {} bytes>", b.len())
+                                }
+                            })
+                            .unwrap_or_else(|_| "?".to_string())
+                    })
+                    .collect();
+                Ok(values)
+            })
+            .map_err(|err| err.to_string())?
+            .collect::<Result<_, _>>()
+            .map_err(|err: rusqlite::Error| err.to_string())?;
+
+        Ok(html! {
+            @if rows.is_empty() {
+                p class="text-sm text-gray-400 italic" { "no rows returned" }
+            } @else {
+                div class="overflow-x-auto overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" {
+                    table class="w-full text-xs font-mono" {
+                        thead {
+                            tr class="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700" {
+                                @for col in &column_names {
+                                    th class="px-3 py-2 text-left font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap" { (col) }
+                                }
+                            }
+                        }
+                        tbody {
+                            @for row in &rows {
+                                tr class="border-b border-gray-100 dark:border-gray-700/50 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800" {
+                                    @for cell in row {
+                                        td class="px-3 py-1.5 text-gray-800 dark:text-gray-200 whitespace-nowrap" { (cell) }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        })
+    })
+    .await;
+
+    match result {
+        Ok(Ok(markup)) => markup,
+        Ok(Err(msg)) => err_html(msg),
+        Err(err) => err_html(err.to_string()),
     }
 }

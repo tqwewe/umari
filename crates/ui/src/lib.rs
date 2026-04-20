@@ -23,12 +23,12 @@ use crate::routes::{
     activate::{activate, deactivate},
     active::list_active,
     commands::{get_command, list_commands},
-    effects::{get_effect, list_effects},
+    effects::{get_effect, list_effects, query_effect},
     env_vars::{delete_env_var, set_env_var},
     events::list_events,
     execute::execute_command,
     index::index,
-    policies::{get_policy, list_policies},
+    policies::{get_policy, list_policies, query_policy},
     projectors::{get_projector, list_projectors, query_projector},
     replay::replay,
     upload::upload_module,
@@ -55,8 +55,10 @@ pub fn ui_router(state: UiState) -> Router {
         .route("/ui/projectors/{name}/query", post(query_projector))
         .route("/ui/policies", get(list_policies))
         .route("/ui/policies/{name}", get(get_policy))
+        .route("/ui/policies/{name}/query", post(query_policy))
         .route("/ui/effects", get(list_effects))
         .route("/ui/effects/{name}", get(get_effect))
+        .route("/ui/effects/{name}/query", post(query_effect))
         .route("/ui/active", get(list_active))
         .route("/ui/upload/{module_type}", post(upload_module))
         .route("/ui/{module_type}/{name}/active", put(activate))
