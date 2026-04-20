@@ -79,6 +79,7 @@ where
             let event: crate::event::StoredEvent<serde_json::Value> = stored_event.into();
 
             let meta = EventMeta {
+                position: event.position,
                 timestamp: event.timestamp,
             };
 
@@ -94,7 +95,9 @@ where
 
             rules
                 .apply_event(&event.event_type, event.data, &event.tags, &bindings, meta)
-                .unwrap_or_else(|err| panic!("failed to deserialize rule event data: {}", err.message));
+                .unwrap_or_else(|err| {
+                    panic!("failed to deserialize rule event data: {}", err.message)
+                });
         }
 
         rules

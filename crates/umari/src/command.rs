@@ -106,9 +106,7 @@ pub trait Command {
 
     type State: FoldSet;
 
-    fn rules(_input: &Self::Input) -> impl RuleSet {
-        ()
-    }
+    fn rules(_input: &Self::Input) -> impl RuleSet {}
 
     fn emit(state: Self::State, input: Self::Input) -> Emit;
 }
@@ -161,10 +159,7 @@ where
                 _input,
                 &CommandContext {
                     correlation_id: _ctx.correlation_id.as_ref().map(ToString::to_string),
-                    triggering_event_id: _ctx
-                        .triggering_event_id
-                        .as_ref()
-                        .map(ToString::to_string),
+                    triggering_event_id: _ctx.triggering_event_id.as_ref().map(ToString::to_string),
                     idempotency_key: _ctx.idempotency_key.as_ref().map(ToString::to_string),
                 },
             )
@@ -238,6 +233,7 @@ impl Default for CommandContext {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct EventMeta {
+    pub position: u64,
     pub timestamp: DateTime<Utc>,
 }
 

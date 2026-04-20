@@ -10,7 +10,7 @@ use crate::{
 pub trait Fold: Default {
     type Events: EventSet;
 
-    fn apply(&mut self, event: &<Self::Events as EventSet>::Item, meta: EventMeta);
+    fn apply(&mut self, event: <Self::Events as EventSet>::Item, meta: EventMeta);
 }
 
 pub trait FoldSet: Default {
@@ -39,10 +39,10 @@ impl<F: Fold> FoldSet for F {
         bindings: &DomainIdBindings,
         meta: EventMeta,
     ) -> Result<(), SerializationError> {
-        if matches_fold_query::<F>(event_type, tags, bindings) {
-            if let Some(event) = F::Events::from_event(event_type, data).transpose()? {
-                Fold::apply(self, &event, meta);
-            }
+        if matches_fold_query::<F>(event_type, tags, bindings)
+            && let Some(event) = F::Events::from_event(event_type, data).transpose()?
+        {
+            Fold::apply(self, event, meta);
         }
         Ok(())
     }
@@ -93,7 +93,7 @@ macro_rules! impl_tuple_fold_sets {
                     if matches_fold_query::<$t>(event_type, tags, bindings)
                         && let Some(event) = $t::Events::from_event(event_type, data.clone()).transpose()?
                     {
-                        self.$n.apply(&event, meta);
+                        self.$n.apply(event, meta);
                     }
                 )+
                 Ok(())
