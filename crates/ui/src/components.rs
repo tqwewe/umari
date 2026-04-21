@@ -24,7 +24,6 @@ pub fn module_summary_table(
 ) -> Markup {
     let type_path = match module_type {
         ModuleType::Command => "commands",
-        ModuleType::Policy => "policies",
         ModuleType::Projector => "projectors",
         ModuleType::Effect => "effects",
     };
@@ -107,7 +106,6 @@ pub fn module_status_card(
 ) -> Markup {
     let type_path = match module_type {
         ModuleType::Command => "commands",
-        ModuleType::Policy => "policies",
         ModuleType::Projector => "projectors",
         ModuleType::Effect => "effects",
     };
@@ -199,7 +197,6 @@ pub fn versions_table(
     versions.sort_unstable_by(|a, b| b.version.cmp(&a.version));
     let module_type_str = match module_type {
         ModuleType::Command => "commands",
-        ModuleType::Policy => "policies",
         ModuleType::Projector => "projectors",
         ModuleType::Effect => "effects",
     };
@@ -419,7 +416,6 @@ pub fn env_vars_panel(
 ) -> Markup {
     let type_path = match module_type {
         ModuleType::Command => "commands",
-        ModuleType::Policy => "policies",
         ModuleType::Projector => "projectors",
         ModuleType::Effect => "effects",
     };
@@ -513,7 +509,6 @@ pub fn env_vars_panel(
 pub fn upload_form(module_type: ModuleType, name: Option<&str>) -> Markup {
     let module_type_str = match module_type {
         ModuleType::Command => "commands",
-        ModuleType::Policy => "policies",
         ModuleType::Projector => "projectors",
         ModuleType::Effect => "effects",
     };
@@ -1063,10 +1058,12 @@ pub async fn run_sql_query(db_path: PathBuf, sql: String, module_label: &'static
         };
     }
 
-    let err_html = |msg: String| html! {
-        div class="rounded-md bg-red-50 border border-red-200 p-4 text-sm text-red-800" {
-            p class="font-semibold mb-1" { "Error" }
-            p { (msg) }
+    let err_html = |msg: String| {
+        html! {
+            div class="rounded-md bg-red-50 border border-red-200 p-4 text-sm text-red-800" {
+                p class="font-semibold mb-1" { "Error" }
+                p { (msg) }
+            }
         }
     };
 

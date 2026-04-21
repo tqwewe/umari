@@ -62,7 +62,6 @@ impl<A: EventHandlerModule> Actor for ModuleWorkerActor<A> {
     fn name() -> &'static str {
         match A::MODULE_TYPE {
             ModuleType::Command => "CommandWorker",
-            ModuleType::Policy => "PolicyWorker",
             ModuleType::Projector => "ProjectorWorker",
             ModuleType::Effect => "EffectWorker",
         }
@@ -165,15 +164,11 @@ impl<A: EventHandlerModule> ModuleWorkerActor<A> {
 
         // for effects, set up the replay journal before handle_event
         if A::MODULE_TYPE == ModuleType::Effect {
-            let invocation_id =
-                effect_journal::compute_invocation_id(&self.name, current_event_id);
+            let invocation_id = effect_journal::compute_invocation_id(&self.name, current_event_id);
 
-            let replay_cache = effect_journal::load_replay_cache(
-                &self.event_store,
-                &invocation_id,
-            )
-            .await
-            .map_err(|err| ModuleError::Wasmtime(wasmtime::format_err!("{err}")))?;
+            let replay_cache = effect_journal::load_replay_cache(&self.event_store, &invocation_id)
+                .await
+                .map_err(|err| ModuleError::Wasmtime(wasmtime::format_err!("{err}")))?;
 
             let journal = Box::new(EffectJournal {
                 event_store: Arc::clone(&self.event_store),
@@ -214,7 +209,11 @@ impl<A: EventHandlerModule> ModuleWorkerActor<A> {
                 // between here and receiving the ack, this event will be
                 // reprocessed — intentional at-least-once delivery.
                 self.store.data().conn().execute_batch("COMMIT; BEGIN")?;
-                let _ = self.ack_recipient.tell(WorkerAck(Ok(position))).send().await;
+                let _ = self
+                    .ack_recipient
+                    .tell(WorkerAck(Ok(position)))
+                    .send()
+                    .await;
                 Ok(())
             }
             Err(err) => {

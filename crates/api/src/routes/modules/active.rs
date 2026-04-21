@@ -35,15 +35,6 @@ pub async fn get_projector_health(
     }))
 }
 
-pub async fn get_policy_health(
-    State(state): State<AppState>,
-) -> Result<Json<ModuleHealthResponse>, Error> {
-    let active = state.policy_supervisor_ref.ask(ActiveModules).await?;
-    Ok(Json(ModuleHealthResponse {
-        modules: supervisor_health(active),
-    }))
-}
-
 pub async fn get_effect_health(
     State(state): State<AppState>,
 ) -> Result<Json<ModuleHealthResponse>, Error> {

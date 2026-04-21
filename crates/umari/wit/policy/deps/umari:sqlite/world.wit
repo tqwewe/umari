@@ -1,8 +1,0 @@
-package umari:sqlite@0.1.0;
-
-/// World for SQLite interface bindings
-world sqlite {
-    import types;
-    import connection;
-    import statement;
-}

@@ -39,11 +39,6 @@ enum Commands {
         #[command(subcommand)]
         command: ProjectorsSubcommand,
     },
-    /// manage policy modules
-    Policies {
-        #[command(subcommand)]
-        command: PoliciesSubcommand,
-    },
     /// manage effect modules
     Effects {
         #[command(subcommand)]
@@ -194,62 +189,6 @@ enum ProjectorsSubcommand {
 }
 
 #[derive(Subcommand)]
-enum PoliciesSubcommand {
-    /// upload a policy module
-    Upload {
-        /// module name
-        name: String,
-        /// semantic version (e.g., 1.0.0)
-        version: String,
-        /// WASM file path
-        file: PathBuf,
-        /// activate immediately after upload
-        #[arg(long)]
-        activate: bool,
-    },
-    /// list policy modules
-    List {
-        /// show only active modules
-        #[arg(long)]
-        active_only: bool,
-        /// filter by module name
-        #[arg(long)]
-        name: Option<String>,
-    },
-    /// show policy module details
-    Show {
-        /// module name
-        name: String,
-        /// specific version (optional)
-        version: Option<String>,
-    },
-    /// activate a policy version
-    Activate {
-        /// module name
-        name: String,
-        /// version to activate
-        version: String,
-    },
-    /// deactivate a policy module
-    Deactivate {
-        /// module name
-        name: String,
-    },
-    /// reset and replay a policy module from position 0
-    Replay {
-        /// module name
-        name: String,
-    },
-    /// manage environment variables for a policy module
-    Env {
-        /// module name
-        name: String,
-        #[command(subcommand)]
-        action: EnvAction,
-    },
-}
-
-#[derive(Subcommand)]
 enum EffectsSubcommand {
     /// upload an effect module
     Upload {
@@ -344,12 +283,6 @@ enum NewSubcommand {
         #[arg(long, default_value = "rust")]
         lang: Lang,
     },
-    /// create a new policy module
-    Policy {
-        name: String,
-        #[arg(long, default_value = "rust")]
-        lang: Lang,
-    },
     /// create a new effect module
     Effect {
         name: String,
@@ -432,36 +365,6 @@ fn main() -> Result<()> {
                 }
             },
         },
-        Commands::Policies { command } => match command {
-            PoliciesSubcommand::Upload {
-                name,
-                version,
-                file,
-                activate,
-            } => commands::policies::upload(&client, name, version, file, activate),
-            PoliciesSubcommand::List { active_only, name } => {
-                commands::policies::list(&client, active_only, name)
-            }
-            PoliciesSubcommand::Show { name, version } => {
-                commands::policies::show(&client, name, version)
-            }
-            PoliciesSubcommand::Activate { name, version } => {
-                commands::policies::activate(&client, name, version)
-            }
-            PoliciesSubcommand::Deactivate { name } => {
-                commands::policies::deactivate(&client, name)
-            }
-            PoliciesSubcommand::Replay { name } => commands::policies::replay(&client, name),
-            PoliciesSubcommand::Env { name, action } => match action {
-                EnvAction::List => commands::env_vars::list(&client, "policies", &name),
-                EnvAction::Set { key, value } => {
-                    commands::env_vars::set(&client, "policies", &name, &key, &value)
-                }
-                EnvAction::Unset { key } => {
-                    commands::env_vars::unset(&client, "policies", &name, &key)
-                }
-            },
-        },
         Commands::Effects { command } => match command {
             EffectsSubcommand::Upload {
                 name,
@@ -508,10 +411,6 @@ fn main() -> Result<()> {
             NewSubcommand::Projector { name, lang } => match lang {
                 Lang::Js => commands::new::generate_js("projector", &name),
                 Lang::Rust => commands::new::generate("projector", &name),
-            },
-            NewSubcommand::Policy { name, lang } => match lang {
-                Lang::Js => commands::new::generate_js("policy", &name),
-                Lang::Rust => commands::new::generate("policy", &name),
             },
             NewSubcommand::Effect { name, lang } => match lang {
                 Lang::Js => commands::new::generate_js("effect", &name),

@@ -18,11 +18,6 @@ pub async fn replay(
             .ask(Reset { name: name_arc })
             .await
             .map_err(HtmlError::from),
-        "policies" => state
-            .policy_supervisor_ref
-            .ask(Reset { name: name_arc })
-            .await
-            .map_err(HtmlError::from),
         "effects" => state
             .effect_supervisor_ref
             .ask(Reset { name: name_arc })

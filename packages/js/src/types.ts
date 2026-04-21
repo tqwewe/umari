@@ -154,7 +154,7 @@ export type CommandDef<
   readonly _emit: (states: StatesOf<TState>, input: TInput) => EmittedEvent[];
 };
 
-// ─── Event entry for projectors/policies/effects (with optional static scope)
+// ─── Event entry for projectors/effects (with optional static scope)
 
 export type EventEntry<E extends EventDef<any, any, any>> =
   | E
@@ -179,21 +179,12 @@ export type EventUnionFromEntries<T extends readonly AnyEventEntry[]> = {
     : never;
 }[number];
 
-// ─── Policy / Effect shared types ────────────────────────────────────────────
-
-export type CommandSubmission = {
-  type: string;
-  input: object;
-};
-
-export type EffectContext = {
-  executor: CommandExecutor;
-  fetch: (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
-};
-
 // ─── SQLite DB Wrapper ───────────────────────────────────────────────────────
 
-export type SqliteRow = Record<string, string | number | bigint | Uint8Array | null>;
+export type SqliteRow = Record<
+  string,
+  string | number | bigint | Uint8Array | null
+>;
 
 export type SqliteDb = {
   execute(sql: string, params?: unknown[]): number;

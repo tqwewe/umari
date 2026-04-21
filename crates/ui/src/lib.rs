@@ -16,7 +16,7 @@ use umari_runtime::{
     command::actor::CommandActor,
     module::supervisor::ModuleSupervisor,
     module_store::actor::ModuleStoreActor,
-    wit::{effect::EffectWorld, policy::PolicyState, projector::ProjectorWorld},
+    wit::{effect::EffectWorld, projector::ProjectorWorld},
 };
 
 use crate::routes::{
@@ -28,7 +28,6 @@ use crate::routes::{
     events::list_events,
     execute::execute_command,
     index::index,
-    policies::{get_policy, list_policies, query_policy},
     projectors::{get_projector, list_projectors, query_projector},
     replay::replay,
     upload::upload_module,
@@ -40,7 +39,6 @@ pub struct UiState {
     pub module_store_ref: ActorRef<ModuleStoreActor>,
     pub command_ref: ActorRef<CommandActor>,
     pub projector_supervisor_ref: ActorRef<ModuleSupervisor<ProjectorWorld>>,
-    pub policy_supervisor_ref: ActorRef<ModuleSupervisor<PolicyState>>,
     pub effect_supervisor_ref: ActorRef<ModuleSupervisor<EffectWorld>>,
     pub event_store: Arc<AsyncUmaDbClient>,
 }
@@ -53,9 +51,6 @@ pub fn ui_router(state: UiState) -> Router {
         .route("/ui/projectors", get(list_projectors))
         .route("/ui/projectors/{name}", get(get_projector))
         .route("/ui/projectors/{name}/query", post(query_projector))
-        .route("/ui/policies", get(list_policies))
-        .route("/ui/policies/{name}", get(get_policy))
-        .route("/ui/policies/{name}/query", post(query_policy))
         .route("/ui/effects", get(list_effects))
         .route("/ui/effects/{name}", get(get_effect))
         .route("/ui/effects/{name}/query", post(query_effect))

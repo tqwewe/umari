@@ -135,7 +135,6 @@ async fn upload_module_inner(
 
     let detail_path = match module_type {
         ModuleType::Command => format!("/ui/commands/{name}"),
-        ModuleType::Policy => format!("/ui/policies/{name}"),
         ModuleType::Projector => format!("/ui/projectors/{name}"),
         ModuleType::Effect => format!("/ui/effects/{name}"),
     };

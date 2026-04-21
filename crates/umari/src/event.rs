@@ -13,7 +13,7 @@ pub struct EventEnvelope {
     pub correlation_id: Uuid,
     /// The specific command execution that produced these vents.
     pub causation_id: Uuid,
-    /// the event that caused a policy to submit this command, `None` for commands originating from HTTP/direct calls
+    /// the event that caused this event, `None` for commands originating from HTTP/direct calls
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub triggering_event_id: Option<Uuid>,
     /// Client-supplied key for deduplicating retried command executions.

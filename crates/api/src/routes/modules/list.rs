@@ -69,26 +69,6 @@ pub async fn list_projectors(
 
 #[utoipa::path(
     get,
-    path = "/policies",
-    params(
-        ("active_only" = Option<bool>, Query, description = "Filter to only active modules"),
-        ("name" = Option<String>, Query, description = "Filter by module name")
-    ),
-    responses(
-        (status = 200, description = "List of policy modules", body = ListModulesResponse),
-        (status = 500, description = "Internal server error", body = ErrorResponse)
-    ),
-    tag = "policies"
-)]
-pub async fn list_policies(
-    State(state): State<AppState>,
-    Query(query): Query<ListQuery>,
-) -> Result<Json<ListModulesResponse>, Error> {
-    list_modules(state, ModuleType::Policy, query).await
-}
-
-#[utoipa::path(
-    get,
     path = "/effects",
     params(
         ("active_only" = Option<bool>, Query, description = "Filter to only active modules"),
@@ -222,26 +202,6 @@ pub async fn get_projector_details(
 
 #[utoipa::path(
     get,
-    path = "/policies/{name}",
-    params(
-        ("name" = String, Path, description = "Module name")
-    ),
-    responses(
-        (status = 200, description = "Policy module details", body = ModuleDetailsResponse),
-        (status = 404, description = "Module not found", body = ErrorResponse),
-        (status = 500, description = "Internal server error", body = ErrorResponse)
-    ),
-    tag = "policies"
-)]
-pub async fn get_policy_details(
-    State(state): State<AppState>,
-    Path(name): Path<String>,
-) -> Result<Json<ModuleDetailsResponse>, Error> {
-    get_module_details(state, ModuleType::Policy, name).await
-}
-
-#[utoipa::path(
-    get,
     path = "/effects/{name}",
     params(
         ("name" = String, Path, description = "Module name")
@@ -354,28 +314,6 @@ pub async fn get_projector_version_details(
 
 #[utoipa::path(
     get,
-    path = "/policies/{name}/versions/{version}",
-    params(
-        ("name" = String, Path, description = "Module name"),
-        ("version" = String, Path, description = "Semantic version (e.g., 1.0.0)")
-    ),
-    responses(
-        (status = 200, description = "Policy version details", body = VersionDetailsResponse),
-        (status = 400, description = "Invalid version format", body = ErrorResponse),
-        (status = 404, description = "Version not found", body = ErrorResponse),
-        (status = 500, description = "Internal server error", body = ErrorResponse)
-    ),
-    tag = "policies"
-)]
-pub async fn get_policy_version_details(
-    State(state): State<AppState>,
-    Path((name, version)): Path<(String, String)>,
-) -> Result<Json<VersionDetailsResponse>, Error> {
-    get_version_details(state, ModuleType::Policy, name, version).await
-}
-
-#[utoipa::path(
-    get,
     path = "/effects/{name}/versions/{version}",
     params(
         ("name" = String, Path, description = "Module name"),
@@ -468,7 +406,6 @@ pub async fn list_active_modules(
     let module_type = query.module_type.map(|s| match s.as_str() {
         "command" => ModuleType::Command,
         "projector" => ModuleType::Projector,
-        "policy" => ModuleType::Policy,
         "effect" => ModuleType::Effect,
         _ => ModuleType::Command, // Default, though validation should catch this
     });

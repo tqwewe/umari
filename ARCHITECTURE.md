@@ -1,4 +1,4 @@
-# Umari: Event Sourcing with Commands, Projectors, Policies, and Effects
+# Umari: Event Sourcing with Commands, Projectors, and Effects
 
 ## Overview
 
@@ -6,10 +6,9 @@ Umari is an event sourcing runtime where all state changes are recorded as immut
 
 - **Commands** — the only writers to the event store; validate inputs, enforce invariants, emit events
 - **Projectors** — build read models in SQLite by consuming events
-- **Policies** — react to events and return new commands to be executed by the runtime
 - **Effects** — react to events and perform side effects (HTTP requests, direct command execution)
 
-All modules except commands have access to their own SQLite database. Projectors build state intended to be read by external processes; policies and effects use SQLite only for internal tracking state.
+All modules except commands have access to their own SQLite database. Projectors build state intended to be read by external processes; effects use SQLite only for internal tracking state.
 
 The system is designed around **complete idempotency**: if all SQLite databases were deleted and all events re-processed from the beginning, the final state would be identical and no new side effects would occur.
 
@@ -40,14 +39,12 @@ my-project/
 │   └── update-widget/
 ├── projectors/
 │   └── widgets/
-├── policies/
-│   └── record-warranty-sales/
 ├── effects/
 │   └── notify-external-service/
 └── Cargo.toml
 ```
 
-Each command, projector, policy, and effect is a separate crate compiled as a WASM component (`crate-type = ["cdylib", "rlib"]`). They depend on the shared library crate for access to shared event definitions, folds, and rules.
+Each command, projector, and effect is a separate crate compiled as a WASM component (`crate-type = ["cdylib", "rlib"]`). They depend on the shared library crate for access to shared event definitions, folds, and rules.
 
 ---
 
@@ -430,7 +427,7 @@ Projectors receive events in order from the beginning of the log. Because events
 
 ### Scoping in Projectors
 
-Since projectors have no command input to bind domain IDs against, the `#[scope(field)]` form is meaningless here. The only useful scope form in projectors (and likewise in policies and effects) is a **hardcoded value**:
+Since projectors have no command input to bind domain IDs against, the `#[scope(field)]` form is meaningless here. The only useful scope form in projectors (and likewise in effects) is a **hardcoded value**:
 
 ```rust
 #[derive(EventSet)]
@@ -446,102 +443,9 @@ Without a scope attribute (or with a dynamic `#[scope(field)]`), all events of t
 
 ---
 
-## Policies
-
-Policies react to events and **return commands** to be executed by the runtime. They use SQLite to maintain internal state that helps them decide which commands to emit — for example, caching data from earlier events to use when constructing commands in response to later events.
-
-The runtime handles policy idempotency automatically: it hashes the returned command name and its index within the response for each event, and skips re-execution if that combination has already been processed.
-
-```rust
-use umari::prelude::*;
-
-#[derive(EventSet)]
-enum Query {
-    WidgetCreated(WidgetCreated),
-    WidgetArchived(WidgetArchived),
-    OrderPlaced(OrderPlaced),
-}
-
-struct RecordWarrantySales {
-    insert_widget: Statement,
-    delete_widget: Statement,
-    get_widget: Statement,
-}
-
-impl Policy for RecordWarrantySales {
-    type Query = Query;
-
-    fn init() -> Result<Self, SqliteError> {
-        execute(
-            "CREATE TABLE IF NOT EXISTS widgets (
-                widget_id       TEXT NOT NULL PRIMARY KEY,
-                duration_months INTEGER NOT NULL
-            )",
-            (),
-        )?;
-
-        Ok(RecordWarrantySales {
-            insert_widget: prepare("INSERT INTO widgets (widget_id, duration_months) VALUES (?1, ?2)")?,
-            delete_widget: prepare("DELETE FROM widgets WHERE widget_id = ?1")?,
-            get_widget: prepare("SELECT duration_months FROM widgets WHERE widget_id = ?1")?,
-        })
-    }
-
-    fn handle(
-        &mut self,
-        event: StoredEvent<Self::Query>,
-    ) -> Result<Vec<CommandSubmission>, SqliteError> {
-        match event.data {
-            // Track widgets in internal SQLite for later lookups
-            Query::WidgetCreated(ev) => {
-                self.insert_widget.execute((ev.widget_id.to_string(), ev.duration_months))?;
-                Ok(vec![])
-            }
-            Query::WidgetArchived(ev) => {
-                self.delete_widget.execute((ev.widget_id.to_string(),))?;
-                Ok(vec![])
-            }
-            // When an order is placed, emit a RecordSale command for each widget line item
-            Query::OrderPlaced(ev) => {
-                let mut commands = Vec::new();
-                for item in &ev.line_items {
-                    let Some(row) = self.get_widget.query_one((item.widget_id.to_string(),))? else {
-                        continue; // not a widget line item
-                    };
-                    let duration_months = match row.get("duration_months") {
-                        Some(Value::Integer(n)) => *n as u32,
-                        _ => continue,
-                    };
-                    commands.push(CommandSubmission {
-                        command_type: "record-sale".to_string(),
-                        input: serde_json::to_string(&serde_json::json!({
-                            "shop_id": ev.shop_id,
-                            "sale_id": Uuid::new_v4(),
-                            "widget_id": item.widget_id,
-                            "order_id": ev.order_id,
-                            "duration_months": duration_months,
-                        }))?,
-                    });
-                }
-                Ok(commands)
-            }
-        }
-    }
-}
-
-export_policy!(RecordWarrantySales);
-```
-
-Key characteristics:
-- **SQLite is internal only** — used for lookups to help construct commands, not read by external processes
-- **Returns commands, does not execute them** — the runtime executes returned commands
-- **Idempotency is runtime-managed** — the runtime tracks which `(event_position, command_index)` pairs have already been processed
-
----
-
 ## Effects
 
-Effects react to events and perform **side effects** directly. Unlike policies, effects do not return commands — they execute commands directly and can make HTTP requests.
+Effects react to events and perform **side effects** directly. They execute commands directly and can make HTTP requests.
 
 Effects may use SQLite for internal state, but that state is **not** the idempotency mechanism. The SQLite database can be wiped and the effect will reprocess all events correctly. Idempotency is guaranteed entirely through the event store via commands — effects use a **schedule → side effect → record** pattern.
 
@@ -643,16 +547,16 @@ pub struct StoredEvent<T> {
     pub timestamp: DateTime<Utc>,
     pub correlation_id: Uuid,              // flows through the entire causal chain
     pub causation_id: Uuid,                // the specific command execution that produced this event
-    pub triggering_event_id: Option<Uuid>, // the event that caused a policy/effect to run this command
+    pub triggering_event_id: Option<Uuid>, // the event that caused a effect to run this command
     pub idempotency_key: Option<Uuid>,
     pub data: T,
 }
 ```
 
 The **correlation chain**:
-- A single user action creates a `correlation_id` that flows through all downstream commands triggered by policies and effects
+- A single user action creates a `correlation_id` that flows through all downstream commands triggered by effects
 - Each individual command execution has a unique `causation_id`
-- When a policy or effect triggers a command, the resulting events carry `triggering_event_id` pointing to the event that initiated it
+- When a effect triggers a command, the resulting events carry `triggering_event_id` pointing to the event that initiated it
 
 ---
 
@@ -698,7 +602,6 @@ Each module type uses a macro to wire up the WASM guest interface:
 ```rust
 export_command!(MyCommand);
 export_projector!(MyProjector);
-export_policy!(MyPolicy);
 export_effect!(MyEffect);
 ```
 
@@ -708,7 +611,7 @@ These macros implement the WIT component interface, handling serialization betwe
 
 ## Shared Library Pattern
 
-Events, folds, and rules are defined once in a shared library crate and imported by all command, projector, policy, and effect crates. This prevents duplication and ensures consistency.
+Events, folds, and rules are defined once in a shared library crate and imported by all command, projector, effect crates. This prevents duplication and ensures consistency.
 
 ```
 my-project/
@@ -729,7 +632,7 @@ my-project/
 │       └── widget_name_is_unique.rs
 ```
 
-Each command/projector/policy/effect crate adds the shared library as a dependency:
+Each command/projector/effect crate adds the shared library as a dependency:
 
 ```toml
 [dependencies]
@@ -749,7 +652,6 @@ All module crates use **kebab-case** names (e.g., `create-widget`, `record-warra
 | Events | — (defined in shared lib) | PascalCase past-tense verb phrase; `#[event_type]` uses `object.verb` dot notation | struct `WidgetCreated` with `#[event_type("widget.created")]`, struct `ShopConnected` with `#[event_type("shop.connected")]` |
 | Commands | kebab-case imperative verb phrase | PascalCase imperative verb phrase | crate `create-widget`, struct `CreateWidget` |
 | Projectors | kebab-case plural noun | PascalCase plural noun | crate `widgets`, struct `Widgets` |
-| Policies | kebab-case descriptive verb phrase | PascalCase descriptive verb phrase | crate `record-warranty-sales`, struct `RecordWarrantySales` |
 | Effects | kebab-case verb phrase | PascalCase verb phrase | crate `register-webhooks`, struct `RegisterWebhooks` |
 | Folds | — (defined in shared lib) | PascalCase noun phrase with `State` suffix | `WidgetState`, `ShopExistsState`, `WidgetNamesState` |
 | Rules | — (defined in shared lib) | PascalCase present-tense assertion, no suffix | `ShopExists`, `WidgetIsNotArchived`, `WidgetNameIsUnique` |
@@ -771,27 +673,26 @@ Command
   ├── checks rules against fold state
   └── emits new events → Event Store
                               │
-              ┌───────────────┼───────────────┐
-              ▼               ▼               ▼
-         Projector         Policy           Effect
-         ─────────         ──────           ──────
-         reads events      reads events     reads events
-         writes to         writes to        writes to
-         SQLite            SQLite           SQLite
-         (external         (internal        (internal
-          reads OK)         only)            only)
-                               │               │
-                               ▼               ▼
-                          returns          executes commands
-                          commands         directly &
-                          to runtime       makes HTTP requests
-                               │               │
-                               └───────┬───────┘
-                                       ▼
-                                    Command
-                                 (checks event
-                                  store state,
-                                  emits if new)
+              ┌───────────────┴───────────────┐
+              ▼                               ▼
+         Projector                          Effect
+         ─────────                          ──────
+         reads events                       reads events
+         writes to                          writes to
+         SQLite                             SQLite
+         (external                          (internal
+          reads OK)                          only)
+                                               │
+                                               ▼
+                                        executes commands
+                                        directly &
+                                        makes HTTP requests
+                                               │
+                                               ▼
+                                            Command
+                                         (checks event
+                                          store state,
+                                          emits if new)
 ```
 
 ---
@@ -802,25 +703,24 @@ Command
 |-----------|-----------------------|
 | Command   | Fold state in `emit()`: check whether the action already occurred in the event store; return `emit![]` if so |
 | Projector | Structural: replaying the same events in order always produces identical SQLite state |
-| Policy    | Runtime-managed: the runtime tracks `(event_position, command_index)` and skips already-processed pairs |
 | Effect    | Event store via commands: the schedule command checks fold state and emits nothing if already done; the receipt guards the side effect |
 
 ---
 
 ## Key Design Principles
 
-1. **Commands are the only writers.** No projector, policy, or effect ever writes to the event store directly. They trigger commands, which write events.
+1. **Commands are the only writers.** No projector or effect ever writes to the event store directly. They trigger commands, which write events.
 
 2. **Events are immutable facts.** Once written, events never change. All current state is derived by replaying events.
 
 3. **No aggregates or streams.** Consistency boundaries are dynamic, formed at command execution time by the set of events the command reads (DCB). There is no pre-partitioned stream per entity.
 
-4. **Folds are used only in commands.** Projectors, policies, and effects use SQLite for any internal state they need. Folds exist solely to support command invariant checking and decision-making in `emit()`.
+4. **Folds are used only in commands.** Projectors and effects use SQLite for any internal state they need. Folds exist solely to support command invariant checking and decision-making in `emit()`.
 
 5. **Rules enforce invariants.** Business rules are named, reusable, and composable. They are checked atomically before any events are written.
 
 6. **Projectors are for reads.** Projector SQLite databases are the query layer — they build denormalized views optimized for reading, intended to be accessed by external processes.
 
-7. **Policies and effects use SQLite for internal state only.** Their databases support their own logic (lookups for constructing commands) and are never read externally.
+7. **Effects use SQLite for internal state only.** Their databases support their own logic (lookups for constructing commands) and are never read externally.
 
 8. **The system is fully replayable.** All SQLite databases can be deleted. Re-processing all events from the beginning produces the same result and triggers no new side effects.

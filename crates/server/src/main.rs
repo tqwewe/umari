@@ -21,7 +21,7 @@ use umari_runtime::{
     module::supervisor::ModuleSupervisor,
     module_store::actor::ModuleStoreActor,
     supervisor::{RuntimeConfig, RuntimeError, RuntimeSupervisor},
-    wit::{effect::EffectWorld, policy::PolicyState, projector::ProjectorWorld},
+    wit::{effect::EffectWorld, projector::ProjectorWorld},
 };
 
 use crate::tracing_subscriber::PrettyNoSpans;
@@ -131,9 +131,6 @@ async fn main() {
         ActorRef::<ModuleSupervisor<ProjectorWorld>>::lookup("projector")
             .expect("failed to lookup projector supervisor")
             .expect("projector supervisor should be registered");
-    let policy_supervisor_ref = ActorRef::<ModuleSupervisor<PolicyState>>::lookup("policy")
-        .expect("failed to lookup policy supervisor")
-        .expect("policy supervisor should be registered");
     let effect_supervisor_ref = ActorRef::<ModuleSupervisor<EffectWorld>>::lookup("effect")
         .expect("failed to lookup effect supervisor")
         .expect("effect supervisor should be registered");
@@ -148,7 +145,6 @@ async fn main() {
                 module_store_ref,
                 command_ref,
                 projector_supervisor_ref,
-                policy_supervisor_ref,
                 effect_supervisor_ref,
                 event_store,
             };

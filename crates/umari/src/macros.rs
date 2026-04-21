@@ -68,12 +68,6 @@ macro_rules! export_command {
 
 #[cfg(not(target_arch = "wasm32"))]
 #[macro_export]
-macro_rules! export_policy {
-    ($ty:path) => {};
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-#[macro_export]
 macro_rules! export_projector {
     ($ty:path) => {};
 }

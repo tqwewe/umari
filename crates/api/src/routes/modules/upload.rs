@@ -97,40 +97,6 @@ pub async fn upload_projector(
 
 #[utoipa::path(
     post,
-    path = "/policies/{name}/versions/{version}",
-    params(
-        ("name" = String, Path, description = "Module name"),
-        ("version" = String, Path, description = "Semantic version (e.g., 1.0.0)"),
-        ("activate" = Option<bool>, Query, description = "Activate immediately after upload")
-    ),
-    request_body(content = String, description = "WASM binary file", content_type = "multipart/form-data"),
-    responses(
-        (status = 200, description = "Module already exists with the same content (idempotent)", body = UploadResponse),
-        (status = 201, description = "Module uploaded successfully", body = UploadResponse),
-        (status = 400, description = "Invalid input", body = crate::error::ErrorResponse),
-        (status = 409, description = "Module version already exists", body = crate::error::ErrorResponse)
-    ),
-    tag = "policies"
-)]
-pub async fn upload_policy(
-    State(state): State<AppState>,
-    Path((name, version)): Path<(String, String)>,
-    Query(query): Query<UploadQuery>,
-    multipart: Multipart,
-) -> Result<(StatusCode, Json<UploadResponse>), Error> {
-    upload_module(
-        state,
-        ModuleType::Policy,
-        name,
-        version,
-        query.activate,
-        multipart,
-    )
-    .await
-}
-
-#[utoipa::path(
-    post,
     path = "/effects/{name}/versions/{version}",
     params(
         ("name" = String, Path, description = "Module name"),

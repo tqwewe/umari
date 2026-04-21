@@ -6,7 +6,6 @@ pub mod env_vars;
 pub mod events;
 pub mod execute;
 pub mod index;
-pub mod policies;
 pub mod projectors;
 pub mod replay;
 pub mod upload;

@@ -19,7 +19,7 @@ use crate::{
         supervisor::{ModuleSupervisor, ModuleSupervisorArgs},
     },
     module_store::actor::{ModuleStoreActor, StoreActorArgs},
-    wit::{self, policy::PolicyArgs},
+    wit,
 };
 
 pub struct RuntimeSupervisor;
@@ -35,8 +35,6 @@ pub enum RuntimeError {
     CommandStartupFailed(String),
     #[error("projector startup failed: {0}")]
     ProjectorStartupFailed(String),
-    #[error("policy startup failed: {0}")]
-    PolicyStartupFailed(String),
     #[error("effect startup failed: {0}")]
     EffectStartupFailed(String),
     #[error("module store startup failed: {0}")]
@@ -119,7 +117,7 @@ impl Actor for RuntimeSupervisor {
             .await
             .map_err(|_| RuntimeError::ModulePubSubSendError)?;
 
-        // Setup event handlers: projector, policy, effect
+        // Setup event handlers: projector, effect
 
         macro_rules! start_event_handler {
             ($t:path, $name:literal, $args:expr $(,)?) => {
@@ -140,13 +138,6 @@ impl Actor for RuntimeSupervisor {
         }
 
         let projector_ref = start_event_handler!(wit::projector::ProjectorWorld, "projector", ());
-        let policy_ref = start_event_handler!(
-            wit::policy::PolicyState,
-            "policy",
-            PolicyArgs {
-                command_ref: command_ref.clone(),
-            },
-        );
         let effect_ref = start_event_handler!(wit::effect::EffectWorld, "effect", ());
 
         command_ref
@@ -157,11 +148,6 @@ impl Actor for RuntimeSupervisor {
         projector_ref
             .wait_for_startup_with_result(|res| {
                 res.map_err(|err| RuntimeError::ProjectorStartupFailed(err.to_string()))
-            })
-            .await?;
-        policy_ref
-            .wait_for_startup_with_result(|res| {
-                res.map_err(|err| RuntimeError::PolicyStartupFailed(err.to_string()))
             })
             .await?;
         effect_ref

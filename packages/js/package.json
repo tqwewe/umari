@@ -15,7 +15,7 @@
   "scripts": {
     "prepare": "node scripts/copy-wit.js",
     "typecheck": "tsc --noEmit",
-    "generate-types": "jco types ../../wit/command --out-dir src/generated/command && jco types ../../wit/projector --out-dir src/generated/projector && jco types ../../wit/policy --out-dir src/generated/policy && jco types ../../wit/effect --out-dir src/generated/effect && jco types ../../wit/sqlite --world-name sqlite --out-dir src/generated/sqlite"
+    "generate-types": "jco types ../../wit/command --out-dir src/generated/command && jco types ../../wit/projector --out-dir src/generated/projector && jco types ../../wit/effect --out-dir src/generated/effect && jco types ../../wit/sqlite --world-name sqlite --out-dir src/generated/sqlite"
   },
   "peerDependencies": {
     "zod": "^3.0.0"

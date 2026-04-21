@@ -49,10 +49,6 @@ env = { WIT = "common" }
 extend = "update-wit"
 env = { WIT = "effect" }
 
-[tasks.update-wit-policy]
-extend = "update-wit"
-env = { WIT = "policy" }
-
 [tasks.update-wit-projector]
 extend = "update-wit"
 env = { WIT = "projector" }
@@ -67,7 +63,6 @@ dependencies = [
   "update-wit-command",
   "update-wit-common",
   "update-wit-effect",
-  "update-wit-policy",
   "update-wit-projector",
   "update-wit-sqlite",
 ]
@@ -88,10 +83,6 @@ env = { WIT = "common" }
 extend = "clean-wit-deps"
 env = { WIT = "effect" }
 
-[tasks.clean-wit-deps-policy]
-extend = "clean-wit-deps"
-env = { WIT = "policy" }
-
 [tasks.clean-wit-deps-projector]
 extend = "clean-wit-deps"
 env = { WIT = "projector" }
@@ -106,7 +97,6 @@ dependencies = [
   "clean-wit-deps-command",
   "clean-wit-deps-common",
   "clean-wit-deps-effect",
-  "clean-wit-deps-policy",
   "clean-wit-deps-projector",
   "clean-wit-deps-sqlite",
 ]

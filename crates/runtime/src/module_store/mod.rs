@@ -44,7 +44,6 @@ pub struct ModuleVersionInfo {
 #[strum(serialize_all = "snake_case")]
 pub enum ModuleType {
     Command,
-    Policy,
     Projector,
     Effect,
 }

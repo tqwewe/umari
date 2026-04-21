@@ -12,8 +12,10 @@ const dest = resolve(__dirname, "../wit");
 
 rmSync(dest, { recursive: true, force: true });
 
-for (const type of ["command", "projector", "policy", "effect"]) {
-  cpSync(resolve(repoRoot, "wit", type), resolve(dest, type), { recursive: true });
+for (const type of ["command", "projector", "effect"]) {
+  cpSync(resolve(repoRoot, "wit", type), resolve(dest, type), {
+    recursive: true,
+  });
 }
 
 console.log("copied wit/ into packages/js/wit/");

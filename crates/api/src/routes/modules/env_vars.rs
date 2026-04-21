@@ -53,25 +53,6 @@ pub async fn get_projector_env_vars(
 
 #[utoipa::path(
     get,
-    path = "/policies/{name}/env",
-    params(
-        ("name" = String, Path, description = "Module name")
-    ),
-    responses(
-        (status = 200, description = "Environment variables retrieved", body = GetEnvVarsResponse),
-        (status = 500, description = "Internal server error", body = crate::error::ErrorResponse)
-    ),
-    tag = "policies"
-)]
-pub async fn get_policy_env_vars(
-    State(state): State<AppState>,
-    Path(name): Path<String>,
-) -> Result<Json<GetEnvVarsResponse>, Error> {
-    get_env_vars(state, ModuleType::Policy, name).await
-}
-
-#[utoipa::path(
-    get,
     path = "/effects/{name}/env",
     params(
         ("name" = String, Path, description = "Module name")
@@ -135,28 +116,6 @@ pub async fn set_projector_env_var(
 
 #[utoipa::path(
     put,
-    path = "/policies/{name}/env/{key}",
-    params(
-        ("name" = String, Path, description = "Module name"),
-        ("key" = String, Path, description = "Environment variable key")
-    ),
-    request_body = SetEnvVarRequest,
-    responses(
-        (status = 200, description = "Environment variable set", body = SetEnvVarResponse),
-        (status = 500, description = "Internal server error", body = crate::error::ErrorResponse)
-    ),
-    tag = "policies"
-)]
-pub async fn set_policy_env_var(
-    State(state): State<AppState>,
-    Path((name, key)): Path<(String, String)>,
-    Json(req): Json<SetEnvVarRequest>,
-) -> Result<Json<SetEnvVarResponse>, Error> {
-    set_env_var(state, ModuleType::Policy, name, key, req).await
-}
-
-#[utoipa::path(
-    put,
     path = "/effects/{name}/env/{key}",
     params(
         ("name" = String, Path, description = "Module name"),
@@ -215,26 +174,6 @@ pub async fn delete_projector_env_var(
     Path((name, key)): Path<(String, String)>,
 ) -> Result<Json<DeleteEnvVarResponse>, Error> {
     delete_env_var(state, ModuleType::Projector, name, key).await
-}
-
-#[utoipa::path(
-    delete,
-    path = "/policies/{name}/env/{key}",
-    params(
-        ("name" = String, Path, description = "Module name"),
-        ("key" = String, Path, description = "Environment variable key")
-    ),
-    responses(
-        (status = 200, description = "Environment variable deleted", body = DeleteEnvVarResponse),
-        (status = 500, description = "Internal server error", body = crate::error::ErrorResponse)
-    ),
-    tag = "policies"
-)]
-pub async fn delete_policy_env_var(
-    State(state): State<AppState>,
-    Path((name, key)): Path<(String, String)>,
-) -> Result<Json<DeleteEnvVarResponse>, Error> {
-    delete_env_var(state, ModuleType::Policy, name, key).await
 }
 
 #[utoipa::path(

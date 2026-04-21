@@ -82,7 +82,6 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
     fn name() -> &'static str {
         match A::MODULE_TYPE {
             ModuleType::Command => "CommandActor",
-            ModuleType::Policy => "PolicyActor",
             ModuleType::Projector => "ProjectorActor",
             ModuleType::Effect => "EffectActor",
         }

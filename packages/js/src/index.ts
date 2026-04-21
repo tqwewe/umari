@@ -3,7 +3,6 @@ export { defineFold, scopedEvent } from "./fold.ts";
 export { defineRule } from "./rule.ts";
 export { defineCommand, exportCommand } from "./command.ts";
 export { exportProjector } from "./projector.ts";
-export { exportPolicy } from "./policy.ts";
 export { exportEffect } from "./effect.ts";
 
 export type {
@@ -11,9 +10,7 @@ export type {
   CommandDef,
   CommandExecutor,
   CommandReceipt,
-  CommandSubmission,
   DomainIdBindings,
-  EffectContext,
   EmittedEvent,
   EmittedEventReceipt,
   EventDef,
@@ -32,4 +29,3 @@ export type {
   StoredEventRaw,
   TypedEvent,
 } from "./types.ts";
-

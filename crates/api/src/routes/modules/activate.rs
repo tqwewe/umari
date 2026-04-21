@@ -66,29 +66,6 @@ pub async fn activate_projector(
 
 #[utoipa::path(
     put,
-    path = "/policies/{name}/active",
-    params(
-        ("name" = String, Path, description = "Module name")
-    ),
-    request_body = ActivateRequest,
-    responses(
-        (status = 200, description = "Module activated successfully", body = ActivateResponse),
-        (status = 400, description = "Invalid version format", body = crate::error::ErrorResponse),
-        (status = 404, description = "Module or version not found", body = crate::error::ErrorResponse),
-        (status = 500, description = "Internal server error", body = crate::error::ErrorResponse)
-    ),
-    tag = "policies"
-)]
-pub async fn activate_policy(
-    State(state): State<AppState>,
-    Path(name): Path<String>,
-    Json(req): Json<ActivateRequest>,
-) -> Result<Json<ActivateResponse>, Error> {
-    activate_module(state, ModuleType::Policy, name, req).await
-}
-
-#[utoipa::path(
-    put,
     path = "/effects/{name}/active",
     params(
         ("name" = String, Path, description = "Module name")
@@ -194,26 +171,6 @@ pub async fn deactivate_projector(
 
 #[utoipa::path(
     delete,
-    path = "/policies/{name}/active",
-    params(
-        ("name" = String, Path, description = "Module name")
-    ),
-    responses(
-        (status = 200, description = "Module deactivated successfully", body = DeactivateResponse),
-        (status = 404, description = "Module not found", body = crate::error::ErrorResponse),
-        (status = 500, description = "Internal server error", body = crate::error::ErrorResponse)
-    ),
-    tag = "policies"
-)]
-pub async fn deactivate_policy(
-    State(state): State<AppState>,
-    Path(name): Path<String>,
-) -> Result<Json<DeactivateResponse>, Error> {
-    deactivate_module(state, ModuleType::Policy, name).await
-}
-
-#[utoipa::path(
-    delete,
     path = "/effects/{name}/active",
     params(
         ("name" = String, Path, description = "Module name")
@@ -256,35 +213,6 @@ pub async fn replay_projector(
         .await?;
     Ok(Json(ReplayResponse {
         module_type: ModuleType::Projector.to_string(),
-        name,
-        replaying: true,
-    }))
-}
-
-#[utoipa::path(
-    post,
-    path = "/policies/{name}/replay",
-    params(
-        ("name" = String, Path, description = "Module name")
-    ),
-    responses(
-        (status = 200, description = "Module replay triggered successfully", body = ReplayResponse),
-        (status = 404, description = "Module not active", body = crate::error::ErrorResponse),
-        (status = 500, description = "Internal server error", body = crate::error::ErrorResponse)
-    ),
-    tag = "policies"
-)]
-pub async fn replay_policy(
-    State(state): State<AppState>,
-    Path(name): Path<String>,
-) -> Result<Json<ReplayResponse>, Error> {
-    let name_arc: Arc<str> = name.clone().into();
-    state
-        .policy_supervisor_ref
-        .ask(Reset { name: name_arc })
-        .await?;
-    Ok(Json(ReplayResponse {
-        module_type: ModuleType::Policy.to_string(),
         name,
         replaying: true,
     }))

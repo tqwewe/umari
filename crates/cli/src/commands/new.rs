@@ -36,7 +36,6 @@ fn type_plural(module_type: &str) -> &str {
     match module_type {
         "command" => "commands",
         "projector" => "projectors",
-        "policy" => "policies",
         "effect" => "effects",
         _ => unreachable!(),
     }
@@ -60,9 +59,6 @@ fn lib_rs_content(module_type: &str, type_name: &str) -> String {
         ),
         "projector" => format!(
             "use umari::prelude::*;\n\nexport_projector!({type_name});\n\n#[derive(EventSet)]\nenum Query {{\n    // TODO: add event variants, e.g.: MyEvent(MyEvent),\n}}\n\nstruct {type_name} {{}}\n\nimpl Projector for {type_name} {{\n    type Query = Query;\n\n    fn init() -> Result<Self, ProjectorError> {{\n        // TODO: run CREATE TABLE IF NOT EXISTS statements here\n        Ok({type_name} {{}})\n    }}\n\n    fn handle(&mut self, event: StoredEvent<Self::Query>) -> Result<(), ProjectorError> {{\n        match event.data {{}}\n    }}\n}}\n"
-        ),
-        "policy" => format!(
-            "use umari::prelude::*;\n\nexport_policy!({type_name});\n\n#[derive(EventSet)]\nenum Query {{\n    // TODO: add event variants, e.g.: MyEvent(MyEvent),\n}}\n\n#[derive(Default)]\nstruct {type_name} {{}}\n\nimpl Policy for {type_name} {{\n    type Query = Query;\n\n    fn partition_key(&self, event: StoredEvent<Self::Query>) -> Option<String> {{\n        None\n    }}\n\n    fn handle(&mut self, event: StoredEvent<Self::Query>) -> Result<Vec<CommandSubmission>, SqliteError> {{\n        Ok(vec![])\n    }}\n}}\n"
         ),
         "effect" => format!(
             "use umari::prelude::*;\n\nexport_effect!({type_name});\n\n#[derive(EventSet)]\nenum Query {{\n    // TODO: add event variants, e.g.: MyEvent(MyEvent),\n}}\n\n#[derive(Default)]\nstruct {type_name} {{}}\n\nimpl Effect for {type_name} {{\n    type Query = Query;\n    type Error = String;\n\n    fn partition_key(&self, _event: StoredEvent<Self::Query>) -> Option<String> {{\n        None\n    }}\n\n    fn handle(&mut self, event: StoredEvent<Self::Query>) -> Result<(), CommandError> {{\n        Ok(())\n    }}\n}}\n"
@@ -93,9 +89,6 @@ fn index_ts_content(module_type: &str, type_name: &str) -> String {
         ),
         "projector" => format!(
             "import {{ exportProjector }} from \"@umari/js\";\nimport type {{ SqliteDb }} from \"@umari/js\";\n\nexport const {type_name} = exportProjector({{\n  events: [],\n  setup(_db: SqliteDb) {{\n    // TODO: CREATE TABLE IF NOT EXISTS ...\n  }},\n  handle(_event, _db) {{}},\n}});\n"
-        ),
-        "policy" => format!(
-            "import {{ exportPolicy }} from \"@umari/js\";\n\nexport const {type_name} = exportPolicy({{\n  events: [],\n  handle(_event) {{\n    return [];\n  }},\n}});\n"
         ),
         "effect" => format!(
             "import {{ exportEffect }} from \"@umari/js\";\n\nexport const {type_name} = exportEffect({{\n  events: [],\n  handle(_event) {{}},\n}});\n"

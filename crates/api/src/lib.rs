@@ -15,7 +15,7 @@ use umari_runtime::{
     command::actor::CommandActor,
     module::supervisor::ModuleSupervisor,
     module_store::actor::ModuleStoreActor,
-    wit::{effect::EffectWorld, policy::PolicyState, projector::ProjectorWorld},
+    wit::{effect::EffectWorld, projector::ProjectorWorld},
 };
 use umari_ui::{UiState, ui_router};
 use utoipa::OpenApi;
@@ -24,17 +24,14 @@ use utoipa_swagger_ui::SwaggerUi;
 use crate::routes::{
     execute::execute,
     modules::{
-        activate_command, activate_effect, activate_policy, activate_projector, deactivate_command,
-        deactivate_effect, deactivate_policy, deactivate_projector, delete_command_env_var,
-        delete_effect_env_var, delete_policy_env_var, delete_projector_env_var,
-        get_command_details, get_command_env_vars, get_command_health, get_command_version_details,
-        get_effect_details, get_effect_env_vars, get_effect_health, get_effect_version_details,
-        get_policy_details, get_policy_env_vars, get_policy_health, get_policy_version_details,
-        get_projector_details, get_projector_env_vars, get_projector_health,
-        get_projector_version_details, list_active_modules, list_commands, list_effects,
-        list_policies, list_projectors, replay_effect, replay_policy, replay_projector,
-        set_command_env_var, set_effect_env_var, set_policy_env_var, set_projector_env_var,
-        upload_command, upload_effect, upload_policy, upload_projector,
+        activate_command, activate_effect, activate_projector, deactivate_command,
+        deactivate_effect, deactivate_projector, delete_command_env_var, delete_effect_env_var,
+        delete_projector_env_var, get_command_details, get_command_env_vars, get_command_health,
+        get_command_version_details, get_effect_details, get_effect_env_vars, get_effect_health,
+        get_effect_version_details, get_projector_details, get_projector_env_vars,
+        get_projector_health, get_projector_version_details, list_active_modules, list_commands,
+        list_effects, list_projectors, replay_effect, replay_projector, set_command_env_var,
+        set_effect_env_var, set_projector_env_var, upload_command, upload_effect, upload_projector,
     },
 };
 use umari_types::*;
@@ -44,43 +41,33 @@ use umari_types::*;
     paths(
         routes::modules::upload_command,
         routes::modules::upload_projector,
-        routes::modules::upload_policy,
         routes::modules::upload_effect,
         routes::modules::list_commands,
         routes::modules::list_projectors,
-        routes::modules::list_policies,
         routes::modules::list_effects,
         routes::modules::get_command_details,
         routes::modules::get_command_version_details,
         routes::modules::get_projector_details,
         routes::modules::get_projector_version_details,
-        routes::modules::get_policy_details,
-        routes::modules::get_policy_version_details,
         routes::modules::get_effect_details,
         routes::modules::get_effect_version_details,
         routes::modules::activate_command,
         routes::modules::activate_projector,
-        routes::modules::activate_policy,
         routes::modules::activate_effect,
         routes::modules::deactivate_command,
         routes::modules::deactivate_projector,
-        routes::modules::deactivate_policy,
         routes::modules::deactivate_effect,
         routes::modules::replay_projector,
-        routes::modules::replay_policy,
         routes::modules::replay_effect,
         routes::modules::list_active_modules,
         routes::modules::get_command_env_vars,
         routes::modules::get_projector_env_vars,
-        routes::modules::get_policy_env_vars,
         routes::modules::get_effect_env_vars,
         routes::modules::set_command_env_var,
         routes::modules::set_projector_env_var,
-        routes::modules::set_policy_env_var,
         routes::modules::set_effect_env_var,
         routes::modules::delete_command_env_var,
         routes::modules::delete_projector_env_var,
-        routes::modules::delete_policy_env_var,
         routes::modules::delete_effect_env_var,
         routes::execute::execute,
     ),
@@ -112,7 +99,6 @@ use umari_types::*;
     tags(
         (name = "commands", description = "Command module management"),
         (name = "projectors", description = "Projector module management"),
-        (name = "policies", description = "Policy module management"),
         (name = "effects", description = "Effect module management"),
         (name = "modules", description = "Cross-module operations"),
         (name = "execution", description = "Command execution")
@@ -134,7 +120,6 @@ pub struct AppState {
     pub module_store_ref: ActorRef<ModuleStoreActor>,
     pub command_ref: ActorRef<CommandActor>,
     pub projector_supervisor_ref: ActorRef<ModuleSupervisor<ProjectorWorld>>,
-    pub policy_supervisor_ref: ActorRef<ModuleSupervisor<PolicyState>>,
     pub effect_supervisor_ref: ActorRef<ModuleSupervisor<EffectWorld>>,
     pub event_store: Arc<AsyncUmaDbClient>,
 }
@@ -150,7 +135,6 @@ pub async fn start_server(addr: impl ToSocketAddrs, state: AppState) -> io::Resu
         module_store_ref: state.module_store_ref.clone(),
         command_ref: state.command_ref.clone(),
         projector_supervisor_ref: state.projector_supervisor_ref.clone(),
-        policy_supervisor_ref: state.policy_supervisor_ref.clone(),
         effect_supervisor_ref: state.effect_supervisor_ref.clone(),
         event_store: state.event_store.clone(),
     };
@@ -185,17 +169,6 @@ pub async fn start_server(addr: impl ToSocketAddrs, state: AppState) -> io::Resu
         .route("/projectors/{name}/active", put(activate_projector))
         .route("/projectors/{name}/active", delete(deactivate_projector))
         .route("/projectors/{name}/replay", post(replay_projector))
-        // Policy module management
-        .route("/policies/{name}/versions/{version}", post(upload_policy))
-        .route("/policies", get(list_policies))
-        .route("/policies/{name}", get(get_policy_details))
-        .route(
-            "/policies/{name}/versions/{version}",
-            get(get_policy_version_details),
-        )
-        .route("/policies/{name}/active", put(activate_policy))
-        .route("/policies/{name}/active", delete(deactivate_policy))
-        .route("/policies/{name}/replay", post(replay_policy))
         // Effect module management
         .route("/effects/{name}/versions/{version}", post(upload_effect))
         .route("/effects", get(list_effects))
@@ -218,10 +191,6 @@ pub async fn start_server(addr: impl ToSocketAddrs, state: AppState) -> io::Resu
             "/projectors/{name}/env/{key}",
             delete(delete_projector_env_var),
         )
-        // Policy env vars
-        .route("/policies/{name}/env", get(get_policy_env_vars))
-        .route("/policies/{name}/env/{key}", put(set_policy_env_var))
-        .route("/policies/{name}/env/{key}", delete(delete_policy_env_var))
         // Effect env vars
         .route("/effects/{name}/env", get(get_effect_env_vars))
         .route("/effects/{name}/env/{key}", put(set_effect_env_var))
@@ -231,7 +200,6 @@ pub async fn start_server(addr: impl ToSocketAddrs, state: AppState) -> io::Resu
         // Runtime health per category
         .route("/commands/active", get(get_command_health))
         .route("/projectors/active", get(get_projector_health))
-        .route("/policies/active", get(get_policy_health))
         .route("/effects/active", get(get_effect_health))
         .layer(DefaultBodyLimit::max(100 * 1024 * 1024)) // 100 MB
         .with_state(state);

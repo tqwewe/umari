@@ -44,7 +44,6 @@ fn detect_module_type(path: &Path) -> Option<&'static str> {
         match component.as_os_str().to_str()? {
             "commands" => return Some("commands"),
             "projectors" => return Some("projectors"),
-            "policies" => return Some("policies"),
             "effects" => return Some("effects"),
             _ => {}
         }
@@ -175,7 +174,7 @@ fn discover_modules(filter_paths: &[PathBuf], debug: bool) -> Result<(Vec<AnyMod
     }
 
     // JS modules
-    for type_dir in &["commands", "projectors", "policies", "effects"] {
+    for type_dir in &["commands", "projectors", "effects"] {
         let dir = metadata.workspace_root.join(type_dir);
         if !dir.exists() {
             continue;

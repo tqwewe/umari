@@ -64,13 +64,6 @@ fn page_inner(title: &str, content: Markup, wide: bool) -> Markup {
                             data-nav="/ui/projectors"
                             class="nav-link flex items-center px-3 py-2 rounded-md text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
                             { "Projectors" }
-                        a href="/ui/policies"
-                            hx-get="/ui/policies"
-                            hx-target="#content"
-                            hx-push-url="/ui/policies"
-                            data-nav="/ui/policies"
-                            class="nav-link flex items-center px-3 py-2 rounded-md text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
-                            { "Policies" }
                         a href="/ui/effects"
                             hx-get="/ui/effects"
                             hx-target="#content"

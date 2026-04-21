@@ -17,7 +17,9 @@ function effectiveDomainIds(
   return "event" in entry ? entry.scope : entry.domainIds;
 }
 
-function entryEventType(entry: FoldEventEntry<EventDef<any, any, any>>): string {
+function entryEventType(
+  entry: FoldEventEntry<EventDef<any, any, any>>,
+): string {
   return "event" in entry ? entry.event.type : entry.type;
 }
 
@@ -33,20 +35,34 @@ export function collectFoldEvents(
   const events: ResolvedEventDef[] = [];
 
   for (const fold of Object.values(stateFolds)) {
-    for (const entry of fold._events as FoldEventEntry<EventDef<any, any, any>>[]) {
-      events.push({ type: entryEventType(entry), domainIds: effectiveDomainIds(entry) });
+    for (const entry of fold._events as FoldEventEntry<
+      EventDef<any, any, any>
+    >[]) {
+      events.push({
+        type: entryEventType(entry),
+        domainIds: effectiveDomainIds(entry),
+      });
     }
   }
 
   for (const rule of rules) {
     if (rule._kind === "single") {
-      for (const entry of rule._fold._events as FoldEventEntry<EventDef<any, any, any>>[]) {
-        events.push({ type: entryEventType(entry), domainIds: effectiveDomainIds(entry) });
+      for (const entry of rule._fold._events as FoldEventEntry<
+        EventDef<any, any, any>
+      >[]) {
+        events.push({
+          type: entryEventType(entry),
+          domainIds: effectiveDomainIds(entry),
+        });
       }
     } else {
       for (const fold of Object.values(rule._folds)) {
-        for (const entry of (fold as FoldDef<any, any>)._events as FoldEventEntry<EventDef<any, any, any>>[]) {
-          events.push({ type: entryEventType(entry), domainIds: effectiveDomainIds(entry) });
+        for (const entry of (fold as FoldDef<any, any>)
+          ._events as FoldEventEntry<EventDef<any, any, any>>[]) {
+          events.push({
+            type: entryEventType(entry),
+            domainIds: effectiveDomainIds(entry),
+          });
         }
       }
     }
@@ -167,7 +183,7 @@ function cartesian(arrays: string[][]): string[][] {
 }
 
 /**
- * Build EventQuery for projectors/policies/effects.
+ * Build EventQuery for projectors/effects.
  * These don't have domain ID bindings — their query is purely based on event types
  * and optional static scope tags.
  */
@@ -182,9 +198,9 @@ export function buildQueryFromEntries(
       ? (entry as { event: EventDef<any, any, any> }).event
       : (entry as EventDef<any, any, any>);
     const scopeTags = isScoped
-      ? Object.entries(
-          (entry as { scope: Record<string, string> }).scope,
-        ).map(([k, v]) => `${k}:${v}`)
+      ? Object.entries((entry as { scope: Record<string, string> }).scope).map(
+          ([k, v]) => `${k}:${v}`,
+        )
       : [];
 
     const tagKey = [...scopeTags].sort().join("|");

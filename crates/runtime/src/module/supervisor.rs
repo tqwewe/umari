@@ -74,7 +74,6 @@ impl<A: EventHandlerModule> Actor for ModuleSupervisor<A> {
     fn name() -> &'static str {
         match A::MODULE_TYPE {
             ModuleType::Command => "CommandSupervisor",
-            ModuleType::Policy => "PolicySupervisor",
             ModuleType::Projector => "ProjectorSupervisor",
             ModuleType::Effect => "EffectSupervisor",
         }
@@ -146,7 +145,6 @@ impl<A: EventHandlerModule> Actor for ModuleSupervisor<A> {
         if !supervisor.modules.is_empty() {
             let label = match A::MODULE_TYPE {
                 ModuleType::Command => "commands",
-                ModuleType::Policy => "policies",
                 ModuleType::Projector => "projectors",
                 ModuleType::Effect => "effects",
             };

@@ -358,7 +358,6 @@ impl ToSql for ModuleType {
     fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
         Ok(ToSqlOutput::Borrowed(ValueRef::Text(match self {
             ModuleType::Command => b"command",
-            ModuleType::Policy => b"policy",
             ModuleType::Projector => b"projector",
             ModuleType::Effect => b"effect",
         })))
@@ -369,7 +368,6 @@ impl FromSql for ModuleType {
     fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
         match value.as_str()? {
             "command" => Ok(ModuleType::Command),
-            "policy" => Ok(ModuleType::Policy),
             "projector" => Ok(ModuleType::Projector),
             "effect" => Ok(ModuleType::Effect),
             _ => Err(FromSqlError::InvalidType),
