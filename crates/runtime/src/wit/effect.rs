@@ -19,6 +19,7 @@ bindgen!({
     exports: { default: async },
     with: {
         "umari:command/executor": crate::wit::command::executor,
+        "umari:command/transaction": crate::wit::command::transaction,
         "umari:common": crate::wit::common,
         "umari:sqlite": crate::wit::sqlite,
         "wasi:http": wasmtime_wasi_http::p2::bindings::http,
@@ -36,6 +37,8 @@ impl EventHandlerModule for EffectWorld {
     fn add_to_linker(linker: &mut Linker<wit::EventHandlerComponentState>) -> wasmtime::Result<()> {
         umari::command::executor::add_to_linker::<_, HasSelf<_>>(linker, |s| s)?;
         wasmtime_wasi_http::p2::add_only_http_to_linker_async(linker)?;
+        wit::command::transaction::add_to_linker::<_, HasSelf<_>>(linker, |s| s)?;
+
         Ok(())
     }
 

@@ -44,7 +44,7 @@ fn type_plural(module_type: &str) -> &str {
 fn cargo_toml_content(module_type: &str, name: &str) -> String {
     match module_type {
         "command" => format!(
-            "[package]\nname = \"{name}\"\nedition = \"2024\"\n\n[lib]\ncrate-type = [\"cdylib\"]\n\n[dependencies]\numari.workspace = true\nserde.workspace = true\nwit-bindgen.workspace = true\n"
+            "[package]\nname = \"{name}\"\nedition = \"2024\"\n\n[lib]\ncrate-type = [\"cdylib\"]\n\n[dependencies]\numari.workspace = true\nserde.workspace = true\n"
         ),
         _ => format!(
             "[package]\nname = \"{name}\"\nedition = \"2024\"\n\n[lib]\ncrate-type = [\"cdylib\"]\n\n[dependencies]\numari.workspace = true\n"
@@ -54,9 +54,10 @@ fn cargo_toml_content(module_type: &str, name: &str) -> String {
 
 fn lib_rs_content(module_type: &str, type_name: &str) -> String {
     match module_type {
-        "command" => format!(
-            "use serde::Deserialize;\nuse umari::prelude::*;\n\nexport_command!({type_name});\n\n#[derive(EventSet)]\nenum Query {{\n    // TODO: add event variants, e.g.: MyEvent(MyEvent),\n}}\n\n#[derive(CommandInput, Deserialize)]\nstruct Input {{\n    // TODO: add input fields; use #[domain_id] to tag domain ID fields\n}}\n\n#[derive(Default)]\nstruct {type_name} {{}}\n\nimpl Command for {type_name} {{\n    type Query = Query;\n    type Input = Input;\n\n    fn apply(&mut self, event: Query, _meta: EventMeta) {{\n        match event {{}}\n    }}\n\n    fn handle(&self, input: Input) -> Result<Emit, CommandError> {{\n        Ok(emit![])\n    }}\n}}\n"
-        ),
+        "command" => {
+            let _ = type_name;
+            "use serde::Deserialize;\nuse umari::prelude::*;\n\n#[derive(DomainIds, Deserialize)]\nstruct Input {\n    // TODO: add input fields; use #[domain_id] to tag domain ID fields\n}\n\n#[export_command]\npub fn execute(input: Input, context: CommandContext) -> anyhow::Result<ExecuteOutput> {\n    let mut cmd = Command::new(input, context);\n\n    cmd.execute(|input| {\n        emit![]\n    })\n}\n".to_string()
+        }
         "projector" => format!(
             "use umari::prelude::*;\n\nexport_projector!({type_name});\n\n#[derive(EventSet)]\nenum Query {{\n    // TODO: add event variants, e.g.: MyEvent(MyEvent),\n}}\n\nstruct {type_name} {{}}\n\nimpl Projector for {type_name} {{\n    type Query = Query;\n\n    fn init() -> Result<Self, ProjectorError> {{\n        // TODO: run CREATE TABLE IF NOT EXISTS statements here\n        Ok({type_name} {{}})\n    }}\n\n    fn handle(&mut self, event: StoredEvent<Self::Query>) -> Result<(), ProjectorError> {{\n        match event.data {{}}\n    }}\n}}\n"
         ),

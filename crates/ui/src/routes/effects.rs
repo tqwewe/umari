@@ -132,7 +132,7 @@ pub async fn get_effect(
         .await?;
 
     let db_path = state.data_dir.join(format!("effect-{name}.sqlite"));
-    let default_query = default_sql_query(&db_path).await;
+    let default_query = default_sql_query(db_path).await;
     let query_url = format!("/ui/effects/{name}/query");
 
     let versions_panel = html! {

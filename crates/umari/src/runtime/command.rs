@@ -1,14 +1,9 @@
+#![allow(clippy::too_many_arguments)]
+
 use std::marker::PhantomData;
 
+use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
-use umadb_dcb::DcbQuery;
-use validator::Validate;
-
-use crate::{
-    command::{Command, CommandInput, EventMeta, build_query_items_from_domain_ids},
-    folds::FoldSet,
-    rules::RuleSet,
-};
 
 pub use self::umari::command::types::*;
 
@@ -23,108 +18,76 @@ wit_bindgen::generate!({
     },
 });
 
-#[macro_export]
-macro_rules! export_command {
-    ($ty:path) => {
-        impl $crate::command::CommandName for $ty {
-            const COMMAND_NAME: &'static str = env!("CARGO_PKG_NAME");
-        }
-
-        type ExportedCommand = $crate::runtime::command::CommandExport<$ty>;
-        $crate::runtime::command::export!(ExportedCommand with_types_in $crate::runtime::command);
-    };
-}
-
 pub struct CommandExport<T>(PhantomData<T>);
 
-impl<T: Command> Guest for CommandExport<T>
+pub trait ExportedCommand {
+    type Input: DeserializeOwned + JsonSchema;
+
+    fn execute(
+        input: Self::Input,
+        context: crate::command::CommandContext,
+    ) -> anyhow::Result<ExecuteOutput>;
+}
+
+impl<T> Guest for CommandExport<T>
 where
-    T: Command,
-    T::Input: DeserializeOwned,
+    T: ExportedCommand,
 {
     fn schema() -> Option<Json> {
         let schema = schemars::schema_for!(T::Input);
         Some(serde_json::to_string(&schema).unwrap_or_else(|_| panic!("invalid json schema")))
     }
 
-    fn query(input: Json) -> Result<EventQuery, Error> {
+    fn execute(input: Json, context: CommandContext) -> Result<ExecuteOutput, Error> {
         let input: T::Input =
             serde_json::from_str(&input).map_err(|err| Error::InvalidInput(err.to_string()))?;
 
-        input
-            .validate()
-            .map_err(|err| Error::Rejected(err.to_string()))?;
+        let context = crate::command::CommandContext {
+            correlation_id: context
+                .correlation_id
+                .as_deref()
+                .map(|id| uuid::Uuid::parse_str(id).unwrap()),
+            triggering_event_id: context
+                .triggering_event_id
+                .as_deref()
+                .map(|id| uuid::Uuid::parse_str(id).unwrap()),
+            idempotency_key: context
+                .idempotency_key
+                .as_deref()
+                .map(|id| uuid::Uuid::parse_str(id).unwrap()),
+        };
 
-        let rules = T::rules(&input);
-        let mut event_domain_ids = <T::State as FoldSet>::event_domain_ids();
-        event_domain_ids.extend(rules.event_domain_ids());
-        let items = build_query_items_from_domain_ids(
-            &event_domain_ids,
-            &<T::Input as CommandInput>::domain_id_bindings(&input),
-        );
-
-        Ok(DcbQuery::with_items(items).into())
+        T::execute(input, context).map_err(|err| Error::Rejected(err.to_string()))
     }
+}
 
-    fn execute(input: Json, events: Vec<StoredEvent>) -> Result<ExecuteOutput, Error> {
-        let input: T::Input =
-            serde_json::from_str(&input).map_err(|err| Error::InvalidInput(err.to_string()))?;
-
-        let bindings = <T::Input as CommandInput>::domain_id_bindings(&input);
-        let mut state = T::State::default();
-        let mut rules = T::rules(&input);
-
-        for stored_event in events {
-            let event: crate::event::StoredEvent<serde_json::Value> = stored_event.into();
-
-            let meta = EventMeta {
-                position: event.position,
-                timestamp: event.timestamp,
-            };
-
-            <T::State as FoldSet>::apply(
-                &mut state,
-                &event.event_type,
-                event.data.clone(),
-                &event.tags,
-                &bindings,
-                meta,
-            )
-            .unwrap_or_else(|err| panic!("failed to deserialize event data: {}", err.message));
-
-            rules
-                .apply_event(&event.event_type, event.data, &event.tags, &bindings, meta)
-                .unwrap_or_else(|err| {
-                    panic!("failed to deserialize rule event data: {}", err.message)
-                });
-        }
-
-        rules
-            .check()
-            .map_err(|err| Error::Rejected(err.to_string()))?;
-        let emitted_events = T::emit(state, input)
-            .into_events()
-            .into_iter()
-            .map(|event| {
-                let data = serde_json::to_string(&event.data)
-                    .unwrap_or_else(|err| panic!("failed to serialize event data: {err}"));
-                EmittedEvent {
+impl From<crate::command::ExecuteOutput> for ExecuteOutput {
+    fn from(output: crate::command::ExecuteOutput) -> Self {
+        ExecuteOutput {
+            position: output.position,
+            events: output
+                .events
+                .into_iter()
+                .map(|event| EmittedEvent {
+                    id: event.id.to_string(),
                     event_type: event.event_type,
-                    data,
                     domain_ids: event
                         .domain_ids
                         .into_iter()
-                        .map(|(k, v)| DomainId {
-                            name: k.to_string(),
-                            id: v.into_option(),
-                        })
+                        .map(|(name, id)| DomainId { name, id })
                         .collect(),
-                }
-            })
-            .collect();
+                })
+                .collect(),
+        }
+    }
+}
 
-        Ok(ExecuteOutput {
-            events: emitted_events,
-        })
+impl From<crate::command::CommandContext> for CommandContext {
+    fn from(ctx: crate::command::CommandContext) -> Self {
+        CommandContext {
+            correlation_id: ctx.correlation_id.as_ref().map(ToString::to_string),
+            triggering_event_id: ctx.triggering_event_id.as_ref().map(ToString::to_string),
+            idempotency_key: ctx.idempotency_key.as_ref().map(ToString::to_string),
+        }
     }
 }

@@ -62,6 +62,10 @@ struct Cli {
 
 #[tokio::main(name = "umari", flavor = "multi_thread")]
 async fn main() {
+    rustls::crypto::aws_lc_rs::default_provider()
+        .install_default()
+        .expect("failed to install rustls crypto provider");
+
     let cli = Cli::parse();
 
     let default_directive_level = if cli.verbose { "trace" } else { "info" };

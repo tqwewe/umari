@@ -4,7 +4,7 @@ pub use self::umari::sqlite::connection::{
 pub use self::umari::sqlite::statement::Stmt;
 
 pub use crate::error::{ConstraintViolation, ConstraintViolationKind, SqliteError};
-pub use crate::sqlite::{Column, Row, Value};
+pub use crate::sqlite::{Column, Row, SqliteValue};
 
 wit_bindgen::generate!({
     path: "wit/sqlite",
@@ -12,7 +12,7 @@ wit_bindgen::generate!({
     additional_derives: [PartialEq, Clone, serde::Serialize, serde::Deserialize],
     generate_unused_types: true,
     with: {
-        "umari:sqlite/types@0.1.0/value": crate::sqlite::Value,
+        "umari:sqlite/types@0.1.0/value": crate::sqlite::SqliteValue,
         "umari:sqlite/types@0.1.0/column": crate::sqlite::Column,
         "umari:sqlite/types@0.1.0/row": crate::sqlite::Row,
         "umari:sqlite/types@0.1.0/sqlite-error": crate::error::SqliteError,

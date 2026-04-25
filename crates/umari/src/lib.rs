@@ -76,7 +76,7 @@
 //! }
 //! ```
 
-pub use umari_macros::{CommandInput, Event, EventSet};
+pub use umari_macros::{DomainIds, Event, EventSet, FromDomainIds, export_command};
 use uuid::{Uuid, uuid};
 
 pub mod command;
@@ -87,11 +87,11 @@ pub mod event;
 #[macro_use]
 mod macros;
 pub mod effect;
+pub mod enforce;
+pub mod fold_query;
 pub mod folds;
 pub mod params;
 pub mod projector;
-pub mod rules;
-#[cfg(target_arch = "wasm32")]
 pub mod runtime;
 pub mod sqlite;
 
@@ -100,14 +100,15 @@ pub mod prelude {
     pub use crate::domain_id::*;
     pub use crate::effect::*;
     pub use crate::emit::*;
+    pub use crate::fold_query::*;
+    pub use crate::enforce::*;
     pub use crate::error::*;
     pub use crate::event::*;
     pub use crate::folds::*;
     pub use crate::projector::*;
-    pub use crate::rules::*;
     pub use crate::sqlite::*;
-    pub use crate::{emit, export_command, export_effect, export_projector, params, reject, rules};
-    pub use umari_macros::{CommandInput, Event, EventSet};
+    pub use crate::{emit, export_effect, export_projector, params, reject};
+    pub use umari_macros::{DomainIds, Event, EventSet, FromDomainIds, export_command};
 }
 
 // Uuid::new_v5(&Uuid::NAMESPACE_URL, b"https://umari.dev/idempotency-namespace")

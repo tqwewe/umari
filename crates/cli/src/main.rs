@@ -89,6 +89,9 @@ enum CommandsSubcommand {
         name: String,
         /// semantic version (e.g., 1.0.0)
         version: String,
+        /// environment variables
+        #[arg(long = "env", value_parser = parse_key_val)]
+        env: Vec<(String, String)>,
         /// WASM file path
         file: PathBuf,
         /// activate immediately after upload
@@ -140,6 +143,9 @@ enum ProjectorsSubcommand {
         name: String,
         /// semantic version (e.g., 1.0.0)
         version: String,
+        /// environment variables
+        #[arg(long = "env", value_parser = parse_key_val)]
+        env: Vec<(String, String)>,
         /// WASM file path
         file: PathBuf,
         /// activate immediately after upload
@@ -196,6 +202,9 @@ enum EffectsSubcommand {
         name: String,
         /// semantic version (e.g., 1.0.0)
         version: String,
+        /// environment variables
+        #[arg(long = "env", value_parser = parse_key_val)]
+        env: Vec<(String, String)>,
         /// WASM file path
         file: PathBuf,
         /// activate immediately after upload
@@ -301,6 +310,12 @@ enum ModulesSubcommand {
     },
 }
 
+fn parse_key_val(s: &str) -> Result<(String, String), String> {
+    let (k, v) = s.split_once('=').ok_or("expected KEY=VALUE")?;
+
+    Ok((k.to_string(), v.to_string()))
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let client = ApiClient::new(cli.url);
@@ -310,9 +325,17 @@ fn main() -> Result<()> {
             CommandsSubcommand::Upload {
                 name,
                 version,
+                env,
                 file,
                 activate,
-            } => commands::commands::upload(&client, name, version, file, activate),
+            } => commands::commands::upload(
+                &client,
+                name,
+                version,
+                env.into_iter().collect(),
+                file,
+                activate,
+            ),
             CommandsSubcommand::List { active_only, name } => {
                 commands::commands::list(&client, active_only, name)
             }
@@ -339,9 +362,17 @@ fn main() -> Result<()> {
             ProjectorsSubcommand::Upload {
                 name,
                 version,
+                env,
                 file,
                 activate,
-            } => commands::projectors::upload(&client, name, version, file, activate),
+            } => commands::projectors::upload(
+                &client,
+                name,
+                version,
+                env.into_iter().collect(),
+                file,
+                activate,
+            ),
             ProjectorsSubcommand::List { active_only, name } => {
                 commands::projectors::list(&client, active_only, name)
             }
@@ -369,9 +400,17 @@ fn main() -> Result<()> {
             EffectsSubcommand::Upload {
                 name,
                 version,
+                env,
                 file,
                 activate,
-            } => commands::effects::upload(&client, name, version, file, activate),
+            } => commands::effects::upload(
+                &client,
+                name,
+                version,
+                env.into_iter().collect(),
+                file,
+                activate,
+            ),
             EffectsSubcommand::List { active_only, name } => {
                 commands::effects::list(&client, active_only, name)
             }

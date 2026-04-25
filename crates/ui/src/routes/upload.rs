@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 use axum::{
     extract::{Multipart, Path, State},
@@ -41,6 +41,7 @@ async fn upload_module_inner(
     let module_type = match module_type_str.as_str() {
         "commands" => ModuleType::Command,
         "projectors" => ModuleType::Projector,
+        "effects" => ModuleType::Effect,
         other => {
             return Err(HtmlError::bad_request(format!(
                 "unknown module type: {other}"
@@ -116,6 +117,7 @@ async fn upload_module_inner(
             module_type,
             name: name_arc.clone(),
             version: version.clone(),
+            env_vars: BTreeMap::new(),
             wasm_bytes: wasm_arc,
         })
         .await

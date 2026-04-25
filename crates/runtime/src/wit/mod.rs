@@ -1,9 +1,13 @@
+use std::sync::Arc;
 #[cfg(debug_assertions)]
 use std::thread;
 
-use kameo::actor::ActorRef;
+use chrono::{DateTime, Utc};
 use rusqlite::{Connection, Statement};
+use serde::Serialize;
 use slotmap::{DefaultKey, SlotMap};
+use umadb_client::AsyncUmaDbClient;
+use umadb_dcb::{DcbQuery, DcbReadResponseAsync};
 use uuid::Uuid;
 use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxView, WasiView};
 use wasmtime_wasi_http::{
@@ -11,7 +15,7 @@ use wasmtime_wasi_http::{
     p2::{WasiHttpCtxView, WasiHttpView},
 };
 
-use crate::{command::actor::CommandActor, effect_journal::EffectJournal};
+use crate::effect_journal::EffectJournal;
 
 pub mod command;
 pub mod common;
@@ -19,10 +23,40 @@ pub mod effect;
 pub mod projector;
 pub mod sqlite;
 
+#[derive(Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ExecuteResult {
+    /// Event store position after command execution
+    pub position: Option<u64>,
+    /// Events emitted by the command
+    pub events: Vec<EmittedEvent>,
+}
+
+#[derive(Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct EmittedEvent {
+    /// Event unique identifier
+    pub id: Uuid,
+    /// Event type identifier
+    pub event_type: String,
+    /// Domain ID tags for event categorization
+    pub tags: Vec<String>,
+}
+
 pub struct CommandComponentState {
     pub wasi_ctx: WasiCtx,
     pub wasi_http_ctx: WasiHttpCtx,
     pub resource_table: ResourceTable,
+    pub event_store: Arc<AsyncUmaDbClient>,
+    pub timestamp: DateTime<Utc>,
+    pub transactions: SlotMap<
+        DefaultKey,
+        (
+            DcbQuery,
+            Option<Box<dyn DcbReadResponseAsync + Send + 'static>>,
+        ),
+    >,
+    pub emitted_events: Vec<EmittedEvent>,
 }
 
 impl WasiView for CommandComponentState {
@@ -48,13 +82,20 @@ pub struct EventHandlerComponentState {
     wasi_ctx: WasiCtx,
     wasi_http_ctx: WasiHttpCtx,
     resource_table: ResourceTable,
-    command_ref: ActorRef<CommandActor>,
+    event_store: Arc<AsyncUmaDbClient>,
     conn: Connection,
     current_event_id: Uuid,
     current_correlation_id: Uuid,
     current_event_position: u64,
     last_position: Option<u64>,
     statements: SlotMap<DefaultKey, Box<Statement<'static>>>,
+    transactions: SlotMap<
+        DefaultKey,
+        (
+            DcbQuery,
+            Option<Box<dyn DcbReadResponseAsync + Send + 'static>>,
+        ),
+    >,
     effect_journal: Option<Box<EffectJournal>>,
     #[cfg(debug_assertions)]
     thread_id: thread::ThreadId,
@@ -66,7 +107,7 @@ impl EventHandlerComponentState {
     pub fn new(
         wasi_ctx: WasiCtx,
         resource_table: ResourceTable,
-        command_ref: ActorRef<CommandActor>,
+        event_store: Arc<AsyncUmaDbClient>,
         conn: Connection,
         last_position: Option<u64>,
     ) -> Self {
@@ -74,13 +115,14 @@ impl EventHandlerComponentState {
             wasi_ctx,
             wasi_http_ctx: WasiHttpCtx::new(),
             resource_table,
-            command_ref,
+            event_store,
             conn,
             current_event_id: Uuid::nil(),
             current_correlation_id: Uuid::nil(),
             current_event_position: 0,
             last_position,
             statements: SlotMap::new(),
+            transactions: SlotMap::new(),
             effect_journal: None,
             #[cfg(debug_assertions)]
             thread_id: std::thread::current().id(),

@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{collections::BTreeMap, path::Path};
 
 use anyhow::{Context, Result, anyhow};
 use indicatif::{ProgressBar, ProgressStyle};
@@ -118,6 +118,7 @@ impl ApiClient {
         module_type: &str,
         name: &str,
         version: &str,
+        env: &BTreeMap<String, String>,
         file_path: &Path,
         activate: bool,
     ) -> Result<(bool, UploadResponse)> {
@@ -141,6 +142,18 @@ impl ApiClient {
         // Build multipart body
         let boundary = "----UmariCLIBoundary";
         let mut multipart_body = Vec::new();
+
+        // Add env vars
+        for (key, value) in env {
+            multipart_body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
+
+            multipart_body.extend_from_slice(
+                format!("Content-Disposition: form-data; name=\"env[{key}]\"\r\n\r\n").as_bytes(),
+            );
+
+            multipart_body.extend_from_slice(value.as_bytes());
+            multipart_body.extend_from_slice(b"\r\n");
+        }
 
         // Add wasm field
         multipart_body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());

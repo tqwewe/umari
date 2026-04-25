@@ -1,39 +1,39 @@
 use uuid::Uuid;
 
-use crate::sqlite::Value;
+use crate::sqlite::SqliteValue;
 
 pub trait Params {
-    fn into_params(self) -> Vec<Value>;
+    fn into_params(self) -> Vec<SqliteValue>;
 }
 
-impl<T: Into<Value>> Params for Vec<T> {
-    fn into_params(self) -> Vec<Value> {
+impl<T: Into<SqliteValue>> Params for Vec<T> {
+    fn into_params(self) -> Vec<SqliteValue> {
         self.into_iter().map(|value| value.into()).collect()
     }
 }
 
 impl Params for () {
-    fn into_params(self) -> Vec<Value> {
+    fn into_params(self) -> Vec<SqliteValue> {
         vec![]
     }
 }
 
 impl<A> Params for (A,)
 where
-    A: Into<Value>,
+    A: Into<SqliteValue>,
 {
-    fn into_params(self) -> Vec<Value> {
+    fn into_params(self) -> Vec<SqliteValue> {
         vec![self.0.into()]
     }
 }
 
 macro_rules! single_tuple_impl {
     ($(($field:tt $ftype:ident)),* $(,)?) => {
-        impl<$($ftype,)*> Params for ($($ftype,)*) where $($ftype: Into<Value>,)* {
-            fn into_params(self) -> Vec<Value> {
+        impl<$($ftype,)*> Params for ($($ftype,)*) where $($ftype: Into<SqliteValue>,)* {
+            fn into_params(self) -> Vec<SqliteValue> {
                 vec![
                     $(
-                        <$ftype as Into<Value>>::into(self.$field)
+                        <$ftype as Into<SqliteValue>>::into(self.$field)
                     ),+
                 ]
             }
@@ -61,18 +61,18 @@ macro_rules! impl_for_array_ref {
     ($($N:literal)+) => {$(
         impl<T> Params for &[T; $N]
         where
-            for<'a> &'a T: Into<Value>
+            for<'a> &'a T: Into<SqliteValue>
         {
-            fn into_params(self) -> Vec<Value> {
+            fn into_params(self) -> Vec<SqliteValue> {
                 self.into_iter().map(|value| value.into()).collect()
             }
         }
 
         impl<T> Params for [T; $N]
         where
-            T: Into<Value>
+            T: Into<SqliteValue>
         {
-            fn into_params(self) -> Vec<Value> {
+            fn into_params(self) -> Vec<SqliteValue> {
                 self.into_iter().map(|value| value.into()).collect()
             }
         }
@@ -84,14 +84,14 @@ impl_for_array_ref!(
     18 19 20 21 22 23 24 25 26 27 28 29 30 31 32
 );
 
-impl From<bool> for Value {
+impl From<bool> for SqliteValue {
     #[inline]
     fn from(i: bool) -> Self {
         Self::Integer(i as i64)
     }
 }
 
-impl From<isize> for Value {
+impl From<isize> for SqliteValue {
     #[inline]
     fn from(i: isize) -> Self {
         Self::Integer(i as i64)
@@ -100,10 +100,10 @@ impl From<isize> for Value {
 
 macro_rules! from_i64(
     ($t:ty) => (
-        impl From<$t> for Value {
+        impl From<$t> for SqliteValue {
             #[inline]
-            fn from(i: $t) -> Value {
-                Value::Integer(i64::from(i))
+            fn from(i: $t) -> SqliteValue {
+                SqliteValue::Integer(i64::from(i))
             }
         }
     )
@@ -116,48 +116,48 @@ from_i64!(u8);
 from_i64!(u16);
 from_i64!(u32);
 
-impl From<i64> for Value {
+impl From<i64> for SqliteValue {
     #[inline]
     fn from(i: i64) -> Self {
         Self::Integer(i)
     }
 }
 
-impl From<f32> for Value {
+impl From<f32> for SqliteValue {
     #[inline]
     fn from(f: f32) -> Self {
         Self::Real(f.into())
     }
 }
 
-impl From<f64> for Value {
+impl From<f64> for SqliteValue {
     #[inline]
     fn from(f: f64) -> Self {
         Self::Real(f)
     }
 }
 
-impl From<String> for Value {
+impl From<String> for SqliteValue {
     #[inline]
     fn from(s: String) -> Self {
         Self::Text(s)
     }
 }
 
-impl From<Vec<u8>> for Value {
+impl From<Vec<u8>> for SqliteValue {
     #[inline]
     fn from(v: Vec<u8>) -> Self {
         Self::Blob(v)
     }
 }
 
-impl From<Uuid> for Value {
+impl From<Uuid> for SqliteValue {
     fn from(id: Uuid) -> Self {
         Self::Text(id.to_string())
     }
 }
 
-impl<T> From<Option<T>> for Value
+impl<T> From<Option<T>> for SqliteValue
 where
     T: Into<Self>,
 {
@@ -176,6 +176,6 @@ macro_rules! params {
         vec![]
     };
     ($($param:expr),+ $(,)?) => {
-        vec![$( Into::<Value>::into($param) ),+]
+        vec![$( Into::<SqliteValue>::into($param) ),+]
     };
 }

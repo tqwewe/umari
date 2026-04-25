@@ -54,6 +54,14 @@ impl fmt::Display for ConstraintViolationKind {
     }
 }
 
+#[derive(Debug, Error)]
+pub enum FromDomainIdsError {
+    #[error("missing domain id '{0}'")]
+    MissingDomainId(&'static str),
+    #[error("{0}")]
+    ParseDomainId(anyhow::Error),
+}
+
 #[derive(Clone, Debug, Error)]
 #[error("command rejected: {0}")]
 pub struct CommandExecuteError(pub String);

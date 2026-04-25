@@ -124,7 +124,7 @@ pub async fn get_projector(
     };
 
     let db_path = state.data_dir.join(format!("projector-{name}.sqlite"));
-    let default_query = default_sql_query(&db_path).await;
+    let default_query = default_sql_query(db_path).await;
 
     let query_url = format!("/ui/projectors/{name}/query");
 

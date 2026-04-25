@@ -2,6 +2,7 @@ package umari:effect@0.1.0;
 
 world effect-world {
     import umari:command/executor@0.1.0;
+    import umari:command/transaction@0.1.0;
     import umari:sqlite/connection@0.1.0;
     import umari:sqlite/statement@0.1.0;
     import wasi:http/outgoing-handler@0.2.8;

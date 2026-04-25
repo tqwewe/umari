@@ -157,7 +157,7 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
         let state = wit::EventHandlerComponentState::new(
             wasi_ctx,
             ResourceTable::new(),
-            args.command_ref,
+            args.event_store.clone(),
             conn,
             last_position,
         );

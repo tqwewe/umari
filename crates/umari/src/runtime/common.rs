@@ -52,7 +52,7 @@ pub fn transform_stored_event<Q: EventSet>(
 ) -> Option<crate::event::StoredEvent<Q::Item>> {
     let event: crate::event::StoredEvent<serde_json::Value> = stored_event.into();
 
-    let data = match Q::from_event(&event.event_type, event.data) {
+    let data = match Q::from_event(&event.event_type, &event.data) {
         Some(Ok(data)) => data,
         Some(Err(err)) => panic!("failed to deserialize event data: {err}"),
         None => return None,

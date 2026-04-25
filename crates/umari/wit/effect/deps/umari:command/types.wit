@@ -2,15 +2,24 @@ package umari:command@0.1.0;
 
 /// Core types for the command system
 interface types {
-    use umari:common/types@0.1.0.{event-type, json};
+    use umari:common/types@0.1.0.{event-type, json, uuid};
 
     record domain-id {
         name: string,
-        id: option<string>,
+        id: string,
     }
 
+    record command-context {
+        correlation-id: option<uuid>,
+        triggering-event-id: option<uuid>,
+        idempotency-key: option<uuid>,
+    }
+    
+
     /// Emitted event from command execution
-    record emitted-event {
+    record emit-event {
+        /// Event unique identifier
+        id: uuid,
         /// Event type identifier
         event-type: event-type,
         /// Event payload as JSON
@@ -19,8 +28,19 @@ interface types {
         domain-ids: list<domain-id>,
     }
 
+    record emitted-event {
+        /// Event unique identifier
+        id: uuid,
+        /// Event type identifier
+        event-type: event-type,
+        /// Domain IDs for event routing (field name -> value)
+        domain-ids: list<domain-id>,
+    }
+
     /// Output from command execution
     record execute-output {
+        ///
+        position: option<u64>,
         /// Events to be persisted
         events: list<emitted-event>,
     }

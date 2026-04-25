@@ -11,6 +11,7 @@ wit_bindgen::generate!({
     pub_export_macro: true,
     with: {
         "umari:command/executor@0.1.0": crate::runtime::command,
+        "umari:command/transaction@0.1.0": crate::runtime::command,
         "umari:command/types@0.1.0": crate::runtime::command,
         "umari:common/types@0.1.0": crate::runtime::common,
         "umari:sqlite/types@0.1.0": crate::runtime::sqlite,

@@ -141,6 +141,7 @@ impl AsErrorCode for umari_runtime::command::CommandError {
             umari_runtime::command::CommandError::ModuleStore(send_err) => send_err.error_code(),
             umari_runtime::command::CommandError::SerializeInput { .. } => ErrorCode::InvalidInput,
             umari_runtime::command::CommandError::EventStore(_)
+            | umari_runtime::command::CommandError::InvalidEventId
             | umari_runtime::command::CommandError::MissingEventId => ErrorCode::Database,
             umari_runtime::command::CommandError::Wasmtime(_) => ErrorCode::Internal,
         }

@@ -37,47 +37,6 @@ macro_rules! emit {
     };
 }
 
-/// Creates a tuple of [`FoldRunner`]s from a list of rule functions or closures.
-///
-/// Each expression is automatically wrapped in [`runner()`], so rules are written
-/// as plain functions or closures without any boilerplate.
-///
-/// # Example
-///
-/// ```rust,ignore
-/// fn rules(input: &Self::Input) -> impl RuleSet {
-///     rules!(must_be_open, min_balance(input.amount))
-/// }
-/// ```
-#[macro_export]
-macro_rules! rules {
-    ($($rule:expr),* $(,)?) => {
-        ($($crate::rules::runner($rule),)*)
-    };
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-#[macro_export]
-macro_rules! export_command {
-    ($ty:path) => {
-        impl $crate::command::CommandName for $ty {
-            const COMMAND_NAME: &'static str = env!("CARGO_PKG_NAME");
-        }
-    };
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-#[macro_export]
-macro_rules! export_projector {
-    ($ty:path) => {};
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-#[macro_export]
-macro_rules! export_effect {
-    ($ty:path) => {};
-}
-
 #[macro_export]
 macro_rules! reject {
     ($s:literal, $($t:tt)*) => {{

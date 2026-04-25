@@ -35,6 +35,7 @@ pub struct HttpCompletedData {
     pub invocation_id: String,
     /// key used for cache lookup: user-provided idempotency-key value, or hex(request_hash)
     pub cache_key: String,
+    pub effect_name: String,
     pub module_version: Version,
     pub method: String,
     pub url: String,
@@ -79,8 +80,8 @@ impl WasiHttpHooks for EffectJournal {
     ) -> HttpResult<HostFutureIncomingResponse> {
         let event_store = Arc::clone(&self.event_store);
         let invocation_id = self.invocation_id.clone();
-        let module_version = self.module_version.clone();
         let effect_name = self.effect_name.to_string();
+        let module_version = self.module_version.clone();
         let correlation_id = self.correlation_id;
         let triggering_event_id = self.triggering_event_id;
         let replay_cache = Arc::clone(&self.replay_cache);
@@ -201,9 +202,7 @@ impl WasiHttpHooks for EffectJournal {
             let resp_body_bytes = resp_body
                 .collect()
                 .await
-                .map_err(|err| {
-                    wasmtime::format_err!("failed to collect response body: {err:?}")
-                })?
+                .map_err(|err| wasmtime::format_err!("failed to collect response body: {err:?}"))?
                 .to_bytes();
 
             if resp_body_bytes.len() > MAX_BODY_BYTES {
@@ -213,6 +212,7 @@ impl WasiHttpHooks for EffectJournal {
             let data = HttpCompletedData {
                 invocation_id: invocation_id.clone(),
                 cache_key: cache_key.clone(),
+                effect_name: effect_name.clone(),
                 module_version: module_version.clone(),
                 method,
                 url,

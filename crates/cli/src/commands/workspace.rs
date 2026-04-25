@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -20,11 +21,26 @@ struct CargoPackage {
     version: String,
     manifest_path: PathBuf,
     targets: Vec<CargoTarget>,
+    metadata: Option<CargoPackageMetadata>,
 }
 
 #[derive(Deserialize)]
 struct CargoTarget {
     kind: Vec<String>,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(default)]
+struct CargoPackageMetadata {
+    #[serde(default)]
+    umari: UmariMetadata,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(default)]
+struct UmariMetadata {
+    #[serde(default)]
+    env: BTreeMap<String, String>,
 }
 
 #[derive(Deserialize)]
@@ -55,6 +71,7 @@ struct Module {
     name: String,
     version: String,
     module_type: &'static str,
+    env_vars: BTreeMap<String, String>,
     wasm_path: PathBuf,
 }
 
@@ -62,6 +79,7 @@ struct JsModule {
     name: String,
     version: String,
     module_type: &'static str,
+    env_vars: BTreeMap<String, String>,
     dir: PathBuf,
     wasm_path: PathBuf,
 }
@@ -90,6 +108,13 @@ impl AnyModule {
         match self {
             AnyModule::Rust(m) => m.module_type,
             AnyModule::Js(m) => m.module_type,
+        }
+    }
+
+    fn env_vars(&self) -> &BTreeMap<String, String> {
+        match self {
+            AnyModule::Rust(m) => &m.env_vars,
+            AnyModule::Js(m) => &m.env_vars,
         }
     }
 
@@ -127,7 +152,7 @@ fn discover_modules(filter_paths: &[PathBuf], debug: bool) -> Result<(Vec<AnyMod
     let mut modules = Vec::new();
 
     // Rust modules
-    for pkg in &metadata.packages {
+    for pkg in metadata.packages {
         let is_cdylib = pkg
             .targets
             .iter()
@@ -164,11 +189,13 @@ fn discover_modules(filter_paths: &[PathBuf], debug: bool) -> Result<(Vec<AnyMod
             .join("wasm32-wasip2")
             .join(profile)
             .join(format!("{wasm_name}.wasm"));
+        let env_vars = pkg.metadata.unwrap_or_default().umari.env;
 
         modules.push(AnyModule::Rust(Module {
-            name: pkg.name.clone(),
-            version: pkg.version.clone(),
+            name: pkg.name,
+            version: pkg.version,
             module_type,
+            env_vars,
             wasm_path,
         }));
     }
@@ -232,6 +259,7 @@ fn discover_modules(filter_paths: &[PathBuf], debug: bool) -> Result<(Vec<AnyMod
                 name: pkg.name,
                 version: pkg.version,
                 module_type,
+                env_vars: BTreeMap::new(),
                 dir: module_dir,
                 wasm_path,
             }));
@@ -353,6 +381,7 @@ pub fn deploy(
             module.module_type(),
             module.name(),
             module.version(),
+            module.env_vars(),
             wasm_path,
             !no_activate,
         )?;

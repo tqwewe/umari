@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::{error::SqliteError, params::Params};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum Value {
+pub enum SqliteValue {
     Null,
     Integer(i64),
     Real(f64),
@@ -14,7 +14,7 @@ pub enum Value {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Column {
     pub name: String,
-    pub value: Value,
+    pub value: SqliteValue,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -40,11 +40,11 @@ impl Row {
 
 /// Allows indexing into a [`Row`] by column name or position.
 pub trait ColumnIndex {
-    fn get_value<'a>(&self, columns: &'a [Column]) -> &'a Value;
+    fn get_value<'a>(&self, columns: &'a [Column]) -> &'a SqliteValue;
 }
 
 impl ColumnIndex for &str {
-    fn get_value<'a>(&self, columns: &'a [Column]) -> &'a Value {
+    fn get_value<'a>(&self, columns: &'a [Column]) -> &'a SqliteValue {
         columns
             .iter()
             .find(|col| col.name == *self)
@@ -54,7 +54,7 @@ impl ColumnIndex for &str {
 }
 
 impl ColumnIndex for usize {
-    fn get_value<'a>(&self, columns: &'a [Column]) -> &'a Value {
+    fn get_value<'a>(&self, columns: &'a [Column]) -> &'a SqliteValue {
         &columns
             .get(*self)
             .unwrap_or_else(|| panic!("column index {self} out of bounds"))
@@ -66,49 +66,49 @@ impl ColumnIndex for usize {
 ///
 /// Traps if the value is not of the expected type.
 pub trait FromValue {
-    fn from_value(value: Value) -> Self;
+    fn from_value(value: SqliteValue) -> Self;
 }
 
 impl FromValue for String {
-    fn from_value(value: Value) -> Self {
+    fn from_value(value: SqliteValue) -> Self {
         match value {
-            Value::Text(s) => s,
+            SqliteValue::Text(s) => s,
             other => panic!("expected text, got {other:?}"),
         }
     }
 }
 
 impl FromValue for i64 {
-    fn from_value(value: Value) -> Self {
+    fn from_value(value: SqliteValue) -> Self {
         match value {
-            Value::Integer(n) => n,
+            SqliteValue::Integer(n) => n,
             other => panic!("expected integer, got {other:?}"),
         }
     }
 }
 
 impl FromValue for f64 {
-    fn from_value(value: Value) -> Self {
+    fn from_value(value: SqliteValue) -> Self {
         match value {
-            Value::Real(n) => n,
+            SqliteValue::Real(n) => n,
             other => panic!("expected real, got {other:?}"),
         }
     }
 }
 
 impl FromValue for Vec<u8> {
-    fn from_value(value: Value) -> Self {
+    fn from_value(value: SqliteValue) -> Self {
         match value {
-            Value::Blob(b) => b,
+            SqliteValue::Blob(b) => b,
             other => panic!("expected blob, got {other:?}"),
         }
     }
 }
 
 impl<T: FromValue> FromValue for Option<T> {
-    fn from_value(value: Value) -> Self {
+    fn from_value(value: SqliteValue) -> Self {
         match value {
-            Value::Null => None,
+            SqliteValue::Null => None,
             other => Some(T::from_value(other)),
         }
     }

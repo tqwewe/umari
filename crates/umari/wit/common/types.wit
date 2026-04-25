@@ -23,7 +23,6 @@ interface types {
         tags: list<string>,
     }
 
-
     /// Event data as stored/retrieved from the event store
     record stored-event {
         id: uuid,

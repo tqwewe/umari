@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 use axum::{
     Json,
@@ -142,6 +142,7 @@ async fn upload_module(
         .parse::<Version>()
         .map_err(|_| Error::new(ErrorCode::InvalidInput).with_message("invalid semver version"))?;
 
+    let mut env_vars: BTreeMap<String, String> = BTreeMap::new();
     let mut wasm_bytes: Option<Vec<u8>> = None;
 
     // Parse multipart form data (only looking for wasm field now)
@@ -160,7 +161,23 @@ async fn upload_module(
                 })?;
                 wasm_bytes = Some(bytes.to_vec());
             }
-            _ => {
+            field_name => {
+                if let Some(tail) = field_name.strip_prefix("env[") {
+                    let env_name = tail
+                        .strip_suffix("]")
+                        .ok_or_else(|| {
+                            Error::new(ErrorCode::InvalidInput)
+                                .with_message("invalid env var field")
+                        })?
+                        .to_uppercase();
+
+                    let env_value = field.text().await.map_err(|_| {
+                        Error::new(ErrorCode::InvalidInput)
+                            .with_message("failed to read env var value")
+                    })?;
+
+                    env_vars.insert(env_name, env_value);
+                }
                 // Ignore unknown fields
             }
         }
@@ -183,6 +200,7 @@ async fn upload_module(
             module_type,
             name: name_arc.clone(),
             version: version.clone(),
+            env_vars,
             wasm_bytes: wasm_arc,
         })
         .await

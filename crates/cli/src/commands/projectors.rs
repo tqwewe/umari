@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{collections::BTreeMap, path::PathBuf};
 
 use anyhow::Result;
 use colored::Colorize;
@@ -13,11 +13,12 @@ pub fn upload(
     client: &ApiClient,
     name: String,
     version: String,
+    env_vars: BTreeMap<String, String>,
     file: PathBuf,
     activate: bool,
 ) -> Result<()> {
     let (idempotent, response) =
-        client.upload_wasm("projectors", &name, &version, &file, activate)?;
+        client.upload_wasm("projectors", &name, &version, &env_vars, &file, activate)?;
 
     if idempotent {
         println!(

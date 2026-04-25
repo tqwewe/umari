@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use rusqlite::{
     Connection, ErrorCode, OptionalExtension, Row, ToSql, params,
@@ -58,10 +58,11 @@ impl SqliteModuleStore {
 
 impl SqliteModuleStore {
     pub fn save_module(
-        &self,
+        &mut self,
         module_type: ModuleType,
         name: &str,
         version: Version,
+        env_vars: BTreeMap<String, String>,
         wasm_bytes: &[u8],
     ) -> Result<(), ModuleStoreError> {
         if !is_valid_module_name(name) {
@@ -69,7 +70,8 @@ impl SqliteModuleStore {
         }
 
         let sha256 = hex::encode(Sha256::digest(wasm_bytes));
-        let result = self.conn.execute(
+        let tx = self.conn.transaction()?;
+        let result = tx.execute(
             r#"
             INSERT INTO modules (
                 module_type,
@@ -81,14 +83,22 @@ impl SqliteModuleStore {
             "#,
             params![module_type, name, version.to_string(), wasm_bytes, sha256],
         );
+        for (key, value) in env_vars {
+            tx.execute(
+                "INSERT OR REPLACE INTO module_env_vars (module_type, name, key, value) VALUES (?1, ?2, ?3, ?4)",
+                params![module_type, name, key, value],
+            )?;
+        }
 
         match result {
-            Ok(_) => Ok(()),
+            Ok(_) => {
+                tx.commit()?;
+                Ok(())
+            }
             Err(rusqlite::Error::SqliteFailure(err, _))
                 if err.code == ErrorCode::ConstraintViolation =>
             {
-                let existing: Option<String> = self
-                    .conn
+                let existing: Option<String> = tx
                     .query_row(
                         "SELECT sha256 FROM modules WHERE module_type = ?1 AND name = ?2 AND version = ?3",
                         params![module_type, name, version.to_string()],
@@ -96,6 +106,7 @@ impl SqliteModuleStore {
                     )
                     .optional()
                     .unwrap_or(None);
+                tx.rollback()?;
 
                 if existing.as_deref() == Some(&sha256) {
                     Err(ModuleStoreError::ModuleExistsWithSameHash)
@@ -103,7 +114,10 @@ impl SqliteModuleStore {
                     Err(ModuleStoreError::ModuleAlreadyExists)
                 }
             }
-            Err(err) => Err(ModuleStoreError::Database(err)),
+            Err(err) => {
+                tx.rollback()?;
+                Err(ModuleStoreError::Database(err))
+            }
         }
     }
 
@@ -382,13 +396,14 @@ mod save_load_tests {
     #[test]
     fn test_save_load_module() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
-        let store = SqliteModuleStore::new(conn);
+        let mut store = SqliteModuleStore::new(conn);
         store.init().unwrap();
         store
             .save_module(
                 ModuleType::Command,
                 "hello",
                 "0.1.2".parse().unwrap(),
+                BTreeMap::new(),
                 &[1, 2, 69, 255],
             )
             .unwrap();
@@ -402,13 +417,14 @@ mod save_load_tests {
     #[test]
     fn test_load_module_not_found() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
-        let store = SqliteModuleStore::new(conn);
+        let mut store = SqliteModuleStore::new(conn);
         store.init().unwrap();
         store
             .save_module(
                 ModuleType::Command,
                 "hello",
                 "0.1.2".parse().unwrap(),
+                BTreeMap::new(),
                 &[1, 2, 69, 255],
             )
             .unwrap();
@@ -421,13 +437,14 @@ mod save_load_tests {
     #[test]
     fn test_load_module_integrity() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
-        let store = SqliteModuleStore::new(conn);
+        let mut store = SqliteModuleStore::new(conn);
         store.init().unwrap();
         store
             .save_module(
                 ModuleType::Command,
                 "hello",
                 "0.1.2".parse().unwrap(),
+                BTreeMap::new(),
                 &[1, 2, 69, 255],
             )
             .unwrap();
@@ -458,6 +475,7 @@ mod active_tests {
                 ModuleType::Command,
                 "hello",
                 "0.1.2".parse().unwrap(),
+                BTreeMap::new(),
                 &[1, 2, 69, 255],
             )
             .unwrap();
@@ -517,6 +535,7 @@ mod active_tests {
                 ModuleType::Command,
                 "hello",
                 "0.1.2".parse().unwrap(),
+                BTreeMap::new(),
                 &[1, 2, 69, 255],
             )
             .unwrap();
@@ -525,6 +544,7 @@ mod active_tests {
                 ModuleType::Command,
                 "hello",
                 "0.2.0".parse().unwrap(),
+                BTreeMap::new(),
                 &[3, 4, 5, 6],
             )
             .unwrap();
@@ -572,6 +592,7 @@ mod active_tests {
                 ModuleType::Command,
                 "hello",
                 "0.1.2".parse().unwrap(),
+                BTreeMap::new(),
                 &[1, 2, 3],
             )
             .unwrap();
@@ -598,6 +619,7 @@ mod active_tests {
                 ModuleType::Command,
                 "hello",
                 "0.1.2".parse().unwrap(),
+                BTreeMap::new(),
                 &[1, 2, 3],
             )
             .unwrap();
@@ -641,6 +663,7 @@ mod all_active_tests {
                 ModuleType::Command,
                 "hello",
                 "0.1.2".parse().unwrap(),
+                BTreeMap::new(),
                 &[1, 2, 3],
             )
             .unwrap();
@@ -670,6 +693,7 @@ mod all_active_tests {
                 ModuleType::Command,
                 "hello",
                 "0.1.2".parse().unwrap(),
+                BTreeMap::new(),
                 &[1, 2, 3],
             )
             .unwrap();
@@ -678,6 +702,7 @@ mod all_active_tests {
                 ModuleType::Command,
                 "world",
                 "0.2.0".parse().unwrap(),
+                BTreeMap::new(),
                 &[4, 5, 6],
             )
             .unwrap();
@@ -720,6 +745,7 @@ mod all_active_tests {
                 ModuleType::Command,
                 "hello",
                 "0.1.2".parse().unwrap(),
+                BTreeMap::new(),
                 &[1, 2, 3],
             )
             .unwrap();
@@ -728,6 +754,7 @@ mod all_active_tests {
                 ModuleType::Command,
                 "hello",
                 "0.2.0".parse().unwrap(),
+                BTreeMap::new(),
                 &[7, 8, 9],
             )
             .unwrap();
@@ -761,6 +788,7 @@ mod all_active_tests {
                 ModuleType::Command,
                 "cmd1",
                 "0.1.0".parse().unwrap(),
+                BTreeMap::new(),
                 &[1, 2, 3],
             )
             .unwrap();
@@ -769,6 +797,7 @@ mod all_active_tests {
                 ModuleType::Command,
                 "cmd2",
                 "0.2.0".parse().unwrap(),
+                BTreeMap::new(),
                 &[4, 5, 6],
             )
             .unwrap();
@@ -777,6 +806,7 @@ mod all_active_tests {
                 ModuleType::Projector,
                 "proj1",
                 "0.1.0".parse().unwrap(),
+                BTreeMap::new(),
                 &[7, 8, 9],
             )
             .unwrap();
@@ -785,6 +815,7 @@ mod all_active_tests {
                 ModuleType::Effect,
                 "effect1",
                 "0.1.0".parse().unwrap(),
+                BTreeMap::new(),
                 &[10, 11, 12],
             )
             .unwrap();
@@ -842,6 +873,7 @@ mod all_active_tests {
                 ModuleType::Command,
                 "cmd1",
                 "0.1.0".parse().unwrap(),
+                BTreeMap::new(),
                 &[1, 2, 3],
             )
             .unwrap();
@@ -870,17 +902,35 @@ mod module_versions_tests {
     #[test]
     fn test_get_module_versions() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
-        let store = SqliteModuleStore::new(conn);
+        let mut store = SqliteModuleStore::new(conn);
         store.init().unwrap();
 
         store
-            .save_module(ModuleType::Command, "hello", "0.1.0".parse().unwrap(), &[1])
+            .save_module(
+                ModuleType::Command,
+                "hello",
+                "0.1.0".parse().unwrap(),
+                BTreeMap::new(),
+                &[1],
+            )
             .unwrap();
         store
-            .save_module(ModuleType::Command, "hello", "0.2.0".parse().unwrap(), &[2])
+            .save_module(
+                ModuleType::Command,
+                "hello",
+                "0.2.0".parse().unwrap(),
+                BTreeMap::new(),
+                &[2],
+            )
             .unwrap();
         store
-            .save_module(ModuleType::Command, "hello", "0.3.0".parse().unwrap(), &[3])
+            .save_module(
+                ModuleType::Command,
+                "hello",
+                "0.3.0".parse().unwrap(),
+                BTreeMap::new(),
+                &[3],
+            )
             .unwrap();
 
         let versions = store

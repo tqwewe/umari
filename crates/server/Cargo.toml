@@ -11,6 +11,7 @@ path = "src/main.rs"
 umari-api.workspace = true
 umari-runtime.workspace = true
 
+rustls.workspace = true
 clap.workspace = true
 humantime.workspace = true
 kameo.workspace = true

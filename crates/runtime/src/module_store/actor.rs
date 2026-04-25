@@ -1,4 +1,8 @@
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashMap},
+    path::PathBuf,
+    sync::Arc,
+};
 
 use kameo::prelude::*;
 use kameo_actors::pubsub::{PubSub, Publish};
@@ -44,14 +48,15 @@ impl Actor for ModuleStoreActor {
 impl ModuleStoreActor {
     #[message]
     pub fn save_module(
-        &self,
+        &mut self,
         module_type: ModuleType,
         name: Arc<str>,
         version: Version,
+        env_vars: BTreeMap<String, String>,
         wasm_bytes: Arc<[u8]>,
     ) -> Result<(), ModuleStoreError> {
         self.store
-            .save_module(module_type, &name, version, &wasm_bytes)
+            .save_module(module_type, &name, version, env_vars, &wasm_bytes)
     }
 
     #[message]

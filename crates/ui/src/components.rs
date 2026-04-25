@@ -1018,8 +1018,7 @@ pub fn sql_query_section(query_url: &str, default_query: Option<&str>) -> Markup
 }
 
 /// Returns the default SELECT query for a module's SQLite database (the first non-meta table).
-pub async fn default_sql_query(db_path: &PathBuf) -> Option<String> {
-    let db_path = db_path.clone();
+pub async fn default_sql_query(db_path: PathBuf) -> Option<String> {
     tokio::task::spawn_blocking(move || {
         let conn = Connection::open_with_flags(
             &db_path,

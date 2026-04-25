@@ -3,7 +3,7 @@ use umadb_dcb::DcbEvent;
 use uuid::Uuid;
 
 use crate::{
-    domain_id::{DomainIdValue, DomainIdValues},
+    domain_id::DomainIdBindings,
     error::SerializationError,
     event::{Event, EventEnvelope, StoredEventData},
 };
@@ -19,18 +19,18 @@ use crate::{
 /// ```
 #[derive(Debug, Default)]
 pub struct Emit {
-    events: Vec<EmittedEvent>,
+    events: Vec<EmitEvent>,
 }
 
 /// A serialized event ready for persistence.
 #[derive(Debug)]
-pub struct EmittedEvent {
+pub struct EmitEvent {
     /// The event type name
     pub event_type: String,
     /// The serialized event data (JSON)
     pub data: Value,
     /// Domain ID values for indexing
-    pub domain_ids: DomainIdValues,
+    pub domain_ids: DomainIdBindings,
 }
 
 impl Emit {
@@ -46,7 +46,7 @@ impl Emit {
     /// Panics if the event cannot be serialized. In practice this
     /// shouldn't happen with well-formed event structs.
     pub fn event<E: Event>(mut self, event: E) -> Self {
-        let emitted = EmittedEvent::new(event);
+        let emitted = EmitEvent::new(event);
         self.events.push(emitted);
         self
     }
@@ -54,7 +54,7 @@ impl Emit {
     /// Add an event, returning an error if serialization fails.
     pub fn try_event<E: Event>(mut self, event: E) -> Result<Self, SerializationError> {
         let domain_ids = event.domain_ids();
-        let emitted = EmittedEvent {
+        let emitted = EmitEvent {
             event_type: E::EVENT_TYPE.to_string(),
             data: serde_json::to_value(event)?,
             domain_ids,
@@ -74,12 +74,12 @@ impl Emit {
     }
 
     /// Consume and return the collected events.
-    pub fn into_events(self) -> Vec<EmittedEvent> {
+    pub fn into_events(self) -> Vec<EmitEvent> {
         self.events
     }
 
     /// Gets a reference to the events emitted.
-    pub fn events(&self) -> &[EmittedEvent] {
+    pub fn events(&self) -> &[EmitEvent] {
         &self.events
     }
 
@@ -91,10 +91,10 @@ impl Emit {
     }
 }
 
-impl EmittedEvent {
+impl EmitEvent {
     pub fn new<E: Event>(event: E) -> Self {
         let domain_ids = event.domain_ids();
-        EmittedEvent {
+        EmitEvent {
             event_type: E::EVENT_TYPE.to_string(),
             data: serde_json::to_value(event).expect("event serialization failed"),
             domain_ids,
@@ -107,15 +107,12 @@ impl EmittedEvent {
             tags: self
                 .domain_ids
                 .into_iter()
-                .filter_map(|(category, id)| {
+                .map(|(category, id)| {
                     assert!(
                         !category.contains(':'),
                         "domain id categories cannot contain a colon character"
                     );
-                    match id {
-                        DomainIdValue::Value(id) => Some(format!("{category}:{id}")),
-                        DomainIdValue::None => None,
-                    }
+                    format!("{category}:{id}")
                 })
                 .collect(),
             data: encode_with_envelope(envelope, self.data),

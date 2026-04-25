@@ -5,18 +5,11 @@ use kameo::prelude::*;
 use rand::{SeedableRng, rngs::StdRng};
 use schemars::Schema;
 use semver::Version;
-use serde::Serialize;
-use serde_json::Value;
+use slotmap::SlotMap;
 use tokio::task::JoinSet;
 use tracing::{debug, error, info, warn};
 use umadb_client::AsyncUmaDbClient;
-use umadb_dcb::{DcbAppendCondition, DcbEvent, DcbEventStoreAsync, DcbQuery};
-use umari_core::{
-    command::CommandContext,
-    emit::encode_with_envelope,
-    event::{EventEnvelope, StoredEventData},
-};
-use uuid::Uuid;
+use umari_core::command::CommandContext;
 use wasmtime::{
     Engine, Store,
     component::{Component, HasSelf, Linker},
@@ -33,7 +26,7 @@ use crate::{
         actor::{GetActiveModule, GetAllActiveModules, ModuleStoreActor},
     },
     output::ModuleOutput,
-    wit::{self, CommandComponentState},
+    wit::{self, CommandComponentState, ExecuteResult},
 };
 
 #[derive(Clone)]
@@ -151,26 +144,6 @@ pub struct CommandPayload {
     pub context: CommandContext,
 }
 
-#[derive(Serialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct ExecuteResult {
-    /// Event store position after command execution
-    pub position: Option<u64>,
-    /// Events emitted by the command
-    pub events: Vec<EmittedEvent>,
-}
-
-#[derive(Serialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct EmittedEvent {
-    /// Event unique identifier
-    pub id: Uuid,
-    /// Event type identifier
-    pub event_type: String,
-    /// Domain ID tags for event categorization
-    pub tags: Vec<String>,
-}
-
 #[messages]
 impl CommandActor {
     #[message]
@@ -191,140 +164,20 @@ impl CommandActor {
             Err(err) => return ctx.reply(Err(err)),
         };
 
-        let event_store = self.event_store.clone();
-
         ctx.spawn(async move {
-            let query = module.query(&command.input).await?;
-
-            let (events, head) = event_store
-                .read(Some(query.clone()), Some(0), false, None, false)
-                .await?
-                .collect_with_head()
-                .await?;
-
-            let idempotency_key = command.context.idempotency_key;
-            let mut mapped_events = Vec::with_capacity(events.len());
-
-            for sequenced_event in events {
-                let id = sequenced_event
-                    .event
-                    .uuid
-                    .ok_or(CommandError::MissingEventId)?;
-
-                let stored: StoredEventData<Value> =
-                    serde_json::from_slice(&sequenced_event.event.data)
-                        .map_err(CommandError::DeserializeEvent)?;
-
-                let data = serde_json::to_string(&stored.data)
-                    .expect("serde value should never fail to serialize");
-
-                let is_idempotentcy_key_idempotent = idempotency_key
-                    .zip(stored.idempotency_key)
-                    .is_some_and(|(a, b)| a == b);
-                if is_idempotentcy_key_idempotent {
-                    return Ok(ExecuteResult {
-                        position: head,
-                        events: vec![],
-                    });
-                }
-
-                mapped_events.push(wit::common::StoredEvent {
-                    id: id.to_string(),
-                    position: sequenced_event.position as i64,
-                    event_type: sequenced_event.event.event_type,
-                    tags: sequenced_event.event.tags,
-                    timestamp: stored.timestamp.timestamp(),
-                    correlation_id: stored.correlation_id.to_string(),
-                    causation_id: stored.causation_id.to_string(),
-                    triggering_event_id: stored
-                        .triggering_event_id
-                        .map(|triggering_event_id| triggering_event_id.to_string()),
-                    idempotency_key: stored
-                        .idempotency_key
-                        .map(|idempotency_key| idempotency_key.to_string()),
-                    data,
-                })
-            }
-
-            let execute_output = module.execute(&command.input, mapped_events).await?;
-
-            // Convert emitted events to DCBEvents and persist to event store
-            let causation_id = Uuid::new_v4();
-            let context = command.context;
-            let envelope = EventEnvelope {
-                timestamp,
-                correlation_id: context.correlation_id.unwrap_or_else(Uuid::new_v4),
-                causation_id,
-                triggering_event_id: context.triggering_event_id,
-                idempotency_key: context.idempotency_key,
-            };
-
-            let mut emitted_events = Vec::new();
-            let dcb_events: Vec<DcbEvent> = execute_output
-                .events
-                .into_iter()
-                .map(|event| {
-                    let event_id = Uuid::new_v4();
-
-                    // Convert domain_ids HashMap<String, DomainIdValue> to tags
-                    let tags: Vec<String> = event
-                        .domain_ids
-                        .into_iter()
-                        .filter_map(|domain_id| {
-                            domain_id.id.map(|id| format!("{}:{id}", domain_id.name))
-                        })
-                        .collect();
-
-                    // Store event info for result
-                    emitted_events.push(EmittedEvent {
-                        id: event_id,
-                        event_type: event.event_type.clone(),
-                        tags: tags.clone(),
-                    });
-
-                    let data_value: Value = serde_json::from_str(&event.data)
-                        .map_err(CommandError::DeserializeEvent)?;
-
-                    Ok(DcbEvent {
-                        event_type: event.event_type,
-                        tags,
-                        data: encode_with_envelope(envelope, data_value),
-                        uuid: Some(event_id),
-                    })
-                })
-                .collect::<Result<Vec<_>, CommandError>>()?;
-
-            // Append events to event store if any were emitted
-            let position = if !dcb_events.is_empty() {
-                Some(
-                    event_store
-                        .append(
-                            dcb_events,
-                            Some(DcbAppendCondition {
-                                fail_if_events_match: query,
-                                after: head,
-                            }),
-                            None,
-                        )
-                        .await?,
-                )
-            } else {
-                head
-            };
+            let result = module.execute(&command.input, command.context).await?;
+            let events = module.store.into_data().emitted_events;
 
             debug!(
                 module_type = %ModuleType::Command,
                 %name,
                 version = %module_version,
-                position = position.unwrap_or_default(),
-                events = emitted_events.len(),
+                position = result.position.unwrap_or_default(),
+                events = events.len(),
                 "executed command"
             );
 
-            Ok(ExecuteResult {
-                position,
-                events: emitted_events,
-            })
+            Ok(result)
         })
     }
 
@@ -362,6 +215,10 @@ impl CommandActor {
             wasi_ctx,
             wasi_http_ctx: WasiHttpCtx::new(),
             resource_table: ResourceTable::new(),
+            event_store: self.event_store.clone(),
+            timestamp,
+            transactions: SlotMap::new(),
+            emitted_events: Vec::new(),
         };
         let mut store = Store::new(&self.engine, state);
 
@@ -423,6 +280,10 @@ impl CommandActor {
             wasi_ctx,
             wasi_http_ctx: WasiHttpCtx::new(),
             resource_table: ResourceTable::new(),
+            event_store: self.event_store.clone(),
+            timestamp: DateTime::<Utc>::MIN_UTC,
+            transactions: SlotMap::new(),
+            emitted_events: Vec::new(),
         };
         let mut store = Store::new(&self.engine, state);
         let command = command_pre.instantiate_async(&mut store).await?;
@@ -469,27 +330,16 @@ impl InstantiatedModule {
         Ok(Some(schema))
     }
 
-    async fn query(&mut self, input: &String) -> Result<DcbQuery, CommandError> {
-        let query = self
-            .command
-            .call_query(&mut self.store, input)
-            .await??
-            .into();
-
-        Ok(query)
-    }
-
     async fn execute(
         &mut self,
         input: &String,
-        events: Vec<wit::common::StoredEvent>,
-    ) -> Result<wit::command::ExecuteOutput, CommandError> {
+        context: CommandContext,
+    ) -> Result<ExecuteResult, CommandError> {
         let result = self
             .command
-            .call_execute(&mut self.store, input, &events)
+            .call_execute(&mut self.store, input, &context.into())
             .await??;
-
-        Ok(result)
+        result.try_into()
     }
 }
 
