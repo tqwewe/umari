@@ -12,6 +12,7 @@ path = "src/main.rs"
 umari-types.workspace = true
 
 anyhow.workspace = true
+indoc.workspace = true
 clap.workspace = true
 colored.workspace = true
 comfy-table.workspace = true

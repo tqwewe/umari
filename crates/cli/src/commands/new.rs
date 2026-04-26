@@ -2,6 +2,7 @@ use std::fs;
 use std::process::Command;
 
 use anyhow::{Result, anyhow, bail};
+use indoc::formatdoc;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -32,6 +33,12 @@ fn kebab_to_pascal(name: &str) -> String {
         .collect()
 }
 
+fn workspace_package_name(root: &str) -> Option<String> {
+    let content = fs::read_to_string(std::path::Path::new(root).join("Cargo.toml")).ok()?;
+    let doc = content.parse::<toml_edit::DocumentMut>().ok()?;
+    doc.get("package")?.get("name")?.as_str().map(|s| s.to_string())
+}
+
 fn type_plural(module_type: &str) -> &str {
     match module_type {
         "command" => "commands",
@@ -41,29 +48,106 @@ fn type_plural(module_type: &str) -> &str {
     }
 }
 
-fn cargo_toml_content(module_type: &str, name: &str) -> String {
-    match module_type {
-        "command" => format!(
-            "[package]\nname = \"{name}\"\nedition = \"2024\"\n\n[lib]\ncrate-type = [\"cdylib\"]\n\n[dependencies]\numari.workspace = true\nserde.workspace = true\n"
-        ),
-        _ => format!(
-            "[package]\nname = \"{name}\"\nedition = \"2024\"\n\n[lib]\ncrate-type = [\"cdylib\"]\n\n[dependencies]\numari.workspace = true\n"
-        ),
-    }
+fn cargo_toml_content(module_type: &str, name: &str, workspace_pkg: Option<&str>) -> String {
+    let extra_dep = workspace_pkg
+        .map(|pkg| format!("{pkg}.workspace = true\n\n"))
+        .unwrap_or_default();
+    let serde_dep = if module_type == "command" {
+        "serde.workspace = true\n"
+    } else {
+        ""
+    };
+    formatdoc! {r#"
+        [package]
+        name = "{name}"
+        version = "0.0.1"
+        edition = "2024"
+
+        [lib]
+        crate-type = ["cdylib", "rlib"]
+
+        [dependencies]
+        {extra_dep}anyhow.workspace = true
+        schemars.workspace = true
+        {serde_dep}umari.workspace = true
+    "#}
 }
 
 fn lib_rs_content(module_type: &str, type_name: &str) -> String {
     match module_type {
         "command" => {
             let _ = type_name;
-            "use serde::Deserialize;\nuse umari::prelude::*;\n\n#[derive(DomainIds, Deserialize)]\nstruct Input {\n    // TODO: add input fields; use #[domain_id] to tag domain ID fields\n}\n\n#[export_command]\npub fn execute(input: Input, context: CommandContext) -> anyhow::Result<ExecuteOutput> {\n    let mut cmd = Command::new(input, context);\n\n    cmd.execute(|input| {\n        emit![]\n    })\n}\n".to_string()
+            formatdoc! {r#"
+                use schemars::JsonSchema;
+                use serde::Deserialize;
+                use umari::prelude::*;
+
+                #[derive(DomainIds, JsonSchema, Deserialize)]
+                pub struct Input {{
+                    // TODO: add input fields; use #[domain_id] to tag domain ID fields
+                }}
+
+                #[export_command]
+                pub fn execute(input: Input, context: CommandContext) -> anyhow::Result<ExecuteOutput> {{
+                    let mut cmd = Command::new(input, context);
+
+                    cmd.execute(|input| {{
+                        emit![]
+                    }})
+                }}
+            "#}
         }
-        "projector" => format!(
-            "use umari::prelude::*;\n\nexport_projector!({type_name});\n\n#[derive(EventSet)]\nenum Query {{\n    // TODO: add event variants, e.g.: MyEvent(MyEvent),\n}}\n\nstruct {type_name} {{}}\n\nimpl Projector for {type_name} {{\n    type Query = Query;\n\n    fn init() -> Result<Self, ProjectorError> {{\n        // TODO: run CREATE TABLE IF NOT EXISTS statements here\n        Ok({type_name} {{}})\n    }}\n\n    fn handle(&mut self, event: StoredEvent<Self::Query>) -> Result<(), ProjectorError> {{\n        match event.data {{}}\n    }}\n}}\n"
-        ),
-        "effect" => format!(
-            "use umari::prelude::*;\n\nexport_effect!({type_name});\n\n#[derive(EventSet)]\nenum Query {{\n    // TODO: add event variants, e.g.: MyEvent(MyEvent),\n}}\n\n#[derive(Default)]\nstruct {type_name} {{}}\n\nimpl Effect for {type_name} {{\n    type Query = Query;\n    type Error = String;\n\n    fn partition_key(&self, _event: StoredEvent<Self::Query>) -> Option<String> {{\n        None\n    }}\n\n    fn handle(&mut self, event: StoredEvent<Self::Query>) -> Result<(), CommandError> {{\n        Ok(())\n    }}\n}}\n"
-        ),
+        "projector" => formatdoc! {r#"
+            use umari::prelude::*;
+
+            export_projector!({type_name});
+
+            #[derive(EventSet)]
+            enum Query {{
+                // TODO: add event variants, e.g.: MyEvent(MyEvent),
+            }}
+
+            struct {type_name} {{}}
+
+            impl Projector for {type_name} {{
+                type Query = Query;
+
+                fn init() -> Result<Self, ProjectorError> {{
+                    // TODO: run CREATE TABLE IF NOT EXISTS statements here
+                    Ok({type_name} {{}})
+                }}
+
+                fn handle(&mut self, event: StoredEvent<Self::Query>) -> Result<(), ProjectorError> {{
+                    match event.data {{}}
+                }}
+            }}
+        "#},
+        "effect" => formatdoc! {r#"
+            use umari::prelude::*;
+
+            export_effect!({type_name});
+
+            #[derive(EventSet)]
+            enum Query {{
+                // TODO: add event variants, e.g.: MyEvent(MyEvent),
+            }}
+
+            #[derive(Default)]
+            struct {type_name} {{}}
+
+            impl Effect for {type_name} {{
+                type Query = Query;
+                type Error = String;
+
+                fn partition_key(&self, _event: StoredEvent<Self::Query>) -> Option<String> {{
+                    None
+                }}
+
+                fn handle(&mut self, event: StoredEvent<Self::Query>) -> Result<(), CommandError> {{
+                    Ok(())
+                }}
+            }}
+        "#},
         _ => unreachable!(),
     }
 }
@@ -146,10 +230,11 @@ pub fn generate(module_type: &str, name: &str) -> Result<()> {
     fs::create_dir_all(&src_dir)?;
 
     let type_name = kebab_to_pascal(name);
+    let workspace_pkg = workspace_package_name(&root);
 
     fs::write(
         crate_dir.join("Cargo.toml"),
-        cargo_toml_content(module_type, name),
+        cargo_toml_content(module_type, name, workspace_pkg.as_deref()),
     )?;
     fs::write(
         src_dir.join("lib.rs"),
