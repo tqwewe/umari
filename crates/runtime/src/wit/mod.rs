@@ -15,8 +15,6 @@ use wasmtime_wasi_http::{
     p2::{WasiHttpCtxView, WasiHttpView},
 };
 
-use crate::effect_journal::EffectJournal;
-
 pub mod command;
 pub mod common;
 pub mod effect;
@@ -86,7 +84,6 @@ pub struct EventHandlerComponentState {
     conn: Connection,
     current_event_id: Uuid,
     current_correlation_id: Uuid,
-    current_event_position: u64,
     last_position: Option<u64>,
     statements: SlotMap<DefaultKey, Box<Statement<'static>>>,
     transactions: SlotMap<
@@ -96,7 +93,6 @@ pub struct EventHandlerComponentState {
             Option<Box<dyn DcbReadResponseAsync + Send + 'static>>,
         ),
     >,
-    effect_journal: Option<Box<EffectJournal>>,
     #[cfg(debug_assertions)]
     thread_id: thread::ThreadId,
 }
@@ -119,11 +115,9 @@ impl EventHandlerComponentState {
             conn,
             current_event_id: Uuid::nil(),
             current_correlation_id: Uuid::nil(),
-            current_event_position: 0,
             last_position,
             statements: SlotMap::new(),
             transactions: SlotMap::new(),
-            effect_journal: None,
             #[cfg(debug_assertions)]
             thread_id: std::thread::current().id(),
         }
@@ -155,22 +149,6 @@ impl EventHandlerComponentState {
 
     pub fn update_last_position(&mut self, last_position: Option<u64>) {
         self.last_position = last_position;
-    }
-
-    pub fn current_event_position(&self) -> u64 {
-        self.current_event_position
-    }
-
-    pub fn update_current_event_position(&mut self, position: u64) {
-        self.current_event_position = position;
-    }
-
-    pub fn set_effect_journal(&mut self, journal: Box<EffectJournal>) {
-        self.effect_journal = Some(journal);
-    }
-
-    pub fn take_effect_journal(&mut self) -> Option<Box<EffectJournal>> {
-        self.effect_journal.take()
     }
 
     /// Checks that we're on the correct thread (debug builds only).
@@ -230,10 +208,7 @@ impl WasiHttpView for EventHandlerComponentState {
         WasiHttpCtxView {
             ctx: &mut self.wasi_http_ctx,
             table: &mut self.resource_table,
-            hooks: match &mut self.effect_journal {
-                Some(journal) => journal.as_mut() as &mut dyn wasmtime_wasi_http::p2::WasiHttpHooks,
-                None => Default::default(),
-            },
+            hooks: Default::default(),
         }
     }
 }

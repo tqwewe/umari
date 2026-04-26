@@ -1,5 +1,4 @@
 pub mod command;
-pub mod effect_journal;
 pub mod compile_cache;
 pub mod events;
 pub mod module;

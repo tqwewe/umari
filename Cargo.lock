@@ -3334,13 +3334,10 @@ name = "umari-runtime"
 version = "0.0.0"
 dependencies = [
  "anyhow",
- "base64",
  "bytes",
  "chrono",
  "futures-util",
  "hex",
- "http-body-util",
- "hyper",
  "kameo",
  "kameo_actors",
  "rand",

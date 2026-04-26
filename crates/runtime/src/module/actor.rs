@@ -217,7 +217,6 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
                 ack_recipient: ack_recipient.clone(),
                 event_store: worker_args.event_store.clone(),
                 name: worker_args.name.clone(),
-                version: worker_args.version.clone(),
                 args: worker_args.args.clone(),
                 output: output.clone(),
                 env_vars: worker_args.env_vars.clone(),

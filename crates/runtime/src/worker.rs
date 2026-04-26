@@ -1,14 +1,12 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     ops::ControlFlow,
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
 use kameo::prelude::*;
 use rusqlite::Connection;
-use semver::Version;
-use tracing::debug;
 use umadb_client::AsyncUmaDbClient;
 use uuid::Uuid;
 use wasmtime::{
@@ -21,7 +19,6 @@ use crate::{module_store::INIT_SQL, output::ModuleOutput};
 
 use crate::{
     command::actor::CommandActor,
-    effect_journal::{self, EffectJournal},
     module::{EventHandlerModule, ModuleError},
     module_store::ModuleType,
     wit,
@@ -38,7 +35,6 @@ pub struct ModuleWorkerArgs<A: EventHandlerModule> {
     pub ack_recipient: Recipient<WorkerAck>,
     pub event_store: Arc<AsyncUmaDbClient>,
     pub name: Arc<str>,
-    pub version: Version,
     pub args: A::Args,
     pub output: ModuleOutput,
     pub env_vars: HashMap<String, String>,
@@ -49,9 +45,6 @@ pub struct ModuleWorkerActor<A: EventHandlerModule> {
     instance: A,
     handler: ResourceAny,
     ack_recipient: Recipient<WorkerAck>,
-    event_store: Arc<AsyncUmaDbClient>,
-    name: Arc<str>,
-    version: Version,
     output: ModuleOutput,
 }
 
@@ -118,9 +111,6 @@ impl<A: EventHandlerModule> Actor for ModuleWorkerActor<A> {
             instance,
             handler,
             ack_recipient: args.ack_recipient,
-            event_store: args.event_store,
-            name: args.name,
-            version: args.version,
             output: args.output,
         })
     }
@@ -160,29 +150,6 @@ impl<A: EventHandlerModule> ModuleWorkerActor<A> {
         let store = self.store.data_mut();
         store.update_current_event_id(current_event_id);
         store.update_current_correlation_id(correlation_id);
-        store.update_current_event_position(position);
-
-        // for effects, set up the replay journal before handle_event
-        if A::MODULE_TYPE == ModuleType::Effect {
-            let invocation_id = effect_journal::compute_invocation_id(&self.name, current_event_id);
-
-            let replay_cache = effect_journal::load_replay_cache(&self.event_store, &invocation_id)
-                .await
-                .map_err(|err| ModuleError::Wasmtime(wasmtime::format_err!("{err}")))?;
-
-            let journal = Box::new(EffectJournal {
-                event_store: Arc::clone(&self.event_store),
-                effect_name: Arc::clone(&self.name),
-                module_version: self.version.clone(),
-                invocation_id,
-                triggering_event_id: current_event_id,
-                triggering_event_position: position,
-                correlation_id,
-                replay_cache: Arc::new(Mutex::new(replay_cache)),
-                seen_cache_keys: Arc::new(Mutex::new(HashSet::new())),
-            });
-            self.store.data_mut().set_effect_journal(journal);
-        }
 
         match self
             .instance
@@ -190,21 +157,6 @@ impl<A: EventHandlerModule> ModuleWorkerActor<A> {
             .await
         {
             Ok(()) => {
-                if A::MODULE_TYPE == ModuleType::Effect {
-                    let journal = self
-                        .store
-                        .data_mut()
-                        .take_effect_journal()
-                        .expect("effect journal must be present after handle_event");
-
-                    debug!(
-                        name = %self.name,
-                        version = %self.version,
-                        invocation_id = %journal.invocation_id,
-                        "effect invocation completed"
-                    );
-                }
-
                 // Commit before sending the ack. If the dispatcher restarts
                 // between here and receiving the ack, this event will be
                 // reprocessed — intentional at-least-once delivery.
@@ -217,9 +169,6 @@ impl<A: EventHandlerModule> ModuleWorkerActor<A> {
                 Ok(())
             }
             Err(err) => {
-                if A::MODULE_TYPE == ModuleType::Effect {
-                    self.store.data_mut().take_effect_journal();
-                }
                 let _ = self
                     .ack_recipient
                     .tell(WorkerAck(Err((position, err.to_string()))))
