@@ -2,7 +2,7 @@ use std::{cell::RefCell, fmt, marker::PhantomData};
 
 pub use self::exports::umari::effect::effect::{Guest, GuestEffect};
 use crate::{
-    effect::Effect,
+    effect::{CURRENT_EVENT_CONTEXT, CurrentEventContext, Effect},
     runtime::common::{self, EventQuery, StoredEvent},
 };
 
@@ -81,6 +81,11 @@ where
         let Some(event) = common::transform_stored_event::<T::Query>(stored_event) else {
             return;
         };
+
+        CURRENT_EVENT_CONTEXT.set(Some(CurrentEventContext {
+            correlation_id: event.correlation_id,
+            triggering_event_id: event.id,
+        }));
 
         self.inner
             .borrow_mut()

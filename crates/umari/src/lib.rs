@@ -76,6 +76,7 @@
 //! }
 //! ```
 
+pub use indexmap::indexmap as domain_ids;
 pub use umari_macros::{DomainIds, Event, EventSet, FromDomainIds, export_command};
 use uuid::{Uuid, uuid};
 
@@ -87,7 +88,6 @@ pub mod event;
 #[macro_use]
 mod macros;
 pub mod effect;
-pub mod enforce;
 pub mod fold_query;
 pub mod folds;
 pub mod params;
@@ -100,14 +100,14 @@ pub mod prelude {
     pub use crate::domain_id::*;
     pub use crate::effect::*;
     pub use crate::emit::*;
-    pub use crate::fold_query::*;
-    pub use crate::enforce::*;
     pub use crate::error::*;
     pub use crate::event::*;
+    pub use crate::fold_query::*;
     pub use crate::folds::*;
     pub use crate::projector::*;
     pub use crate::sqlite::*;
     pub use crate::{emit, export_effect, export_projector, params, reject};
+    pub use indexmap::indexmap as domain_ids;
     pub use umari_macros::{DomainIds, Event, EventSet, FromDomainIds, export_command};
 }
 

@@ -1,9 +1,5 @@
-use std::{
-    any::Any,
-    collections::{BTreeSet, HashMap},
-};
+use std::collections::{BTreeSet, HashMap};
 
-use chrono::{DateTime, Utc};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -12,139 +8,109 @@ use umadb_dcb::{DcbQuery, DcbQueryItem};
 use uuid::Uuid;
 
 use crate::{
-    domain_id::{DomainIds, FromDomainIds},
+    domain_id::{DomainIdBindings, DomainIds, FromDomainIds},
+    effect::CURRENT_EVENT_CONTEXT,
     emit::Emit,
-    enforce::{EnforceFn, EnforceRefFn, EnforceWithInputFn, EnforceWithInputRefFn},
     event::{Event, EventDomainId, EventSet, StoredEvent},
-    folds::{Fold, FoldHandle, FoldHandles, FoldKey, FoldSpec, FoldStates},
-    runtime::command::{DomainId, EmitEvent},
+    folds::{Append, Fold, FoldHandle, FoldKey, FoldSpec, FoldStates, HasFolds},
+    runtime::command::{DomainId, EmitEvent, umari::command::transaction::Transaction},
 };
 
-type EnforceApplyFn<I> = dyn FnOnce(&I, &HashMap<FoldKey, Box<dyn Any>>) -> anyhow::Result<()>;
-
-pub struct Command<I: DomainIds> {
+pub struct Command<I: DomainIds, Fs = ()> {
     input: I,
     context: CommandContext,
     domain_ids: Vec<EventDomainId>,
     folds: SlotMap<FoldKey, FoldSpec<I>>,
-    enforce_fns: Vec<Box<EnforceApplyFn<I>>>,
+    handles: Fs,
 }
 
-impl<I: DomainIds> Command<I> {
+impl<I: DomainIds> Command<I, ()> {
+    pub fn execute<F>(self, f: F) -> anyhow::Result<ExecuteOutput>
+    where
+        F: FnOnce(I) -> anyhow::Result<Emit>,
+    {
+        self.run(move |input, ()| f(input))
+    }
+
     pub fn new(input: I, context: CommandContext) -> Self {
         Command {
             input,
             context,
             domain_ids: Vec::new(),
             folds: SlotMap::with_key(),
-            enforce_fns: Vec::new(),
+            handles: (),
         }
     }
+}
 
-    pub fn fold<T>(&mut self) -> FoldHandle<T>
+impl<I: DomainIds, Fs> Command<I, Fs> {
+    pub fn fold<T>(self) -> Command<I, <Fs as Append<FoldHandle<T>>>::Output>
     where
         T: Fold + FromDomainIds<Args = ()>,
+        Fs: Append<FoldHandle<T>>,
     {
         self.fold_args(())
     }
 
-    pub fn fold_args<T>(&mut self, args: T::Args) -> FoldHandle<T>
+    pub fn fold_args<T>(self, args: T::Args) -> Command<I, <Fs as Append<FoldHandle<T>>>::Output>
     where
         T: Fold + FromDomainIds,
+        Fs: Append<FoldHandle<T>>,
     {
-        self.domain_ids.extend(<T::Events>::event_domain_ids());
+        let mut domain_ids = self.domain_ids;
+        let mut folds = self.folds;
+        domain_ids.extend(<T::Events>::event_domain_ids());
         let spec = FoldSpec::new::<T>(move |_input, bindings| {
             T::from_domain_ids(args, bindings).expect("failed to create fold from bindings")
         });
-        let key = self.folds.insert(spec);
-        FoldHandle::new(key)
+        let key = folds.insert(spec);
+        Command {
+            input: self.input,
+            context: self.context,
+            domain_ids,
+            folds,
+            handles: self.handles.append(FoldHandle::new(key)),
+        }
     }
 
-    pub fn fold_with<F, T>(&mut self, f: F) -> FoldHandle<T>
+    pub fn fold_with<T, F>(self, f: F) -> Command<I, <Fs as Append<FoldHandle<T>>>::Output>
     where
-        F: FnOnce(&I) -> T + 'static,
         T: Fold,
+        F: FnOnce(&I) -> T + 'static,
+        Fs: Append<FoldHandle<T>>,
     {
-        self.domain_ids.extend(<T::Events>::event_domain_ids());
+        let mut domain_ids = self.domain_ids;
+        let mut folds = self.folds;
+        domain_ids.extend(<T::Events>::event_domain_ids());
         let spec = FoldSpec::new::<T>(move |input, _bindings| f(input));
-        let key = self.folds.insert(spec);
-        FoldHandle::new(key)
+        let key = folds.insert(spec);
+        Command {
+            input: self.input,
+            context: self.context,
+            domain_ids,
+            folds,
+            handles: self.handles.append(FoldHandle::new(key)),
+        }
     }
 
-    pub fn enforce<H, HA, F>(&mut self, handles: H, f: F)
+    fn run<F>(self, f: F) -> anyhow::Result<ExecuteOutput>
     where
-        H: FoldHandles<HA>,
-        F: EnforceFn<HA> + 'static,
-    {
-        let handles = handles.into_any();
-        let check = Box::new(move |_input: &I, states: &HashMap<FoldKey, Box<dyn Any>>| {
-            f.check(states, handles)
-        });
-        self.enforce_fns.push(check);
-    }
-
-    pub fn enforce_with_input<H, HA, F>(&mut self, handles: H, f: F)
-    where
-        I: Clone,
-        H: FoldHandles<HA>,
-        F: EnforceWithInputFn<I, HA> + 'static,
-    {
-        let handles = handles.into_any();
-        let check = Box::new(move |input: &I, states: &HashMap<FoldKey, Box<dyn Any>>| {
-            f.check(input.clone(), states, handles)
-        });
-        self.enforce_fns.push(check);
-    }
-
-    pub fn enforce_ref<H, HA, F>(&mut self, handles: H, f: F)
-    where
-        H: FoldHandles<HA>,
-        F: EnforceRefFn<HA> + 'static,
-    {
-        let handles = handles.into_any();
-        let check = Box::new(move |_input: &I, states: &HashMap<FoldKey, Box<dyn Any>>| {
-            f.check(states, handles)
-        });
-        self.enforce_fns.push(check);
-    }
-
-    pub fn enforce_with_input_ref<H, HA, F>(&mut self, handles: H, f: F)
-    where
-        H: FoldHandles<HA>,
-        F: EnforceWithInputRefFn<I, HA> + 'static,
-    {
-        let handles = handles.into_any();
-        let check = Box::new(move |input: &I, states: &HashMap<FoldKey, Box<dyn Any>>| {
-            f.check(input, states, handles)
-        });
-        self.enforce_fns.push(check);
-    }
-
-    pub fn execute<F>(self, f: F) -> anyhow::Result<ExecuteOutput>
-    where
-        F: FnOnce(I) -> Emit,
-    {
-        self.execute_with((), move |input, _: ()| f(input))
-    }
-
-    pub fn execute_with<H, F>(self, handles: H, f: F) -> anyhow::Result<ExecuteOutput>
-    where
-        H: FoldStates,
-        F: FnOnce(I, H::States) -> Emit,
+        Fs: FoldStates,
+        F: FnOnce(I, Fs::States) -> anyhow::Result<Emit>,
     {
         let bindings = self.input.domain_ids();
+        let bindings_slice = std::slice::from_ref(&bindings);
         let mut folds: HashMap<_, _> = self
             .folds
             .into_iter()
             .map(|(key, spec)| {
-                let (fold, fold_bindings, state) = spec.create(&self.input, &bindings);
+                let (fold, fold_bindings, state) = spec.create(&self.input, bindings_slice);
                 (key, (fold, fold_bindings, state))
             })
             .collect();
 
-        let query = build_dcb_query(self.domain_ids, &bindings);
-        let tx =
-            crate::runtime::command::umari::command::transaction::Transaction::new(&query.into());
+        let query = build_dcb_query(self.domain_ids, bindings_slice);
+        let tx = Transaction::new(&query.into());
 
         loop {
             let events = tx.next_batch();
@@ -154,18 +120,21 @@ impl<I: DomainIds> Command<I> {
 
             for event in events {
                 let event: StoredEvent<Value> = event.into();
+                let is_idempotent = self
+                    .context
+                    .idempotency_key
+                    .zip(event.idempotency_key)
+                    .is_some_and(|(a, b)| a == b);
+                if is_idempotent {
+                    let position = tx.commit(&self.context.into(), &[]);
+                    return Ok(ExecuteOutput {
+                        position,
+                        events: vec![],
+                    });
+                }
+
                 for (fold, fold_bindings, state) in folds.values_mut() {
-                    fold.box_apply(
-                        state,
-                        fold_bindings,
-                        &event.event_type,
-                        &event.tags,
-                        &event.data,
-                        EventMeta {
-                            position: event.position,
-                            timestamp: event.timestamp,
-                        },
-                    )?;
+                    fold.box_apply(state, fold_bindings.as_slice(), &event)?;
                 }
             }
         }
@@ -174,11 +143,8 @@ impl<I: DomainIds> Command<I> {
             .into_iter()
             .map(|(key, (_, _, state))| (key, state))
             .collect();
-        for enforce in self.enforce_fns {
-            enforce(&self.input, &states)?;
-        }
 
-        let emit = f(self.input, handles.extract(&mut states));
+        let emit = f(self.input, self.handles.extract(&mut states))?;
         let emitted_events: Vec<_> = emit
             .into_events()
             .into_iter()
@@ -220,6 +186,15 @@ impl<I: DomainIds> Command<I> {
     }
 }
 
+impl<I: DomainIds, Fs: HasFolds> Command<I, Fs> {
+    pub fn execute<F>(self, f: F) -> anyhow::Result<ExecuteOutput>
+    where
+        F: FnOnce(I, Fs::States) -> anyhow::Result<Emit>,
+    {
+        self.run(f)
+    }
+}
+
 pub struct ExecuteOutput {
     pub position: Option<u64>,
     pub events: Vec<EmittedEvent>,
@@ -247,7 +222,7 @@ pub trait CommandName {
     const COMMAND_NAME: &'static str;
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CommandContext {
     /// Original request ID (flows through everything)
     pub correlation_id: Option<Uuid>,
@@ -259,39 +234,33 @@ pub struct CommandContext {
 
 impl CommandContext {
     pub fn new() -> Self {
-        CommandContext {
-            correlation_id: None,
-            triggering_event_id: None,
-            idempotency_key: None,
-        }
+        CURRENT_EVENT_CONTEXT.with_borrow(|ctx| {
+            ctx.map(|ctx| CommandContext {
+                correlation_id: Some(ctx.correlation_id),
+                triggering_event_id: Some(ctx.triggering_event_id),
+                idempotency_key: None,
+            })
+            .unwrap_or_default()
+        })
     }
 
-    pub fn with_correlation_id(mut self, correlation_id: Uuid) -> Self {
-        self.correlation_id = Some(correlation_id);
+    pub fn with_correlation_id(mut self, correlation_id: impl Into<Option<Uuid>>) -> Self {
+        self.correlation_id = correlation_id.into();
         self
     }
 
-    pub fn with_triggering_event_id(mut self, triggering_event_id: Uuid) -> Self {
-        self.triggering_event_id = Some(triggering_event_id);
+    pub fn with_triggering_event_id(
+        mut self,
+        triggering_event_id: impl Into<Option<Uuid>>,
+    ) -> Self {
+        self.triggering_event_id = triggering_event_id.into();
         self
     }
 
-    pub fn with_idempotency_key(mut self, idempotency_key: Uuid) -> Self {
-        self.idempotency_key = Some(idempotency_key);
+    pub fn with_idempotency_key(mut self, idempotency_key: impl Into<Option<Uuid>>) -> Self {
+        self.idempotency_key = idempotency_key.into();
         self
     }
-}
-
-impl Default for CommandContext {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct EventMeta {
-    pub position: u64,
-    pub timestamp: DateTime<Utc>,
 }
 
 #[derive(Clone, Debug)]
@@ -309,42 +278,37 @@ pub struct EmittedEventRef {
 
 pub(crate) fn build_dcb_query(
     domain_ids: Vec<EventDomainId>,
-    bindings: &IndexMap<&'static str, String>,
+    bindings: &[DomainIdBindings],
 ) -> DcbQuery {
-    // We use a HashMap where the Key is the set of tags,
-    // and the Value is the list of event types sharing those tags.
-    // Using BTreeSet for tags ensures the order is deterministic for grouping.
-    let mut grouped_items: IndexMap<BTreeSet<String>, Vec<String>> = IndexMap::new();
+    // Key: set of tags. Value: set of event types sharing those tags.
+    // BTreeSet for tags ensures deterministic ordering for grouping.
+    let mut grouped_items: IndexMap<BTreeSet<String>, BTreeSet<String>> = IndexMap::new();
 
-    for entry in domain_ids {
-        let mut tags = BTreeSet::new();
+    for binding_set in bindings {
+        for entry in &domain_ids {
+            let mut tags = BTreeSet::new();
 
-        // 1. Process Dynamic Fields (lookup from HashMap)
-        for field_name in entry.dynamic_fields {
-            if let Some(value) = bindings.get(field_name) {
+            for field_name in entry.dynamic_fields {
+                if let Some(value) = binding_set.get(field_name) {
+                    tags.insert(format!("{}:{}", field_name, value));
+                }
+            }
+
+            for &(field_name, value) in entry.static_fields {
                 tags.insert(format!("{}:{}", field_name, value));
             }
-            // Note: You might want to handle the 'else' case if a
-            // required binding is missing.
-        }
 
-        // 2. Process Static Fields (hard-coded values)
-        for &(field_name, value) in entry.static_fields {
-            tags.insert(format!("{}:{}", field_name, value));
+            grouped_items
+                .entry(tags)
+                .or_default()
+                .insert(entry.event_type.to_string());
         }
-
-        // 3. Group by the tag set
-        grouped_items
-            .entry(tags)
-            .or_default()
-            .push(entry.event_type.to_string());
     }
 
-    // 4. Transform the grouped map into the final DcbQuery structure
     let items = grouped_items
         .into_iter()
         .map(|(tags, types)| DcbQueryItem {
-            types,
+            types: types.into_iter().collect(),
             tags: tags.into_iter().collect(),
         })
         .collect();

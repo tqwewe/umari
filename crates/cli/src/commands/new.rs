@@ -36,7 +36,10 @@ fn kebab_to_pascal(name: &str) -> String {
 fn workspace_package_name(root: &str) -> Option<String> {
     let content = fs::read_to_string(std::path::Path::new(root).join("Cargo.toml")).ok()?;
     let doc = content.parse::<toml_edit::DocumentMut>().ok()?;
-    doc.get("package")?.get("name")?.as_str().map(|s| s.to_string())
+    doc.get("package")?
+        .get("name")?
+        .as_str()
+        .map(|s| s.to_string())
 }
 
 fn type_plural(module_type: &str) -> &str {
@@ -60,7 +63,7 @@ fn cargo_toml_content(module_type: &str, name: &str, workspace_pkg: Option<&str>
     formatdoc! {r#"
         [package]
         name = "{name}"
-        version = "0.0.1"
+        version = "0.1.0"
         edition = "2024"
 
         [lib]
@@ -132,18 +135,21 @@ fn lib_rs_content(module_type: &str, type_name: &str) -> String {
                 // TODO: add event variants, e.g.: MyEvent(MyEvent),
             }}
 
-            #[derive(Default)]
             struct {type_name} {{}}
 
             impl Effect for {type_name} {{
                 type Query = Query;
-                type Error = String;
+                type Error = anyhow::Error;
 
-                fn partition_key(&self, _event: StoredEvent<Self::Query>) -> Option<String> {{
+                fn init() -> Result<Self, SqliteError> {{
+                    Ok({type_name} {{}})
+                }}
+
+                fn partition_key(&self, _event: StoredEvent<Query>) -> Option<String> {{
                     None
                 }}
 
-                fn handle(&mut self, event: StoredEvent<Self::Query>) -> Result<(), CommandError> {{
+                fn handle(&mut self, event: StoredEvent<Query>) -> Result<(), Self::Error> {{
                     Ok(())
                 }}
             }}

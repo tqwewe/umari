@@ -1,11 +1,22 @@
-use std::fmt;
+use std::{cell::RefCell, fmt};
 
 use umadb_dcb::{DcbQuery, DcbQueryItem};
+use uuid::Uuid;
 
 use crate::{
     error::SqliteError,
     event::{EventSet, StoredEvent},
 };
+
+thread_local! {
+    pub static CURRENT_EVENT_CONTEXT: RefCell<Option<CurrentEventContext>> = const { RefCell::new(None) };
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CurrentEventContext {
+    pub correlation_id: Uuid,
+    pub triggering_event_id: Uuid,
+}
 
 pub trait Effect: Sized {
     type Query: EventSet;

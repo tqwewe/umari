@@ -33,7 +33,7 @@ pub async fn execute_command(
 
     match result {
         Err(err) => html! {
-            div class="mt-4 rounded-md bg-red-50 border border-red-200 p-4 text-sm text-red-800" {
+            div class="mt-4 rounded-md bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 p-4 text-sm text-red-800 dark:text-red-300" {
                 p class="font-semibold mb-1" { "Error" }
                 p { (err.message) }
             }
@@ -49,7 +49,7 @@ pub async fn execute_command(
             let pretty = serde_json::to_string_pretty(&output)
                 .unwrap_or_else(|_| "failed to serialize result".to_string());
             html! {
-                pre class="mt-4 rounded-md bg-gray-50 border border-gray-200 p-4 text-sm overflow-auto" { (pretty) }
+                pre class="mt-4 rounded-md bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 p-4 text-sm text-gray-900 dark:text-gray-100 overflow-auto" { (pretty) }
             }
         }
     }

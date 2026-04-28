@@ -585,6 +585,27 @@ pub fn upload_form(module_type: ModuleType, name: Option<&str>) -> Markup {
     }
 }
 
+enum UnionFieldType {
+    Text,
+    Number { integer: bool },
+    Checkbox,
+    CommaSeparated { integer: bool },
+}
+
+struct UnionField {
+    key: String,
+    label: String,
+    field_type: UnionFieldType,
+    min: Option<f64>,
+    max: Option<f64>,
+}
+
+struct UnionVariant {
+    tag_value: String,
+    label: String,
+    fields: Vec<UnionField>,
+}
+
 enum InputType {
     Text,
     Email,
@@ -593,6 +614,8 @@ enum InputType {
     Number { integer: bool },
     Checkbox,
     Select(Vec<String>),
+    Json,
+    DiscriminatedUnion(Vec<UnionVariant>),
 }
 
 struct FormField {
@@ -622,6 +645,96 @@ fn to_title_case(s: &str) -> String {
         .join(" ")
 }
 
+fn parse_union_field(key: &str, prop: &serde_json::Value) -> Option<UnionField> {
+    let field_type = if prop.get("type").and_then(|t| t.as_str()) == Some("array") {
+        let item_type = prop
+            .get("items")
+            .and_then(|i| i.get("type"))
+            .and_then(|t| t.as_str())
+            .unwrap_or("string");
+        UnionFieldType::CommaSeparated {
+            integer: item_type == "integer",
+        }
+    } else {
+        // handle ["string", "number"] (e.g. Decimal)
+        let type_str = if let Some(arr) = prop.get("type").and_then(|t| t.as_array()) {
+            let non_null: Vec<&str> = arr
+                .iter()
+                .filter_map(|x| x.as_str())
+                .filter(|&s| s != "null")
+                .collect();
+            if non_null.contains(&"string") {
+                "string"
+            } else {
+                non_null.first().copied().unwrap_or("string")
+            }
+        } else {
+            prop.get("type").and_then(|t| t.as_str()).unwrap_or("string")
+        };
+        match type_str {
+            "string" => UnionFieldType::Text,
+            "integer" => UnionFieldType::Number { integer: true },
+            "number" => UnionFieldType::Number { integer: false },
+            "boolean" => UnionFieldType::Checkbox,
+            _ => return None,
+        }
+    };
+    Some(UnionField {
+        key: key.to_owned(),
+        label: to_title_case(key),
+        field_type,
+        min: prop.get("minimum").and_then(|m| m.as_f64()),
+        max: prop.get("maximum").and_then(|m| m.as_f64()),
+    })
+}
+
+fn parse_discriminated_union(prop: &serde_json::Value) -> Option<Vec<UnionVariant>> {
+    let variants_json = prop.get("oneOf").and_then(|v| v.as_array())?;
+    if variants_json.is_empty() {
+        return None;
+    }
+    let mut variants = Vec::new();
+    for variant in variants_json {
+        let properties = variant.get("properties")?.as_object()?;
+        let tag_value = properties
+            .get("type")?
+            .get("const")?
+            .as_str()?
+            .to_owned();
+        let required_arr: Vec<&str> = variant
+            .get("required")
+            .and_then(|r| r.as_array())
+            .map(|arr| arr.iter().filter_map(|x| x.as_str()).collect())
+            .unwrap_or_default();
+        let mut fields = Vec::new();
+        for (field_key, field_prop) in properties {
+            if field_key == "type" {
+                continue;
+            }
+            if let Some(field) = parse_union_field(field_key, field_prop) {
+                // only add fields that are required or have simple types
+                let _ = required_arr.contains(&field_key.as_str());
+                fields.push(field);
+            }
+        }
+        variants.push(UnionVariant {
+            label: to_title_case(&tag_value),
+            tag_value,
+            fields,
+        });
+    }
+    Some(variants)
+}
+
+fn resolve_ref<'a>(ref_str: &str, root: &'a serde_json::Value) -> Option<&'a serde_json::Value> {
+    let path = ref_str.strip_prefix("#/")?;
+    let mut current = root;
+    for part in path.split('/') {
+        current = current.get(part)?;
+    }
+    Some(current)
+}
+
 fn parse_fields(schema: &Schema) -> Option<Vec<FormField>> {
     let v: &serde_json::Value = schema.as_value();
 
@@ -644,15 +757,39 @@ fn parse_fields(schema: &Schema) -> Option<Vec<FormField>> {
     let mut fields = Vec::new();
 
     for (key, prop) in properties {
-        // reject complex schemas
+        // resolve $ref before further processing
+        let prop = if let Some(ref_str) = prop.get("$ref").and_then(|r| r.as_str()) {
+            resolve_ref(ref_str, v).unwrap_or(prop)
+        } else {
+            prop
+        };
+
+        // complex schemas: try discriminated union first, fall back to inline JSON
         if prop.get("anyOf").is_some()
             || prop.get("oneOf").is_some()
             || prop.get("allOf").is_some()
-            || prop.get("$ref").is_some()
         {
-            if required_arr.contains(&key.as_str()) {
-                return None;
-            }
+            let required = required_arr.contains(&key.as_str());
+            let description = prop
+                .get("description")
+                .and_then(|d| d.as_str())
+                .map(|s| s.to_owned());
+            let input_type = parse_discriminated_union(prop)
+                .map(InputType::DiscriminatedUnion)
+                .unwrap_or(InputType::Json);
+            fields.push(FormField {
+                label: to_title_case(key),
+                key: key.clone(),
+                input_type,
+                required,
+                description,
+                placeholder: None,
+                min: None,
+                max: None,
+                min_length: None,
+                max_length: None,
+                pattern: None,
+            });
             continue;
         }
 
@@ -785,89 +922,178 @@ pub fn execute_form(name: &str, schema: Option<&Schema>) -> Markup {
                     input type="hidden" name="payload";
                     div id=(fields_div_id) class="flex flex-col gap-4" {
                         @for field in &fields {
-                            label class="flex flex-col gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" {
-                                span {
-                                    (field.label)
-                                    @if field.required {
-                                        span class="text-red-500 ml-1" { "*" }
-                                    }
-                                }
-                                @if let Some(desc) = &field.description {
-                                    span class="text-gray-400 dark:text-gray-500 text-xs font-normal" { (desc) }
-                                }
-                                @match &field.input_type {
-                                    InputType::Text => {
-                                        input type="text"
-                                            name=(field.key)
-                                            data-field=(field.key)
-                                            data-type="string"
-                                            placeholder=[field.placeholder]
-                                            required[field.required]
-                                            minlength=[field.min_length]
-                                            maxlength=[field.max_length]
-                                            pattern=[field.pattern.as_deref()]
-                                            class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
-                                    }
-                                    InputType::Email => {
-                                        input type="email"
-                                            name=(field.key)
-                                            data-field=(field.key)
-                                            data-type="string"
-                                            placeholder="user@example.com"
-                                            required[field.required]
-                                            minlength=[field.min_length]
-                                            maxlength=[field.max_length]
-                                            class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
-                                    }
-                                    InputType::Date => {
-                                        input type="date"
-                                            name=(field.key)
-                                            data-field=(field.key)
-                                            data-type="string"
-                                            required[field.required]
-                                            class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
-                                    }
-                                    InputType::DateTime => {
-                                        input type="datetime-local"
-                                            name=(field.key)
-                                            data-field=(field.key)
-                                            data-type="string"
-                                            required[field.required]
-                                            class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
-                                    }
-                                    InputType::Number { integer } => {
-                                        input type="number"
-                                            name=(field.key)
-                                            data-field=(field.key)
-                                            data-type=(if *integer { "integer" } else { "number" })
-                                            step=(if *integer { "1" } else { "any" })
-                                            min=[field.min]
-                                            max=[field.max]
-                                            placeholder=[field.placeholder]
-                                            required[field.required]
-                                            class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
-                                    }
-                                    InputType::Checkbox => {
-                                        input type="checkbox"
-                                            name=(field.key)
-                                            data-field=(field.key)
-                                            data-type="boolean"
-                                            class="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500";
-                                    }
-                                    InputType::Select(options) => {
-                                        select name=(field.key)
-                                            data-field=(field.key)
-                                            data-type="string"
-                                            required[field.required]
-                                            class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                                        {
-                                            @if !field.required {
-                                                option value="" { "" }
-                                            }
-                                            @for opt in options {
-                                                option value=(opt) { (opt) }
+                            @if let InputType::DiscriminatedUnion(variants) = &field.input_type {
+                                div class="flex flex-col gap-2 rounded-md border border-gray-200 dark:border-gray-700 p-3" data-union-container {
+                                    div class="flex flex-col gap-1" {
+                                        span class="text-sm font-medium text-gray-700 dark:text-gray-300" {
+                                            (field.label)
+                                            @if field.required {
+                                                span class="text-red-500 ml-1" { "*" }
                                             }
                                         }
+                                        @if let Some(desc) = &field.description {
+                                            span class="text-gray-400 dark:text-gray-500 text-xs" { (desc) }
+                                        }
+                                    }
+                                    select
+                                        data-field=(field.key)
+                                        data-type="union"
+                                        onchange="umariUnionChange(this)"
+                                        class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                    {
+                                        @for variant in variants {
+                                            option value=(variant.tag_value) { (variant.label) }
+                                        }
+                                    }
+                                    @for (vi, variant) in variants.iter().enumerate() {
+                                        @let hidden = vi != 0;
+                                        div
+                                            data-union-variant=(variant.tag_value)
+                                            class=(if hidden { "flex flex-col gap-2 hidden" } else { "flex flex-col gap-2" })
+                                        {
+                                            @for vfield in &variant.fields {
+                                                label class="flex flex-col gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" {
+                                                    (vfield.label)
+                                                    @match &vfield.field_type {
+                                                        UnionFieldType::Text => {
+                                                            input type="text"
+                                                                data-union-parent=(field.key)
+                                                                data-union-key=(vfield.key)
+                                                                data-type="string"
+                                                                min=[vfield.min]
+                                                                max=[vfield.max]
+                                                                disabled[hidden]
+                                                                class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
+                                                        }
+                                                        UnionFieldType::Number { integer } => {
+                                                            input type="number"
+                                                                data-union-parent=(field.key)
+                                                                data-union-key=(vfield.key)
+                                                                data-type=(if *integer { "integer" } else { "number" })
+                                                                step=(if *integer { "1" } else { "any" })
+                                                                min=[vfield.min]
+                                                                max=[vfield.max]
+                                                                disabled[hidden]
+                                                                class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
+                                                        }
+                                                        UnionFieldType::Checkbox => {
+                                                            input type="checkbox"
+                                                                data-union-parent=(field.key)
+                                                                data-union-key=(vfield.key)
+                                                                data-type="boolean"
+                                                                disabled[hidden]
+                                                                class="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500";
+                                                        }
+                                                        UnionFieldType::CommaSeparated { integer } => {
+                                                            input type="text"
+                                                                data-union-parent=(field.key)
+                                                                data-union-key=(vfield.key)
+                                                                data-type=(if *integer { "integers" } else { "numbers" })
+                                                                placeholder="1, 2, 3"
+                                                                disabled[hidden]
+                                                                class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } @else {
+                                label class="flex flex-col gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" {
+                                    span {
+                                        (field.label)
+                                        @if field.required {
+                                            span class="text-red-500 ml-1" { "*" }
+                                        }
+                                    }
+                                    @if let Some(desc) = &field.description {
+                                        span class="text-gray-400 dark:text-gray-500 text-xs font-normal" { (desc) }
+                                    }
+                                    @match &field.input_type {
+                                        InputType::Text => {
+                                            input type="text"
+                                                name=(field.key)
+                                                data-field=(field.key)
+                                                data-type="string"
+                                                placeholder=[field.placeholder]
+                                                required[field.required]
+                                                minlength=[field.min_length]
+                                                maxlength=[field.max_length]
+                                                pattern=[field.pattern.as_deref()]
+                                                class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
+                                        }
+                                        InputType::Email => {
+                                            input type="email"
+                                                name=(field.key)
+                                                data-field=(field.key)
+                                                data-type="string"
+                                                placeholder="user@example.com"
+                                                required[field.required]
+                                                minlength=[field.min_length]
+                                                maxlength=[field.max_length]
+                                                class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
+                                        }
+                                        InputType::Date => {
+                                            input type="date"
+                                                name=(field.key)
+                                                data-field=(field.key)
+                                                data-type="string"
+                                                required[field.required]
+                                                class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
+                                        }
+                                        InputType::DateTime => {
+                                            input type="datetime-local"
+                                                name=(field.key)
+                                                data-field=(field.key)
+                                                data-type="string"
+                                                required[field.required]
+                                                class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
+                                        }
+                                        InputType::Number { integer } => {
+                                            input type="number"
+                                                name=(field.key)
+                                                data-field=(field.key)
+                                                data-type=(if *integer { "integer" } else { "number" })
+                                                step=(if *integer { "1" } else { "any" })
+                                                min=[field.min]
+                                                max=[field.max]
+                                                placeholder=[field.placeholder]
+                                                required[field.required]
+                                                class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
+                                        }
+                                        InputType::Checkbox => {
+                                            input type="checkbox"
+                                                name=(field.key)
+                                                data-field=(field.key)
+                                                data-type="boolean"
+                                                class="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500";
+                                        }
+                                        InputType::Select(options) => {
+                                            select name=(field.key)
+                                                data-field=(field.key)
+                                                data-type="string"
+                                                required[field.required]
+                                                class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                            {
+                                                @if !field.required {
+                                                    option value="" { "" }
+                                                }
+                                                @for opt in options {
+                                                    option value=(opt) { (opt) }
+                                                }
+                                            }
+                                        }
+                                        InputType::Json => {
+                                            textarea name=(field.key)
+                                                data-field=(field.key)
+                                                data-type="json"
+                                                required[field.required]
+                                                rows="3"
+                                                placeholder="{}"
+                                                class="block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm font-mono dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" {}
+                                        }
+                                        InputType::DiscriminatedUnion(_) => {}
                                     }
                                 }
                             }
@@ -905,7 +1131,35 @@ pub fn execute_form(name: &str, schema: Option<&Schema>) -> Markup {
                 div #execute-result {}
                 script {
                     (PreEscaped(format!(
-                        r#"function umariExec_{fn_name}(btn) {{
+                        r#"function umariCollectUnion(el, obj) {{
+  const key = el.dataset.field;
+  const tag = el.value;
+  const unionObj = {{ type: tag }};
+  const container = el.closest('[data-union-container]');
+  if (container) {{
+    container.querySelectorAll('[data-union-key]').forEach(subEl => {{
+      if (subEl.disabled) return;
+      const subKey = subEl.dataset.unionKey;
+      const subType = subEl.dataset.type;
+      if (subType === 'boolean') {{ unionObj[subKey] = subEl.checked; return; }}
+      if (subEl.value === '') return;
+      if (subType === 'integers') {{ unionObj[subKey] = subEl.value.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n)); return; }}
+      if (subType === 'numbers') {{ unionObj[subKey] = subEl.value.split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n)); return; }}
+      unionObj[subKey] = subType === 'integer' ? parseInt(subEl.value, 10) : subType === 'number' ? parseFloat(subEl.value) : subEl.value;
+    }});
+  }}
+  obj[key] = unionObj;
+}}
+function umariUnionChange(select) {{
+  const container = select.closest('[data-union-container]');
+  const tag = select.value;
+  container.querySelectorAll('[data-union-variant]').forEach(div => {{
+    const show = div.dataset.unionVariant === tag;
+    div.classList.toggle('hidden', !show);
+    div.querySelectorAll('input, select, textarea').forEach(el => {{ el.disabled = !show; }});
+  }});
+}}
+function umariExec_{fn_name}(btn) {{
   const form = btn.closest('form');
   const rawMode = form.querySelector('#{raw_toggle_id}')?.checked;
   if (rawMode) {{
@@ -923,7 +1177,9 @@ pub fn execute_form(name: &str, schema: Option<&Schema>) -> Markup {
     const key = el.dataset.field;
     const type = el.dataset.type;
     if (type === 'boolean') {{ obj[key] = el.checked; return; }}
+    if (type === 'union') {{ umariCollectUnion(el, obj); return; }}
     if (el.value === '') return;
+    if (type === 'json') {{ try {{ obj[key] = JSON.parse(el.value); }} catch(e) {{}} return; }}
     obj[key] = (type === 'integer') ? parseInt(el.value, 10)
              : (type === 'number')  ? parseFloat(el.value)
              : el.value;
@@ -945,11 +1201,12 @@ function umariToggleRaw_{fn_name}(checkbox) {{
       const key = el.dataset.field;
       const type = el.dataset.type;
       if (type === 'boolean') {{ obj[key] = el.checked; return; }}
-      if (el.value !== '') {{
-        obj[key] = (type === 'integer') ? parseInt(el.value, 10)
-                 : (type === 'number')  ? parseFloat(el.value)
-                 : el.value;
-      }}
+      if (type === 'union') {{ umariCollectUnion(el, obj); return; }}
+      if (el.value === '') return;
+      if (type === 'json') {{ try {{ obj[key] = JSON.parse(el.value); }} catch(e) {{}} return; }}
+      obj[key] = (type === 'integer') ? parseInt(el.value, 10)
+               : (type === 'number')  ? parseFloat(el.value)
+               : el.value;
     }});
     ta.value = JSON.stringify(obj, null, 2);
     fieldsDiv.classList.add('hidden');

@@ -69,6 +69,23 @@ pub trait FromValue {
     fn from_value(value: SqliteValue) -> Self;
 }
 
+impl FromValue for bool {
+    fn from_value(value: SqliteValue) -> Self {
+        match value {
+            SqliteValue::Integer(n) => {
+                if n == 0 {
+                    false
+                } else if n == 1 {
+                    true
+                } else {
+                    panic!("expected bool, got integer greater than 1: {n}")
+                }
+            }
+            other => panic!("expected bool, got {other:?}"),
+        }
+    }
+}
+
 impl FromValue for String {
     fn from_value(value: SqliteValue) -> Self {
         match value {
