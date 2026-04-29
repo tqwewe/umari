@@ -88,9 +88,9 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
     }
 
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
-        let db_path = args
-            .data_dir
-            .join(format!("{}-{}.sqlite", A::MODULE_TYPE, args.name));
+        let db_dir = args.data_dir.join(A::MODULE_TYPE.to_string());
+        fs::create_dir_all(&db_dir)?;
+        let db_path = db_dir.join(format!("{}.sqlite", args.name));
 
         let conn = Connection::open(&db_path)?;
 

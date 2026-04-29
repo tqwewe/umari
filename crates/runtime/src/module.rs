@@ -1,7 +1,7 @@
 pub mod actor;
 pub mod supervisor;
 
-use std::fmt;
+use std::{fmt, io};
 
 use kameo::error::SendError;
 use thiserror::Error;
@@ -19,6 +19,8 @@ use crate::{
 pub enum ModuleError {
     #[error("concurrent modification")]
     ConcurrentModification,
+    #[error("io error: {0}")]
+    Io(#[from] io::Error),
     #[error("database error: {0}")]
     Database(#[from] rusqlite::Error),
     #[error("failed to deserialize event: {0}")]
