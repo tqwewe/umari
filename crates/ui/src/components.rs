@@ -915,6 +915,10 @@ pub fn execute_form(name: &str, schema: Option<&Schema>) -> Markup {
         let raw_div_id = format!("exec-raw-{name}");
         let raw_textarea_id = format!("exec-raw-ta-{name}");
         let raw_toggle_id = format!("exec-raw-toggle-{name}");
+        let schema_div_id = format!("exec-schema-{name}");
+        let schema_json = schema
+            .and_then(|s| serde_json::to_string_pretty(s).ok())
+            .unwrap_or_default();
         html! {
             section class="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-5 mt-6" {
                 h3 class="text-base font-semibold text-gray-700 dark:text-gray-300 mb-3 mt-0" { "Execute Command" }
@@ -1125,10 +1129,26 @@ pub fn execute_form(name: &str, schema: Option<&Schema>) -> Markup {
                                     class="h-3.5 w-3.5 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500";
                                 "Bypass validation"
                             }
+                            button type="button"
+                                onclick={"umariToggleSchema_" (fn_name) "(this)"}
+                                class="text-xs text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+                                { "View Schema" }
                         }
                     }
                 }
                 div #execute-result {}
+                div id=(schema_div_id) class="hidden mt-4" {
+                    div class="flex items-center justify-between mb-1" {
+                        span class="text-xs font-medium text-gray-500 dark:text-gray-400" { "JSON Schema" }
+                        button type="button"
+                            onclick={"umariCopySchema_" (fn_name) "(this)"}
+                            class="text-xs text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+                            { "Copy" }
+                    }
+                    pre class="overflow-x-auto rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-3 text-xs text-gray-700 dark:text-gray-300 font-mono" {
+                        (schema_json)
+                    }
+                }
                 script {
                     (PreEscaped(format!(
                         r#"function umariCollectUnion(el, obj) {{
@@ -1203,7 +1223,7 @@ function umariToggleRaw_{fn_name}(checkbox) {{
       if (type === 'boolean') {{ obj[key] = el.checked; return; }}
       if (type === 'union') {{ umariCollectUnion(el, obj); return; }}
       if (el.value === '') return;
-      if (type === 'json') {{ try {{ obj[key] = JSON.parse(el.value); }} catch(e) {{}} return; }}
+      if (type === 'json') {{ try {{ obj[key] = JSON.parse(el.value); }} catch(err) {{}} return; }}
       obj[key] = (type === 'integer') ? parseInt(el.value, 10)
                : (type === 'number')  ? parseFloat(el.value)
                : el.value;
@@ -1215,6 +1235,20 @@ function umariToggleRaw_{fn_name}(checkbox) {{
     fieldsDiv.classList.remove('hidden');
     rawDiv.classList.add('hidden');
   }}
+}}
+function umariToggleSchema_{fn_name}(btn) {{
+  const schemaDiv = document.getElementById('{schema_div_id}');
+  const hidden = schemaDiv.classList.toggle('hidden');
+  btn.textContent = hidden ? 'View Schema' : 'Hide Schema';
+}}
+function umariCopySchema_{fn_name}(btn) {{
+  const schemaDiv = document.getElementById('{schema_div_id}');
+  const text = schemaDiv.querySelector('pre').textContent;
+  navigator.clipboard.writeText(text).then(() => {{
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => {{ btn.textContent = orig; }}, 1500);
+  }});
 }}"#
                     )))
                 }
