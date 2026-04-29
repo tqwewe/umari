@@ -115,12 +115,12 @@ fn lib_rs_content(module_type: &str, type_name: &str) -> String {
             impl Projector for {type_name} {{
                 type Query = Query;
 
-                fn init() -> Result<Self, ProjectorError> {{
+                fn init() -> Result<Self, SqliteError> {{
                     // TODO: run CREATE TABLE IF NOT EXISTS statements here
                     Ok({type_name} {{}})
                 }}
 
-                fn handle(&mut self, event: StoredEvent<Self::Query>) -> Result<(), ProjectorError> {{
+                fn handle(&mut self, event: StoredEvent<Self::Query>) -> Result<(), SqliteError> {{
                     match event.data {{}}
                 }}
             }}
