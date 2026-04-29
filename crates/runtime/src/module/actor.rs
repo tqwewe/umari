@@ -172,7 +172,10 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
                 }
             };
 
-        store.data().conn().execute("BEGIN", [])?;
+        if let Err(err) = store.data().conn().execute("BEGIN", []) {
+            args.output.push_stderr(format!("{err:#}"));
+            return Err(err.into());
+        }
 
         let handler = match instance.construct(&mut store).await {
             Ok(handler) => handler,
@@ -182,18 +185,27 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
             }
         };
 
-        store.data().conn().execute_batch("COMMIT; BEGIN")?;
+        if let Err(err) = store.data().conn().execute_batch("COMMIT; BEGIN") {
+            args.output.push_stderr(format!("{err:#}"));
+            return Err(err.into());
+        }
 
-        let query = instance
-            .query(&mut store, handler)
-            .await
-            .map(DcbQuery::from)?;
+        let query = match instance.query(&mut store, handler).await.map(DcbQuery::from) {
+            Ok(query) => query,
+            Err(err) => {
+                args.output.push_stderr(format!("{err:#}"));
+                return Err(ModuleError::Wasmtime(err));
+            }
+        };
 
         let start = store.data().last_position().map(|n| n + 1);
-        let stream = args
-            .event_store
-            .read(Some(query), start, false, None, true)
-            .await?;
+        let stream = match args.event_store.read(Some(query), start, false, None, true).await {
+            Ok(stream) => stream,
+            Err(err) => {
+                args.output.push_stderr(format!("{err:#}"));
+                return Err(err.into());
+            }
+        };
 
         debug!(
             module_type = %A::MODULE_TYPE,
@@ -296,9 +308,16 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
                     let batch = match res {
                         Ok(batch) => batch,
                         Err(DcbError::CancelledByUser()) => return Ok(None),
-                        Err(err) => return Err(err.into()),
+                        Err(err) => {
+                            let err = ModuleError::from(err);
+                            self.output.push_stderr(format!("{err:#}"));
+                            return Err(err);
+                        }
                     };
-                    self.process_batch(batch).await?;
+                    if let Err(err) = self.process_batch(batch).await {
+                        self.output.push_stderr(format!("{err:#}"));
+                        return Err(err);
+                    }
                 }
             }
         }
