@@ -92,10 +92,9 @@ fn lib_rs_content(module_type: &str, type_name: &str) -> String {
 
                 #[export_command]
                 pub fn execute(input: Input, context: CommandContext) -> anyhow::Result<ExecuteOutput> {{
-                    let mut cmd = Command::new(input, context);
-
-                    cmd.execute(|input| {{
-                        emit![]
+                    Command::new(input, context).execute(|input| {{
+                        // TODO: implement execute
+                        Ok(emit![])
                     }})
                 }}
             "#}
@@ -115,12 +114,12 @@ fn lib_rs_content(module_type: &str, type_name: &str) -> String {
             impl Projector for {type_name} {{
                 type Query = Query;
 
-                fn init() -> Result<Self, SqliteError> {{
+                fn init() -> anyhow::Result<Self> {{
                     // TODO: run CREATE TABLE IF NOT EXISTS statements here
                     Ok({type_name} {{}})
                 }}
 
-                fn handle(&mut self, event: StoredEvent<Self::Query>) -> Result<(), SqliteError> {{
+                fn handle(&mut self, event: StoredEvent<Self::Query>) -> anyhow::Result<()> {{
                     match event.data {{}}
                 }}
             }}
@@ -141,7 +140,7 @@ fn lib_rs_content(module_type: &str, type_name: &str) -> String {
                 type Query = Query;
                 type Error = anyhow::Error;
 
-                fn init() -> Result<Self, SqliteError> {{
+                fn init() -> anyhow::Result<Self> {{
                     Ok({type_name} {{}})
                 }}
 

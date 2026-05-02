@@ -166,7 +166,7 @@ impl DeriveEventSet {
                                 true
                             }
 
-                            if !contains_str(<#ty as ::umari::event::Event>::DOMAIN_ID_FIELDS, #field_str) {
+                            if !contains_str(<#ty as ::umari::domain_id::DomainIds>::DOMAIN_ID_FIELDS, #field_str) {
                                 panic!(concat!("Domain ID '", #field_str, "' not found in ", stringify!(#ty), "::DOMAIN_ID_FIELDS"));
                             }
                         };

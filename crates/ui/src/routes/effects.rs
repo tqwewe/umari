@@ -131,7 +131,7 @@ pub async fn get_effect(
         })
         .await?;
 
-    let db_path = state.data_dir.join(format!("effect-{name}.sqlite"));
+    let db_path = state.data_dir.join("effect").join(format!("{name}.sqlite"));
     let default_query = default_sql_query(db_path).await;
     let query_url = format!("/ui/effects/{name}/query");
 
@@ -170,6 +170,6 @@ pub async fn query_effect(
     Path(name): Path<String>,
     Form(form): Form<SqlQueryForm>,
 ) -> Markup {
-    let db_path = state.data_dir.join(format!("effect-{name}.sqlite"));
+    let db_path = state.data_dir.join("effect").join(format!("{name}.sqlite"));
     run_sql_query(db_path, form.sql, "effect").await
 }

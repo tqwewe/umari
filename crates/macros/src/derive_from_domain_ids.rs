@@ -33,31 +33,55 @@ impl DeriveFromDomainIds {
             (NonDomainIdField::Default, NonDomainIdField::Explicit(_)) => Ordering::Greater,
             (NonDomainIdField::Default, NonDomainIdField::Default) => Ordering::Equal,
         });
-        let args = attrs
+        let args_items = attrs
             .non_domain_ids
             .iter()
             .filter_map(|(_, field)| match field {
                 NonDomainIdField::Explicit(ty) => Some(ty),
                 NonDomainIdField::Default => None,
             });
+        let args = if attrs.non_domain_ids.len() == 1 {
+            quote! { #(#args_items)* }
+        } else {
+            quote! { (#(#args_items,)*) }
+        };
+
         let arg_fields = attrs
             .non_domain_ids
             .iter()
             .enumerate()
             .map(|(i, (ident, field))| {
-                let i = syn::Index::from(i);
-                if is_unnamed {
-                    match field {
-                        NonDomainIdField::Explicit(_) => quote! { args.#i },
-                        NonDomainIdField::Default => {
-                            quote! { ::std::default::Default::default() }
+                if attrs.non_domain_ids.len() == 1 {
+                    if is_unnamed {
+                        match field {
+                            NonDomainIdField::Explicit(_) => quote! { args },
+                            NonDomainIdField::Default => {
+                                quote! { ::std::default::Default::default() }
+                            }
+                        }
+                    } else {
+                        match field {
+                            NonDomainIdField::Explicit(_) => quote! { #ident: args },
+                            NonDomainIdField::Default => {
+                                quote! { #ident: ::std::default::Default::default() }
+                            }
                         }
                     }
                 } else {
-                    match field {
-                        NonDomainIdField::Explicit(_) => quote! { #ident: args.#i },
-                        NonDomainIdField::Default => {
-                            quote! { #ident: ::std::default::Default::default() }
+                    let i = syn::Index::from(i);
+                    if is_unnamed {
+                        match field {
+                            NonDomainIdField::Explicit(_) => quote! { args.#i },
+                            NonDomainIdField::Default => {
+                                quote! { ::std::default::Default::default() }
+                            }
+                        }
+                    } else {
+                        match field {
+                            NonDomainIdField::Explicit(_) => quote! { #ident: args.#i },
+                            NonDomainIdField::Default => {
+                                quote! { #ident: ::std::default::Default::default() }
+                            }
                         }
                     }
                 }
@@ -109,7 +133,7 @@ impl DeriveFromDomainIds {
         quote! {
             #[automatically_derived]
             impl #impl_generics ::umari::domain_id::FromDomainIds for #ident #ty_generics #where_clause {
-                type Args = (#(#args,)*);
+                type Args = #args;
 
                 fn from_domain_ids(args: Self::Args, bindings: &::umari::domain_id::DomainIdBindings) -> ::std::result::Result<Self, ::umari::error::FromDomainIdsError> {
                     Ok(#ident #body)

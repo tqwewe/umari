@@ -406,6 +406,129 @@ impl<E: Event> Default for EventState<E> {
     }
 }
 
+/// A fold that retains only the most recent occurrence of event `E`.
+///
+/// More efficient than [`EventFold`] when you only care about the current
+/// value rather than the full history.
+pub struct LatestEvent<E: Event> {
+    bindings: DomainIdBindings,
+    phantom: PhantomData<fn() -> E>,
+}
+
+impl<E: Event> DomainIds for LatestEvent<E> {
+    const DOMAIN_ID_FIELDS: &[&str] = E::DOMAIN_ID_FIELDS;
+
+    fn domain_ids(&self) -> DomainIdBindings {
+        self.bindings.clone()
+    }
+}
+
+impl<E: Event> FromDomainIds for LatestEvent<E> {
+    type Args = ();
+
+    fn from_domain_ids(
+        _args: Self::Args,
+        bindings: &DomainIdBindings,
+    ) -> Result<Self, FromDomainIdsError> {
+        let bindings = bindings
+            .iter()
+            .filter(|(k, _)| E::DOMAIN_ID_FIELDS.contains(k))
+            .map(|(k, v)| (*k, v.clone()))
+            .collect();
+        Ok(LatestEvent {
+            bindings,
+            phantom: PhantomData,
+        })
+    }
+}
+
+impl<E: Event> Clone for LatestEvent<E> {
+    fn clone(&self) -> Self {
+        LatestEvent {
+            bindings: self.bindings.clone(),
+            phantom: PhantomData,
+        }
+    }
+}
+
+impl<E: Event> fmt::Debug for LatestEvent<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LatestEvent")
+            .field("bindings", &self.bindings)
+            .finish()
+    }
+}
+
+impl<E: Event + 'static> Fold for LatestEvent<E> {
+    type Events = SingleEvent<E>;
+    type State = Option<StoredEvent<E>>;
+
+    fn apply(&self, state: &mut Self::State, event: StoredEvent<E>) {
+        *state = Some(event);
+    }
+}
+
+/// A fold that counts occurrences of event `E` without storing the events.
+///
+/// More efficient than [`EventFold`] when you only need a count.
+pub struct EventCounter<E: Event> {
+    bindings: DomainIdBindings,
+    phantom: PhantomData<fn() -> E>,
+}
+
+impl<E: Event> DomainIds for EventCounter<E> {
+    const DOMAIN_ID_FIELDS: &[&str] = E::DOMAIN_ID_FIELDS;
+
+    fn domain_ids(&self) -> DomainIdBindings {
+        self.bindings.clone()
+    }
+}
+
+impl<E: Event> FromDomainIds for EventCounter<E> {
+    type Args = ();
+
+    fn from_domain_ids(
+        _args: Self::Args,
+        bindings: &DomainIdBindings,
+    ) -> Result<Self, FromDomainIdsError> {
+        let bindings = bindings
+            .iter()
+            .filter(|(k, _)| E::DOMAIN_ID_FIELDS.contains(k))
+            .map(|(k, v)| (*k, v.clone()))
+            .collect();
+        Ok(EventCounter {
+            bindings,
+            phantom: PhantomData,
+        })
+    }
+}
+
+impl<E: Event> Clone for EventCounter<E> {
+    fn clone(&self) -> Self {
+        EventCounter {
+            bindings: self.bindings.clone(),
+            phantom: PhantomData,
+        }
+    }
+}
+
+impl<E: Event> fmt::Debug for EventCounter<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("EventCounter")
+            .field("bindings", &self.bindings)
+            .finish()
+    }
+}
+
+impl<E: Event + 'static> Fold for EventCounter<E> {
+    type Events = SingleEvent<E>;
+    type State = u64;
+
+    fn apply(&self, state: &mut Self::State, _event: StoredEvent<E>) {
+        *state += 1;
+    }
+}
+
 pub struct SingleEvent<E: Event>(pub E);
 
 impl<E: Event> EventSet for SingleEvent<E> {
@@ -429,6 +552,208 @@ impl<E: Event> EventSet for SingleEvent<E> {
     ) -> Option<Result<Self::Item, SerializationError>> {
         if event_type == E::EVENT_TYPE {
             Some(serde_json::from_value::<E>(data.clone()).map_err(SerializationError::from))
+        } else {
+            None
+        }
+    }
+}
+
+/// A fold that tracks which of two opposing events occurred last.
+///
+/// Designed for pairs like `Created`/`Deleted` or `Archived`/`Unarchived`,
+/// where you want to know the current state based on the most recent event.
+///
+/// `A` and `B` should share the same domain ID fields.
+pub struct EventToggle<A: Event, B: Event> {
+    bindings: DomainIdBindings,
+    phantom: PhantomData<fn() -> (A, B)>,
+}
+
+impl<A: Event, B: Event> DomainIds for EventToggle<A, B> {
+    const DOMAIN_ID_FIELDS: &[&str] = A::DOMAIN_ID_FIELDS;
+
+    fn domain_ids(&self) -> DomainIdBindings {
+        self.bindings.clone()
+    }
+}
+
+impl<A: Event, B: Event> FromDomainIds for EventToggle<A, B> {
+    type Args = ();
+
+    fn from_domain_ids(
+        _args: Self::Args,
+        bindings: &DomainIdBindings,
+    ) -> Result<Self, FromDomainIdsError> {
+        let bindings = bindings
+            .iter()
+            .filter(|(k, _)| A::DOMAIN_ID_FIELDS.contains(k))
+            .map(|(k, v)| (*k, v.clone()))
+            .collect();
+        Ok(EventToggle {
+            bindings,
+            phantom: PhantomData,
+        })
+    }
+}
+
+impl<A: Event, B: Event> Clone for EventToggle<A, B> {
+    fn clone(&self) -> Self {
+        EventToggle {
+            bindings: self.bindings.clone(),
+            phantom: PhantomData,
+        }
+    }
+}
+
+impl<A: Event, B: Event> fmt::Debug for EventToggle<A, B> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("EventToggle")
+            .field("bindings", &self.bindings)
+            .finish()
+    }
+}
+
+impl<A: Event + 'static, B: Event + 'static> Fold for EventToggle<A, B> {
+    type Events = PairEvents<A, B>;
+    type State = ToggleState<A, B>;
+
+    fn apply(&self, state: &mut Self::State, event: StoredEvent<EitherEvent<A, B>>) {
+        let StoredEvent {
+            id,
+            position,
+            event_type,
+            tags,
+            timestamp,
+            correlation_id,
+            causation_id,
+            triggering_event_id,
+            idempotency_key,
+            data,
+        } = event;
+        state.last = Some(match data {
+            EitherEvent::A(data) => ToggleSide::A(StoredEvent {
+                id,
+                position,
+                event_type,
+                tags,
+                timestamp,
+                correlation_id,
+                causation_id,
+                triggering_event_id,
+                idempotency_key,
+                data,
+            }),
+            EitherEvent::B(data) => ToggleSide::B(StoredEvent {
+                id,
+                position,
+                event_type,
+                tags,
+                timestamp,
+                correlation_id,
+                causation_id,
+                triggering_event_id,
+                idempotency_key,
+                data,
+            }),
+        });
+    }
+}
+
+/// State produced by [`EventToggle`]. Holds the last event that was applied.
+#[derive(Clone, Debug)]
+pub struct ToggleState<A: Event, B: Event> {
+    pub last: Option<ToggleSide<A, B>>,
+}
+
+impl<A: Event, B: Event> ToggleState<A, B> {
+    /// Returns `true` if the last event was of type `A`.
+    pub fn is_a(&self) -> bool {
+        matches!(self.last, Some(ToggleSide::A(_)))
+    }
+
+    /// Returns `true` if the last event was of type `B`.
+    pub fn is_b(&self) -> bool {
+        matches!(self.last, Some(ToggleSide::B(_)))
+    }
+
+    /// Returns the last event if it was of type `A`.
+    pub fn as_a(&self) -> Option<&StoredEvent<A>> {
+        match &self.last {
+            Some(ToggleSide::A(ev)) => Some(ev),
+            _ => None,
+        }
+    }
+
+    /// Returns the last event if it was of type `B`.
+    pub fn as_b(&self) -> Option<&StoredEvent<B>> {
+        match &self.last {
+            Some(ToggleSide::B(ev)) => Some(ev),
+            _ => None,
+        }
+    }
+}
+
+impl<A: Event, B: Event> Default for ToggleState<A, B> {
+    fn default() -> Self {
+        ToggleState { last: None }
+    }
+}
+
+/// Holds either an `A` or `B` event, used as the item type for [`PairEvents`].
+#[derive(Clone, Debug)]
+pub enum EitherEvent<A, B> {
+    A(A),
+    B(B),
+}
+
+/// Holds the last stored event from a [`EventToggle`] fold.
+#[derive(Clone, Debug)]
+pub enum ToggleSide<A: Event, B: Event> {
+    A(StoredEvent<A>),
+    B(StoredEvent<B>),
+}
+
+/// [`EventSet`] implementation for two event types, used by [`EventToggle`].
+pub struct PairEvents<A: Event, B: Event>(PhantomData<fn() -> (A, B)>);
+
+impl<A: Event, B: Event> EventSet for PairEvents<A, B> {
+    type Item = EitherEvent<A, B>;
+
+    fn event_types() -> Vec<&'static str> {
+        vec![A::EVENT_TYPE, B::EVENT_TYPE]
+    }
+
+    fn event_domain_ids() -> Vec<EventDomainId> {
+        vec![
+            EventDomainId {
+                event_type: A::EVENT_TYPE,
+                dynamic_fields: A::DOMAIN_ID_FIELDS,
+                static_fields: &[],
+            },
+            EventDomainId {
+                event_type: B::EVENT_TYPE,
+                dynamic_fields: B::DOMAIN_ID_FIELDS,
+                static_fields: &[],
+            },
+        ]
+    }
+
+    fn from_event(
+        event_type: &str,
+        data: &serde_json::Value,
+    ) -> Option<Result<Self::Item, SerializationError>> {
+        if event_type == A::EVENT_TYPE {
+            Some(
+                serde_json::from_value::<A>(data.clone())
+                    .map(EitherEvent::A)
+                    .map_err(SerializationError::from),
+            )
+        } else if event_type == B::EVENT_TYPE {
+            Some(
+                serde_json::from_value::<B>(data.clone())
+                    .map(EitherEvent::B)
+                    .map_err(SerializationError::from),
+            )
         } else {
             None
         }

@@ -61,11 +61,11 @@ impl<A: EventHandlerModule> Actor for ModuleWorkerActor<A> {
     }
 
     async fn on_start(args: Self::Args, _actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
-        let conn = Connection::open(args.data_dir.join(format!(
-            "{}-{}.sqlite",
-            A::MODULE_TYPE,
-            args.name
-        )))?;
+        let conn = Connection::open(
+            args.data_dir
+                .join(A::MODULE_TYPE.to_string())
+                .join(format!("{}.sqlite", args.name)),
+        )?;
 
         conn.execute_batch(INIT_SQL)?;
 

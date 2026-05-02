@@ -280,7 +280,8 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
     fn read_last_position(&self, name: &str) -> Option<u64> {
         let db_path = self
             .data_dir
-            .join(format!("{}-{}.sqlite", A::MODULE_TYPE, name));
+            .join(A::MODULE_TYPE.to_string())
+            .join(format!("{}.sqlite", name));
         let conn = Connection::open(&db_path).ok()?;
         conn.query_row(
             "SELECT last_position FROM module_meta WHERE id = 1",
@@ -381,7 +382,8 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
         if pending.reset_db {
             let db_path = self
                 .data_dir
-                .join(format!("{}-{}.sqlite", A::MODULE_TYPE, &name));
+                .join(A::MODULE_TYPE.to_string())
+                .join(format!("{}.sqlite", &name));
             let _ = fs::remove_file(&db_path);
             let _ = fs::remove_file(format!("{}-wal", db_path.display()));
             let _ = fs::remove_file(format!("{}-shm", db_path.display()));
