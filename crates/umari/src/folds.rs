@@ -204,6 +204,47 @@ impl_append!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9);
 impl_append!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10);
 impl_append!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7, I:8, J:9, K:10, L:11);
 
+pub struct VecFoldHandle<F> {
+    keys: Vec<FoldKey>,
+    phantom: PhantomData<fn() -> F>,
+}
+
+impl<F> VecFoldHandle<F> {
+    pub(crate) fn new(keys: Vec<FoldKey>) -> Self {
+        VecFoldHandle {
+            keys,
+            phantom: PhantomData,
+        }
+    }
+}
+
+impl<F: Fold> FoldStates for VecFoldHandle<F> {
+    type States = Vec<F::State>;
+
+    fn extract(self, states: &mut HashMap<FoldKey, Box<dyn Any>>) -> Vec<F::State> {
+        self.keys
+            .into_iter()
+            .map(|key| *states.remove(&key).unwrap().downcast::<F::State>().unwrap())
+            .collect()
+    }
+}
+
+impl<T: Fold> Append<VecFoldHandle<T>> for () {
+    type Output = VecFoldHandle<T>;
+
+    fn append(self, item: VecFoldHandle<T>) -> VecFoldHandle<T> {
+        item
+    }
+}
+
+impl<A: Fold, U: Fold> Append<VecFoldHandle<U>> for FoldHandle<A> {
+    type Output = (FoldHandle<A>, VecFoldHandle<U>);
+
+    fn append(self, item: VecFoldHandle<U>) -> Self::Output {
+        (self, item)
+    }
+}
+
 pub struct FoldHandle<F> {
     key: FoldKey,
     phantom: PhantomData<fn() -> F>,
@@ -244,7 +285,7 @@ impl<F> PartialEq for FoldHandle<F> {
 impl<F> Eq for FoldHandle<F> {}
 
 type CreateFoldFn<I> =
-    dyn FnOnce(&I, &[DomainIdBindings]) -> (Box<dyn BoxFold>, Vec<DomainIdBindings>);
+    dyn FnOnce(&I, &DomainIdBindings) -> (Box<dyn BoxFold>, DomainIdBindings);
 
 pub(crate) struct FoldSpec<I> {
     fold: Box<CreateFoldFn<I>>,
@@ -254,20 +295,14 @@ pub(crate) struct FoldSpec<I> {
 impl<I> FoldSpec<I> {
     pub(crate) fn new<F: Fold>(f: impl FnOnce(&I, &DomainIdBindings) -> F + 'static) -> Self {
         FoldSpec {
-            fold: Box::new(move |input, all_bindings: &[DomainIdBindings]| {
-                let empty = DomainIdBindings::default();
-                let first = all_bindings.first().unwrap_or(&empty);
-                let fold = f(input, first);
-                let fold_bindings: Vec<DomainIdBindings> = all_bindings
+            fold: Box::new(move |input, binding: &DomainIdBindings| {
+                let fold = f(input, binding);
+                let fold_binding: DomainIdBindings = binding
                     .iter()
-                    .map(|b| {
-                        b.iter()
-                            .filter(|(k, _)| F::DOMAIN_ID_FIELDS.contains(k))
-                            .map(|(k, v)| (*k, v.clone()))
-                            .collect()
-                    })
+                    .filter(|(k, _)| F::DOMAIN_ID_FIELDS.contains(k))
+                    .map(|(k, v)| (*k, v.clone()))
                     .collect();
-                (Box::new(fold) as Box<dyn BoxFold>, fold_bindings)
+                (Box::new(fold) as Box<dyn BoxFold>, fold_binding)
             }),
             state: Box::new(F::State::default()),
         }
@@ -276,11 +311,10 @@ impl<I> FoldSpec<I> {
     pub(crate) fn create(
         self,
         input: &I,
-        bindings: &[DomainIdBindings],
-    ) -> (Box<dyn BoxFold>, Vec<DomainIdBindings>, Box<dyn Any>) {
-        let (box_fold, fold_bindings) = (self.fold)(input, bindings);
-        let box_state = self.state;
-        (box_fold, fold_bindings, box_state)
+        binding: &DomainIdBindings,
+    ) -> (Box<dyn BoxFold>, DomainIdBindings, Box<dyn Any>) {
+        let (box_fold, fold_binding) = (self.fold)(input, binding);
+        (box_fold, fold_binding, self.state)
     }
 }
 
@@ -288,7 +322,7 @@ pub(crate) trait BoxFold {
     fn box_apply(
         &self,
         state: &mut Box<dyn Any>,
-        bindings: &[DomainIdBindings],
+        binding: &DomainIdBindings,
         event: &StoredEvent<Value>,
     ) -> anyhow::Result<()>;
 }
@@ -300,12 +334,10 @@ where
     fn box_apply(
         &self,
         state: &mut Box<dyn Any>,
-        bindings: &[DomainIdBindings],
+        binding: &DomainIdBindings,
         event: &StoredEvent<Value>,
     ) -> anyhow::Result<()> {
-        if bindings
-            .iter()
-            .any(|b| matches_fold_query::<T>(&event.event_type, &event.tags, b))
+        if matches_fold_query::<T>(&event.event_type, &event.tags, binding)
             && let Some(data) = T::Events::from_event(&event.event_type, &event.data).transpose()?
         {
             <T as Fold>::apply(
@@ -332,6 +364,15 @@ where
 pub struct EventFold<E: Event> {
     bindings: DomainIdBindings,
     phantom: PhantomData<fn() -> E>,
+}
+
+impl<E: Event> EventFold<E> {
+    pub fn new(bindings: DomainIdBindings) -> Self {
+        EventFold {
+            bindings,
+            phantom: PhantomData,
+        }
+    }
 }
 
 impl<E: Event> DomainIds for EventFold<E> {

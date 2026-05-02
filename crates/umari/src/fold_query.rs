@@ -5,32 +5,27 @@ use slotmap::SlotMap;
 
 use crate::{
     command::build_dcb_query,
-    domain_id::{DomainIdBindings, FromDomainIds},
+    domain_id::{DomainIdBindings, DomainIds},
     event::{Event, EventDomainId, EventSet, StoredEvent},
-    folds::{Append, EventFold, EventState, Fold, FoldHandle, FoldKey, FoldSpec, FoldStates},
+    folds::{Append, BoxFold, EventFold, EventState, Fold, FoldHandle, FoldKey, FoldStates, VecFoldHandle},
     runtime::command::umari::command::transaction::Transaction,
 };
 
 pub struct FoldQuery<Fs = ()> {
-    bindings: Vec<DomainIdBindings>,
     domain_ids: Vec<EventDomainId>,
-    folds: SlotMap<FoldKey, FoldSpec<()>>,
+    folds: SlotMap<FoldKey, (Box<dyn BoxFold>, DomainIdBindings, Box<dyn Any>)>,
     handles: Fs,
 }
 
-impl FoldQuery<()> {
-    pub fn new(bindings: DomainIdBindings) -> Self {
-        FoldQuery {
-            bindings: vec![bindings],
-            domain_ids: Vec::new(),
-            folds: SlotMap::with_key(),
-            handles: (),
-        }
+impl Default for FoldQuery<()> {
+    fn default() -> Self {
+        Self::new()
     }
+}
 
-    pub fn new_from_bindings(bindings: Vec<DomainIdBindings>) -> Self {
+impl FoldQuery<()> {
+    pub fn new() -> Self {
         FoldQuery {
-            bindings,
             domain_ids: Vec::new(),
             folds: SlotMap::with_key(),
             handles: (),
@@ -39,31 +34,45 @@ impl FoldQuery<()> {
 }
 
 impl<Fs> FoldQuery<Fs> {
-    pub fn fold<T>(self) -> FoldQuery<<Fs as Append<FoldHandle<T>>>::Output>
+    pub fn fold<T>(self, fold: T) -> FoldQuery<<Fs as Append<FoldHandle<T>>>::Output>
     where
-        T: Fold + FromDomainIds<Args = ()>,
-        Fs: Append<FoldHandle<T>>,
-    {
-        self.fold_args(())
-    }
-
-    pub fn fold_args<T>(self, args: T::Args) -> FoldQuery<<Fs as Append<FoldHandle<T>>>::Output>
-    where
-        T: Fold + FromDomainIds,
+        T: Fold,
         Fs: Append<FoldHandle<T>>,
     {
         let mut domain_ids = self.domain_ids;
         let mut folds = self.folds;
         domain_ids.extend(<T::Events>::event_domain_ids());
-        let spec = FoldSpec::new::<T>(move |_, bindings| {
-            T::from_domain_ids(args, bindings).expect("failed to create fold from bindings")
-        });
-        let key = folds.insert(spec);
+        let binding = fold.domain_ids();
+        let state: Box<dyn Any> = Box::new(T::State::default());
+        let key = folds.insert((Box::new(fold), binding, state));
         FoldQuery {
-            bindings: self.bindings,
             domain_ids,
             folds,
             handles: self.handles.append(FoldHandle::new(key)),
+        }
+    }
+
+    pub fn fold_iter<T, I>(self, iter: I) -> FoldQuery<<Fs as Append<VecFoldHandle<T>>>::Output>
+    where
+        T: Fold,
+        I: IntoIterator<Item = T>,
+        Fs: Append<VecFoldHandle<T>>,
+    {
+        let mut domain_ids = self.domain_ids;
+        let mut folds = self.folds;
+        domain_ids.extend(<T::Events>::event_domain_ids());
+        let keys: Vec<FoldKey> = iter
+            .into_iter()
+            .map(|fold| {
+                let binding = fold.domain_ids();
+                let state: Box<dyn Any> = Box::new(T::State::default());
+                folds.insert((Box::new(fold) as Box<dyn BoxFold>, binding, state))
+            })
+            .collect();
+        FoldQuery {
+            domain_ids,
+            folds,
+            handles: self.handles.append(VecFoldHandle::new(keys)),
         }
     }
 
@@ -71,17 +80,13 @@ impl<Fs> FoldQuery<Fs> {
     where
         Fs: FoldStates,
     {
-        let mut folds: HashMap<_, _> = self
-            .folds
-            .into_iter()
-            .map(|(key, spec)| {
-                let (fold, fold_bindings, state) = spec.create(&(), &self.bindings);
-                (key, (fold, fold_bindings, state))
-            })
-            .collect();
-
-        let query = build_dcb_query(self.domain_ids, &self.bindings);
+        let all_bindings: Vec<DomainIdBindings> =
+            self.folds.values().map(|(_, b, _)| b.clone()).collect();
+        let query = build_dcb_query(self.domain_ids, &all_bindings);
         let tx = Transaction::new(&query.into());
+
+        let mut folds: HashMap<FoldKey, (Box<dyn BoxFold>, DomainIdBindings, Box<dyn Any>)> =
+            self.folds.into_iter().collect();
 
         loop {
             let events = tx.next_batch();
@@ -91,8 +96,8 @@ impl<Fs> FoldQuery<Fs> {
 
             for event in events {
                 let event: StoredEvent<Value> = event.into();
-                for (fold, fold_bindings, state) in folds.values_mut() {
-                    fold.box_apply(state, fold_bindings.as_slice(), &event)?;
+                for (fold, binding, state) in folds.values_mut() {
+                    fold.box_apply(state, &*binding, &event)?;
                 }
             }
         }
@@ -108,9 +113,9 @@ impl<Fs> FoldQuery<Fs> {
 }
 
 impl<E: Event + 'static> EventFold<E> {
-    pub fn query(input: E) -> anyhow::Result<EventState<E>> {
-        FoldQuery::new(input.domain_ids())
-            .fold::<EventFold<E>>()
+    pub fn query(input: impl DomainIds) -> anyhow::Result<EventState<E>> {
+        FoldQuery::new()
+            .fold(EventFold::new(input.domain_ids()))
             .run()
     }
 }

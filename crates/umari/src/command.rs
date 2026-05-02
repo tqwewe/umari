@@ -99,17 +99,16 @@ impl<I: DomainIds, Fs> Command<I, Fs> {
         F: FnOnce(I, Fs::States) -> anyhow::Result<Emit>,
     {
         let bindings = self.input.domain_ids();
-        let bindings_slice = std::slice::from_ref(&bindings);
         let mut folds: HashMap<_, _> = self
             .folds
             .into_iter()
             .map(|(key, spec)| {
-                let (fold, fold_bindings, state) = spec.create(&self.input, bindings_slice);
-                (key, (fold, fold_bindings, state))
+                let (fold, fold_binding, state) = spec.create(&self.input, &bindings);
+                (key, (fold, fold_binding, state))
             })
             .collect();
 
-        let query = build_dcb_query(self.domain_ids, bindings_slice);
+        let query = build_dcb_query(self.domain_ids, std::slice::from_ref(&bindings));
         let tx = Transaction::new(&query.into());
 
         loop {
@@ -133,8 +132,8 @@ impl<I: DomainIds, Fs> Command<I, Fs> {
                     });
                 }
 
-                for (fold, fold_bindings, state) in folds.values_mut() {
-                    fold.box_apply(state, fold_bindings.as_slice(), &event)?;
+                for (fold, fold_binding, state) in folds.values_mut() {
+                    fold.box_apply(state, &*fold_binding, &event)?;
                 }
             }
         }
