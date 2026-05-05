@@ -121,7 +121,7 @@ impl ApiClient {
         env: &BTreeMap<String, String>,
         file_path: &Path,
         activate: bool,
-    ) -> Result<(bool, UploadResponse)> {
+    ) -> Result<Option<(bool, UploadResponse)>> {
         // Read file and show progress
         let file_size = std::fs::metadata(file_path)
             .with_context(|| format!("failed to read file metadata: {}", file_path.display()))?
@@ -180,11 +180,15 @@ impl ApiClient {
                 &format!("multipart/form-data; boundary={boundary}"),
             )
             .send(&multipart_body)
-            .context("connection error")
-            .and_then(|r| self.check_response(r))?;
+            .context("connection error")?;
 
         pb.finish_and_clear();
 
+        if response.status().as_u16() == 409 {
+            return Ok(None);
+        }
+
+        let response = self.check_response(response)?;
         let idempotent = response.status().as_u16() == 200;
         let body = response
             .into_body()
@@ -192,6 +196,6 @@ impl ApiClient {
             .context("failed to read response")?;
         let upload_response =
             serde_json::from_str(&body).context("failed to parse upload response")?;
-        Ok((idempotent, upload_response))
+        Ok(Some((idempotent, upload_response)))
     }
 }

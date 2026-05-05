@@ -3322,6 +3322,7 @@ dependencies = [
  "comfy-table",
  "indicatif",
  "indoc",
+ "semver",
  "serde",
  "serde_json",
  "toml_edit",

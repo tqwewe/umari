@@ -2,8 +2,9 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
+use semver::Version;
 use serde::Deserialize;
 
 use crate::client::ApiClient;
@@ -73,6 +74,7 @@ struct Module {
     module_type: &'static str,
     env_vars: BTreeMap<String, String>,
     wasm_path: PathBuf,
+    manifest_path: PathBuf,
 }
 
 struct JsModule {
@@ -122,6 +124,13 @@ impl AnyModule {
         match self {
             AnyModule::Rust(m) => &m.wasm_path,
             AnyModule::Js(m) => &m.wasm_path,
+        }
+    }
+
+    fn manifest_path(&self) -> PathBuf {
+        match self {
+            AnyModule::Rust(m) => m.manifest_path.clone(),
+            AnyModule::Js(m) => m.dir.join("package.json"),
         }
     }
 }
@@ -197,6 +206,7 @@ fn discover_modules(filter_paths: &[PathBuf], debug: bool) -> Result<(Vec<AnyMod
             module_type,
             env_vars,
             wasm_path,
+            manifest_path: pkg.manifest_path,
         }));
     }
 
@@ -288,33 +298,7 @@ pub fn build(paths: Vec<PathBuf>, debug: bool) -> Result<()> {
     println!("building {} module(s)...", modules.len());
 
     for module in &modules {
-        match module {
-            AnyModule::Rust(m) => {
-                let mut args = vec!["build", "-p", &m.name, "--target", "wasm32-wasip2"];
-                if !debug {
-                    args.push("--release");
-                }
-                let status = Command::new("cargo")
-                    .args(&args)
-                    .status()
-                    .map_err(|err| anyhow!("failed to run cargo build: {err}"))?;
-                if !status.success() {
-                    return Err(anyhow!("build failed for {}", m.name));
-                }
-                println!("{} built {} v{}", "✓".green(), m.name, m.version);
-            }
-            AnyModule::Js(m) => {
-                let status = Command::new("npm")
-                    .args(["run", "build"])
-                    .current_dir(&m.dir)
-                    .status()
-                    .map_err(|err| anyhow!("failed to run npm: {err}"))?;
-                if !status.success() {
-                    return Err(anyhow!("build failed for {}", m.name));
-                }
-                println!("{} built {} v{}", "✓".green(), m.name, m.version);
-            }
-        }
+        build_module(module, debug)?;
     }
 
     println!("{} module(s) built", modules.len());
@@ -325,6 +309,7 @@ pub fn deploy(
     client: &ApiClient,
     paths: Vec<PathBuf>,
     no_activate: bool,
+    bump_patch: bool,
     debug: bool,
 ) -> Result<()> {
     let (modules, _workspace_root) = discover_modules(&paths, debug)?;
@@ -336,75 +321,179 @@ pub fn deploy(
     println!("building {} module(s)...", modules.len());
 
     for module in &modules {
-        match module {
-            AnyModule::Rust(m) => {
-                let mut args = vec!["build", "-p", &m.name, "--target", "wasm32-wasip2"];
-                if !debug {
-                    args.push("--release");
-                }
-                let status = Command::new("cargo")
-                    .args(&args)
-                    .status()
-                    .map_err(|err| anyhow!("failed to run cargo build: {err}"))?;
-                if !status.success() {
-                    return Err(anyhow!("build failed for {}", m.name));
-                }
-                println!("{} built {} v{}", "✓".green(), m.name, m.version);
-            }
-            AnyModule::Js(m) => {
-                let status = Command::new("npm")
-                    .args(["run", "build"])
-                    .current_dir(&m.dir)
-                    .status()
-                    .map_err(|err| anyhow!("failed to run npm: {err}"))?;
-                if !status.success() {
-                    return Err(anyhow!("build failed for {}", m.name));
-                }
-                println!("{} built {} v{}", "✓".green(), m.name, m.version);
-            }
-        }
+        build_module(module, debug)?;
     }
 
     println!("uploading {} module(s)...", modules.len());
 
+    let mut failed = 0usize;
     for module in &modules {
-        let wasm_path = module.wasm_path();
-        if !wasm_path.exists() {
-            return Err(anyhow!(
-                "wasm file not found at '{}' for module '{}'",
-                wasm_path.display(),
-                module.name()
-            ));
-        }
-
-        let (idempotent, _) = client.upload_wasm(
-            module.module_type(),
-            module.name(),
-            module.version(),
-            module.env_vars(),
-            wasm_path,
-            !no_activate,
-        )?;
-
-        if idempotent {
-            println!(
-                "{} {} v{} ({}) already up to date",
-                "✓".green(),
+        if let Err(err) = upload_module(client, module, no_activate, bump_patch, debug) {
+            eprintln!(
+                "{} {} v{} ({}): {err}",
+                "✗".red(),
                 module.name(),
                 module.version(),
-                module.module_type()
+                module.module_type(),
             );
-        } else {
-            println!(
-                "{} deployed {} v{} ({})",
-                "✓".green(),
-                module.name(),
-                module.version(),
-                module.module_type()
-            );
+            failed += 1;
         }
     }
 
+    if failed > 0 {
+        return Err(anyhow!("{failed} module(s) failed to deploy"));
+    }
+
     println!("{} module(s) deployed", modules.len());
+    Ok(())
+}
+
+fn build_module(module: &AnyModule, debug: bool) -> Result<()> {
+    match module {
+        AnyModule::Rust(m) => {
+            let mut args = vec!["build", "-p", &m.name, "--target", "wasm32-wasip2"];
+            if !debug {
+                args.push("--release");
+            }
+            let output = Command::new("cargo")
+                .args(&args)
+                .output()
+                .map_err(|err| anyhow!("failed to run cargo build: {err}"))?;
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(anyhow!("build failed for {}:\n{stderr}", m.name));
+            }
+            println!("{} built {} v{}", "✓".green(), m.name, m.version);
+        }
+        AnyModule::Js(m) => {
+            let output = Command::new("npm")
+                .args(["run", "build"])
+                .current_dir(&m.dir)
+                .output()
+                .map_err(|err| anyhow!("failed to run npm: {err}"))?;
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(anyhow!("build failed for {}:\n{stderr}", m.name));
+            }
+            println!("{} built {} v{}", "✓".green(), m.name, m.version);
+        }
+    }
+    Ok(())
+}
+
+fn upload_module(
+    client: &ApiClient,
+    module: &AnyModule,
+    no_activate: bool,
+    bump_patch: bool,
+    debug: bool,
+) -> Result<()> {
+    let wasm_path = module.wasm_path();
+    if !wasm_path.exists() {
+        return Err(anyhow!(
+            "wasm file not found at '{}'",
+            wasm_path.display()
+        ));
+    }
+
+    let version = module.version().to_string();
+    match client.upload_wasm(
+        module.module_type(),
+        module.name(),
+        &version,
+        module.env_vars(),
+        wasm_path,
+        !no_activate,
+    )? {
+        Some((idempotent, _)) => {
+            if idempotent {
+                println!(
+                    "{} {} v{version} ({}) already up to date",
+                    "✓".green(),
+                    module.name(),
+                    module.module_type()
+                );
+            } else {
+                println!(
+                    "{} deployed {} v{version} ({})",
+                    "✓".green(),
+                    module.name(),
+                    module.module_type()
+                );
+            }
+        }
+        None if bump_patch => {
+            let new_version = bump_patch_version(&version)?;
+            write_version_to_manifest(module, &new_version)?;
+            build_module(module, debug)?;
+            match client.upload_wasm(
+                module.module_type(),
+                module.name(),
+                &new_version,
+                module.env_vars(),
+                wasm_path,
+                !no_activate,
+            )? {
+                Some((idempotent, _)) => {
+                    if idempotent {
+                        println!(
+                            "{} {} v{new_version} ({}) already up to date",
+                            "✓".green(),
+                            module.name(),
+                            module.module_type()
+                        );
+                    } else {
+                        println!(
+                            "{} deployed {} v{new_version} ({}) [bumped from v{version}]",
+                            "✓".green(),
+                            module.name(),
+                            module.module_type()
+                        );
+                    }
+                }
+                None => {
+                    return Err(anyhow!("module already exists"));
+                }
+            }
+        }
+        None => {
+            return Err(anyhow!("module already exists"));
+        }
+    }
+
+    Ok(())
+}
+
+fn bump_patch_version(version: &str) -> Result<String> {
+    let mut v: Version = version.parse().context("invalid semver version")?;
+    v.patch += 1;
+    Ok(v.to_string())
+}
+
+fn write_version_to_manifest(module: &AnyModule, new_version: &str) -> Result<()> {
+    let manifest_path = module.manifest_path();
+    match module {
+        AnyModule::Rust(_) => {
+            let content = std::fs::read_to_string(&manifest_path)
+                .with_context(|| format!("failed to read {}", manifest_path.display()))?;
+            let mut doc: toml_edit::DocumentMut = content
+                .parse()
+                .with_context(|| format!("failed to parse {}", manifest_path.display()))?;
+            doc["package"]["version"] = toml_edit::value(new_version);
+            std::fs::write(&manifest_path, doc.to_string())
+                .with_context(|| format!("failed to write {}", manifest_path.display()))?;
+        }
+        AnyModule::Js(_) => {
+            let content = std::fs::read_to_string(&manifest_path)
+                .with_context(|| format!("failed to read {}", manifest_path.display()))?;
+            let mut pkg: serde_json::Value = serde_json::from_str(&content)
+                .with_context(|| format!("failed to parse {}", manifest_path.display()))?;
+            pkg["version"] = serde_json::Value::String(new_version.to_string());
+            let updated = serde_json::to_string_pretty(&pkg)
+                .context("failed to serialize package.json")?;
+            std::fs::write(&manifest_path, updated + "\n")
+                .with_context(|| format!("failed to write {}", manifest_path.display()))?;
+        }
+    }
     Ok(())
 }

@@ -16,8 +16,11 @@ pub fn upload(
     file: PathBuf,
     activate: bool,
 ) -> Result<()> {
-    let (idempotent, response) =
-        client.upload_wasm("commands", &name, &version, &env_vars, &file, activate)?;
+    let Some((idempotent, response)) =
+        client.upload_wasm("commands", &name, &version, &env_vars, &file, activate)?
+    else {
+        return Err(anyhow::anyhow!("module already exists"));
+    };
 
     if idempotent {
         println!(

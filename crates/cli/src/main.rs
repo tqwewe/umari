@@ -71,6 +71,9 @@ enum Commands {
         /// upload without activating
         #[arg(long)]
         no_activate: bool,
+        /// automatically bump the patch version and retry when a module already exists
+        #[arg(long)]
+        bump_patch: bool,
         #[arg(long)]
         debug: bool,
     },
@@ -440,8 +443,9 @@ fn main() -> Result<()> {
         Commands::Deploy {
             paths,
             no_activate,
+            bump_patch,
             debug,
-        } => commands::workspace::deploy(&client, paths, no_activate, debug),
+        } => commands::workspace::deploy(&client, paths, no_activate, bump_patch, debug),
         Commands::New { command } => match command {
             NewSubcommand::Command { name, lang } => match lang {
                 Lang::Js => commands::new::generate_js("command", &name),
