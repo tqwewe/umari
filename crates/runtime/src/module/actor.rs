@@ -190,7 +190,11 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
             return Err(err.into());
         }
 
-        let query = match instance.query(&mut store, handler).await.map(DcbQuery::from) {
+        let query = match instance
+            .query(&mut store, handler)
+            .await
+            .map(DcbQuery::from)
+        {
             Ok(query) => query,
             Err(err) => {
                 args.output.push_stderr(format!("{err:#}"));
@@ -199,7 +203,11 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
         };
 
         let start = store.data().last_position().map(|n| n + 1);
-        let stream = match args.event_store.read(Some(query), start, false, None, true).await {
+        let stream = match args
+            .event_store
+            .read(Some(query), start, false, None, true)
+            .await
+        {
             Ok(stream) => stream,
             Err(err) => {
                 args.output.push_stderr(format!("{err:#}"));
@@ -237,7 +245,7 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
             let global =
                 ModuleWorkerActor::<A>::supervise_with(&actor_ref, make_worker_args.clone())
                     .restart_limit(u32::MAX, Duration::MAX)
-                    .spawn_in_thread_with_mailbox(mailbox::bounded(4))
+                    .spawn_in_thread_with_mailbox(mailbox::unbounded())
                     .await;
             let keyed = (0..A::POOL_SIZE)
                 .map(|_| {
@@ -245,7 +253,7 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
                     async {
                         ModuleWorkerActor::<A>::supervise_with(&actor_ref, f)
                             .restart_limit(u32::MAX, Duration::MAX)
-                            .spawn_in_thread_with_mailbox(mailbox::bounded(4))
+                            .spawn_in_thread_with_mailbox(mailbox::unbounded())
                             .await
                     }
                 })
@@ -302,6 +310,14 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
         mailbox_rx: &mut MailboxReceiver<Self>,
     ) -> Result<Option<mailbox::Signal<Self>>, Self::Error> {
         loop {
+            if self
+                .worker_pool
+                .as_ref()
+                .is_some_and(|pool| pool.in_flight.len() > 100)
+            {
+                return Ok(mailbox_rx.recv().await);
+            }
+
             tokio::select! {
                 msg = mailbox_rx.recv() => return Ok(msg),
                 res = self.stream.next_batch() => {
