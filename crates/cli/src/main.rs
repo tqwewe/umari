@@ -17,7 +17,7 @@ struct Cli {
         long,
         short,
         global = true,
-        env,
+        env = "UMARI_URL",
         default_value = "http://localhost:3000"
     )]
     url: String,

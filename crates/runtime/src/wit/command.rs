@@ -167,7 +167,7 @@ impl transaction::HostTransaction for wit::CommandComponentState {
         let causation_id = uuid::Uuid::new_v4();
         let envelope = EventEnvelope {
             timestamp: self.timestamp,
-            correlation_id: context.correlation_id.unwrap_or_else(uuid::Uuid::new_v4),
+            correlation_id: context.correlation_id,
             causation_id,
             triggering_event_id: context.triggering_event_id,
             idempotency_key: context.idempotency_key,
@@ -308,9 +308,6 @@ impl transaction::HostTransaction for wit::EventHandlerComponentState {
 
         let mut context: umari_core::command::CommandContext = context.try_into()?;
         context
-            .correlation_id
-            .get_or_insert(self.current_correlation_id);
-        context
             .triggering_event_id
             .get_or_insert(self.current_event_id);
 
@@ -318,7 +315,7 @@ impl transaction::HostTransaction for wit::EventHandlerComponentState {
         let causation_id = uuid::Uuid::new_v4();
         let envelope = EventEnvelope {
             timestamp: Utc::now(),
-            correlation_id: context.correlation_id.unwrap_or_else(uuid::Uuid::new_v4),
+            correlation_id: context.correlation_id,
             causation_id,
             triggering_event_id: context.triggering_event_id,
             idempotency_key: context.idempotency_key,
@@ -379,11 +376,7 @@ impl TryFrom<CommandContext> for umari_core::command::CommandContext {
 
     fn try_from(ctx: CommandContext) -> Result<Self, Self::Error> {
         Ok(umari_core::command::CommandContext {
-            correlation_id: ctx
-                .correlation_id
-                .as_deref()
-                .map(uuid::Uuid::parse_str)
-                .transpose()
+            correlation_id: uuid::Uuid::parse_str(&ctx.correlation_id)
                 .context("invalid correlation id")?,
             triggering_event_id: ctx
                 .triggering_event_id
@@ -404,7 +397,7 @@ impl TryFrom<CommandContext> for umari_core::command::CommandContext {
 impl From<umari_core::command::CommandContext> for CommandContext {
     fn from(ctx: umari_core::command::CommandContext) -> Self {
         CommandContext {
-            correlation_id: ctx.correlation_id.as_ref().map(ToString::to_string),
+            correlation_id: ctx.correlation_id.to_string(),
             triggering_event_id: ctx.triggering_event_id.as_ref().map(ToString::to_string),
             idempotency_key: ctx.idempotency_key.as_ref().map(ToString::to_string),
         }

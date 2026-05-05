@@ -1,4 +1,4 @@
-use std::{cell::RefCell, fmt, marker::PhantomData};
+use std::{cell::RefCell, marker::PhantomData};
 
 pub use self::exports::umari::effect::effect::{Guest, GuestEffect};
 use crate::{
@@ -48,7 +48,6 @@ pub struct EffectState<T> {
 impl<T> Guest for EffectExport<T>
 where
     T: Effect + 'static,
-    T::Error: fmt::Display,
 {
     type Effect = EffectState<T>;
 }
@@ -56,7 +55,6 @@ where
 impl<T> GuestEffect for EffectState<T>
 where
     T: Effect + 'static,
-    T::Error: fmt::Display,
 {
     fn new() -> Self
     where

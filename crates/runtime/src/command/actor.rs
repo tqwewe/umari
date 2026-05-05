@@ -10,6 +10,7 @@ use tokio::task::JoinSet;
 use tracing::{debug, error, info, warn};
 use umadb_client::AsyncUmaDbClient;
 use umari_core::command::CommandContext;
+use uuid::Uuid;
 use wasmtime::{
     Engine, Store,
     component::{Component, HasSelf, Linker},
@@ -165,7 +166,11 @@ impl CommandActor {
         };
 
         ctx.spawn(async move {
-            let result = module.execute(&command.input, command.context).await?;
+            let mut context = command.context;
+            if context.correlation_id.is_nil() {
+                context.correlation_id = Uuid::new_v4();
+            }
+            let result = module.execute(&command.input, context).await?;
             let events = module.store.into_data().emitted_events;
 
             debug!(

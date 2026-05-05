@@ -1,6 +1,4 @@
 use serde_json::Value;
-use umadb_dcb::DcbEvent;
-use uuid::Uuid;
 
 use crate::{
     domain_id::DomainIdBindings,
@@ -98,25 +96,6 @@ impl EmitEvent {
             event_type: E::EVENT_TYPE.to_string(),
             data: serde_json::to_value(event).expect("event serialization failed"),
             domain_ids,
-        }
-    }
-
-    pub fn into_dcb_event(self, envelope: EventEnvelope) -> DcbEvent {
-        DcbEvent {
-            event_type: self.event_type,
-            tags: self
-                .domain_ids
-                .into_iter()
-                .map(|(category, id)| {
-                    assert!(
-                        !category.contains(':'),
-                        "domain id categories cannot contain a colon character"
-                    );
-                    format!("{category}:{id}")
-                })
-                .collect(),
-            data: encode_with_envelope(envelope, self.data),
-            uuid: Some(Uuid::new_v4()),
         }
     }
 }

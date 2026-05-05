@@ -1,4 +1,7 @@
-use std::collections::{BTreeSet, HashMap};
+use std::{
+    collections::{BTreeSet, HashMap},
+    mem,
+};
 
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
@@ -8,6 +11,7 @@ use umadb_dcb::{DcbQuery, DcbQueryItem};
 use uuid::Uuid;
 
 use crate::{
+    IDEMPOTENCY_NAMESPACE,
     domain_id::{DomainIdBindings, DomainIds, FromDomainIds},
     effect::CURRENT_EVENT_CONTEXT,
     emit::Emit,
@@ -147,8 +151,13 @@ impl<I: DomainIds, Fs> Command<I, Fs> {
         let emitted_events: Vec<_> = emit
             .into_events()
             .into_iter()
-            .map(|event| {
-                let id = Uuid::new_v4();
+            .enumerate()
+            .map(|(i, event)| {
+                let mut key =
+                    Vec::with_capacity(mem::size_of::<uuid::Bytes>() + mem::size_of::<u32>());
+                key.extend_from_slice(self.context.correlation_id.as_bytes());
+                key.extend_from_slice(&(i as u32).to_be_bytes());
+                let id = Uuid::new_v5(&IDEMPOTENCY_NAMESPACE, &key);
                 let data = serde_json::to_string(&event.data)
                     .unwrap_or_else(|err| panic!("failed to serialize event data: {err}"));
                 EmitEvent {
@@ -224,7 +233,7 @@ pub trait CommandName {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CommandContext {
     /// Original request ID (flows through everything)
-    pub correlation_id: Option<Uuid>,
+    pub correlation_id: Uuid,
     /// Event ID that triggered this command (for sagas)
     pub triggering_event_id: Option<Uuid>,
     /// Client-supplied key for deduplicating retried command executions.
@@ -235,7 +244,7 @@ impl CommandContext {
     pub fn new() -> Self {
         CURRENT_EVENT_CONTEXT.with_borrow(|ctx| {
             ctx.map(|ctx| CommandContext {
-                correlation_id: Some(ctx.correlation_id),
+                correlation_id: ctx.correlation_id,
                 triggering_event_id: Some(ctx.triggering_event_id),
                 idempotency_key: None,
             })
@@ -243,8 +252,8 @@ impl CommandContext {
         })
     }
 
-    pub fn with_correlation_id(mut self, correlation_id: impl Into<Option<Uuid>>) -> Self {
-        self.correlation_id = correlation_id.into();
+    pub fn with_correlation_id(mut self, correlation_id: Uuid) -> Self {
+        self.correlation_id = correlation_id;
         self
     }
 

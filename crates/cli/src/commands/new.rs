@@ -138,7 +138,6 @@ fn lib_rs_content(module_type: &str, type_name: &str) -> String {
 
             impl Effect for {type_name} {{
                 type Query = Query;
-                type Error = anyhow::Error;
 
                 fn init() -> anyhow::Result<Self> {{
                     Ok({type_name} {{}})
@@ -148,7 +147,7 @@ fn lib_rs_content(module_type: &str, type_name: &str) -> String {
                     None
                 }}
 
-                fn handle(&mut self, event: StoredEvent<Query>) -> Result<(), Self::Error> {{
+                fn handle(&mut self, event: StoredEvent<Query>) -> anyhow::Result<()> {{
                     Ok(())
                 }}
             }}

@@ -1,12 +1,9 @@
-use std::{cell::RefCell, fmt};
+use std::cell::RefCell;
 
 use umadb_dcb::{DcbQuery, DcbQueryItem};
 use uuid::Uuid;
 
-use crate::{
-    error::SqliteError,
-    event::{EventSet, StoredEvent},
-};
+use crate::event::{EventSet, StoredEvent};
 
 thread_local! {
     pub static CURRENT_EVENT_CONTEXT: RefCell<Option<CurrentEventContext>> = const { RefCell::new(None) };
@@ -20,12 +17,11 @@ pub struct CurrentEventContext {
 
 pub trait Effect: Sized {
     type Query: EventSet;
-    type Error: fmt::Display;
 
     /// Idempotently initialise the database.
     ///
     /// This is called on startup.
-    fn init() -> Result<Self, SqliteError>;
+    fn init() -> anyhow::Result<Self>;
 
     /// Query describing what events this effect should receive
     fn query(&self) -> DcbQuery {
@@ -41,8 +37,6 @@ pub trait Effect: Sized {
     }
 
     /// Handle a single event and perform external actions
-    fn handle(
-        &mut self,
-        event: StoredEvent<<Self::Query as EventSet>::Item>,
-    ) -> Result<(), Self::Error>;
+    fn handle(&mut self, event: StoredEvent<<Self::Query as EventSet>::Item>)
+    -> anyhow::Result<()>;
 }

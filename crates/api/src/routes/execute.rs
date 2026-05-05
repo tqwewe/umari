@@ -42,7 +42,8 @@ pub async fn execute(
                     Error::new(ErrorCode::InvalidInput).with_message("invalid correlation id")
                 })
         })
-        .transpose()?;
+        .transpose()?
+        .unwrap_or_else(Uuid::new_v4);
     let triggering_event_id = headers
         .get("x-triggering-event-id")
         .map(|value| {
