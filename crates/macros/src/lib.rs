@@ -26,7 +26,7 @@ pub fn from_domain_ids(input: TokenStream) -> TokenStream {
     TokenStream::from(input.expand())
 }
 
-#[proc_macro_derive(Event, attributes(event_type, domain_id))]
+#[proc_macro_derive(Event, attributes(event_type, domain_id, crypto_scope))]
 pub fn event(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveEvent);
     TokenStream::from(input.expand())

@@ -7,7 +7,10 @@ use crate::{
     command::build_dcb_query,
     domain_id::{DomainIdBindings, DomainIds},
     event::{Event, EventDomainId, EventSet, StoredEvent},
-    folds::{Append, BoxFold, EventFold, EventState, Fold, FoldHandle, FoldKey, FoldStates, VecFoldHandle},
+    folds::{
+        Append, BoxFold, EventFold, EventState, Fold, FoldHandle, FoldKey, FoldStates,
+        VecFoldHandle,
+    },
     runtime::command::umari::command::transaction::Transaction,
 };
 

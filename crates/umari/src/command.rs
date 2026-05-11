@@ -153,11 +153,13 @@ impl<I: DomainIds, Fs> Command<I, Fs> {
             .into_iter()
             .enumerate()
             .map(|(i, event)| {
-                let mut key =
-                    Vec::with_capacity(mem::size_of::<uuid::Bytes>() + mem::size_of::<u32>());
-                key.extend_from_slice(self.context.correlation_id.as_bytes());
-                key.extend_from_slice(&(i as u32).to_be_bytes());
-                let id = Uuid::new_v5(&IDEMPOTENCY_NAMESPACE, &key);
+                let id = {
+                    let mut key =
+                        Vec::with_capacity(mem::size_of::<uuid::Bytes>() + mem::size_of::<u32>());
+                    key.extend_from_slice(self.context.correlation_id.as_bytes());
+                    key.extend_from_slice(&(i as u32).to_be_bytes());
+                    Uuid::new_v5(&IDEMPOTENCY_NAMESPACE, &key)
+                };
                 let data = serde_json::to_string(&event.data)
                     .unwrap_or_else(|err| panic!("failed to serialize event data: {err}"));
                 EmitEvent {
@@ -172,6 +174,7 @@ impl<I: DomainIds, Fs> Command<I, Fs> {
                             id,
                         })
                         .collect(),
+                    encryption_scope: event.encryption_scope,
                 }
             })
             .collect();

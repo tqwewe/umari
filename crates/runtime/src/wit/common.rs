@@ -51,6 +51,10 @@ impl From<umari_core::event::StoredEvent<serde_json::Value>> for StoredEvent {
             idempotency_key: event
                 .idempotency_key
                 .map(|idempotency_key| idempotency_key.to_string()),
+            encryption_scope: event.encryption_scope,
+            encryption_key_id: event
+                .encryption_key_id
+                .map(|encryption_key_id| encryption_key_id.to_string()),
             data: serde_json::to_string(&event.data).unwrap(),
         }
     }
@@ -82,6 +86,10 @@ impl TryFrom<DcbSequencedEvent> for StoredEvent {
             idempotency_key: stored
                 .idempotency_key
                 .map(|idempotency_key| idempotency_key.to_string()),
+            encryption_scope: stored.encryption_scope,
+            encryption_key_id: stored
+                .encryption_key_id
+                .map(|encryption_key_id| encryption_key_id.to_string()),
             data,
         })
     }

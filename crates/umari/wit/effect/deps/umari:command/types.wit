@@ -26,6 +26,8 @@ interface types {
         data: json,
         /// Domain IDs for event routing (field name -> value)
         domain-ids: list<domain-id>,
+        /// Encryption scope
+        encryption-scope: option<string>,
     }
 
     record emitted-event {

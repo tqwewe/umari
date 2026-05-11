@@ -6,6 +6,7 @@ use rusqlite::{
 };
 use semver::Version;
 use sha2::{Digest, Sha256};
+use uuid::Uuid;
 
 use super::{Module, ModuleStoreError, ModuleType, ModuleVersionInfo};
 
@@ -49,6 +50,16 @@ impl SqliteModuleStore {
                 value       TEXT NOT NULL,
                 PRIMARY KEY (module_type, name, key)
             );
+
+            CREATE TABLE IF NOT EXISTS crypto_keys (
+                id         TEXT PRIMARY KEY,
+                scope      TEXT NOT NULL,
+                key        BLOB,             -- null when deleted
+                deleted_at INTEGER           -- null when active
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS crypto_keys_active_scope
+            ON crypto_keys (scope) WHERE deleted_at IS NULL;
             "#,
         )?;
 
@@ -358,6 +369,70 @@ impl SqliteModuleStore {
             params![module_type, name, key],
         )?;
         Ok(rows_affected > 0)
+    }
+
+    pub fn get_crypto_key(
+        &self,
+        scope: &str,
+    ) -> Result<Option<(Uuid, [u8; 32])>, ModuleStoreError> {
+        self.conn
+            .query_row(
+                "SELECT id, key FROM crypto_keys WHERE scope = ?1 AND deleted_at IS NULL",
+                params![scope],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?)),
+            )
+            .optional()?
+            .map(|(id_str, key)| {
+                let id =
+                    Uuid::parse_str(&id_str).map_err(|_| ModuleStoreError::InvalidCryptoKey {
+                        scope: scope.to_string(),
+                    })?;
+                let key =
+                    <[u8; 32]>::try_from(key).map_err(|_| ModuleStoreError::InvalidCryptoKey {
+                        scope: scope.to_string(),
+                    })?;
+                Ok((id, key))
+            })
+            .transpose()
+    }
+
+    pub fn get_crypto_key_by_id(&self, id: Uuid) -> Result<Option<[u8; 32]>, ModuleStoreError> {
+        let id_str = id.to_string();
+        self.conn
+            .query_row(
+                "SELECT key FROM crypto_keys WHERE id = ?1 AND deleted_at IS NULL",
+                params![id_str],
+                |row| row.get::<_, Vec<u8>>(0),
+            )
+            .optional()?
+            .map(|key| {
+                <[u8; 32]>::try_from(key)
+                    .map_err(|_| ModuleStoreError::InvalidCryptoKey { scope: id_str })
+            })
+            .transpose()
+    }
+
+    pub fn create_crypto_key(&self, scope: &str) -> Result<(Uuid, [u8; 32]), ModuleStoreError> {
+        if let Some((id, key)) = self.get_crypto_key(scope)? {
+            return Ok((id, key));
+        }
+
+        let id = Uuid::new_v4();
+        let key = rand::random::<[u8; 32]>();
+        self.conn.execute(
+            "INSERT INTO crypto_keys (id, scope, key) VALUES (?1, ?2, ?3)",
+            params![id.to_string(), scope, key.as_slice()],
+        )?;
+
+        Ok((id, key))
+    }
+
+    pub fn delete_crypto_key(&self, scope: &str) -> Result<(), ModuleStoreError> {
+        self.conn.execute(
+            "UPDATE crypto_keys SET key = NULL, deleted_at = unixepoch() WHERE scope = ?1 AND deleted_at IS NULL",
+            params![scope],
+        )?;
+        Ok(())
     }
 }
 

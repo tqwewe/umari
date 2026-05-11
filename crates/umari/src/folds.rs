@@ -284,8 +284,7 @@ impl<F> PartialEq for FoldHandle<F> {
 
 impl<F> Eq for FoldHandle<F> {}
 
-type CreateFoldFn<I> =
-    dyn FnOnce(&I, &DomainIdBindings) -> (Box<dyn BoxFold>, DomainIdBindings);
+type CreateFoldFn<I> = dyn FnOnce(&I, &DomainIdBindings) -> (Box<dyn BoxFold>, DomainIdBindings);
 
 pub(crate) struct FoldSpec<I> {
     fold: Box<CreateFoldFn<I>>,
@@ -337,6 +336,10 @@ where
         binding: &DomainIdBindings,
         event: &StoredEvent<Value>,
     ) -> anyhow::Result<()> {
+        // crypto-shredded events have null data — skip rather than fail deserialization
+        if event.encryption_scope.is_some() && event.data == Value::Null {
+            return anyhow::Ok(());
+        }
         if matches_fold_query::<T>(&event.event_type, &event.tags, binding)
             && let Some(data) = T::Events::from_event(&event.event_type, &event.data).transpose()?
         {
@@ -353,6 +356,8 @@ where
                     causation_id: event.causation_id,
                     triggering_event_id: event.triggering_event_id,
                     idempotency_key: event.idempotency_key,
+                    encryption_scope: event.encryption_scope.clone(),
+                    encryption_key_id: event.encryption_key_id,
                     data,
                 },
             );
@@ -669,6 +674,8 @@ impl<A: Event + 'static, B: Event + 'static> Fold for EventToggle<A, B> {
             causation_id,
             triggering_event_id,
             idempotency_key,
+            encryption_scope,
+            encryption_key_id,
             data,
         } = event;
         state.last = Some(match data {
@@ -682,6 +689,8 @@ impl<A: Event + 'static, B: Event + 'static> Fold for EventToggle<A, B> {
                 causation_id,
                 triggering_event_id,
                 idempotency_key,
+                encryption_scope,
+                encryption_key_id,
                 data,
             }),
             EitherEvent::B(data) => ToggleSide::B(StoredEvent {
@@ -694,6 +703,8 @@ impl<A: Event + 'static, B: Event + 'static> Fold for EventToggle<A, B> {
                 causation_id,
                 triggering_event_id,
                 idempotency_key,
+                encryption_scope,
+                encryption_key_id,
                 data,
             }),
         });

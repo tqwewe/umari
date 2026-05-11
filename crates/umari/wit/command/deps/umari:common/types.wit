@@ -34,6 +34,8 @@ interface types {
         causation-id: uuid,
         triggering-event-id: option<uuid>,
         idempotency-key: option<uuid>,
+        encryption-scope: option<string>,
+        encryption-key-id: option<uuid>,
         data: json,
     }
 }

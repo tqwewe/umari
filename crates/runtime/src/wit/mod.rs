@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::thread;
 
 use chrono::{DateTime, Utc};
+use kameo::actor::ActorRef;
 use rusqlite::{Connection, Statement};
 use serde::Serialize;
 use slotmap::{DefaultKey, SlotMap};
@@ -15,8 +16,11 @@ use wasmtime_wasi_http::{
     p2::{WasiHttpCtxView, WasiHttpView},
 };
 
+use crate::module_store::actor::ModuleStoreActor;
+
 pub mod command;
 pub mod common;
+pub mod crypto;
 pub mod effect;
 pub mod projector;
 pub mod sqlite;
@@ -46,6 +50,7 @@ pub struct CommandComponentState {
     pub wasi_http_ctx: WasiHttpCtx,
     pub resource_table: ResourceTable,
     pub event_store: Arc<AsyncUmaDbClient>,
+    pub module_store_ref: ActorRef<ModuleStoreActor>,
     pub timestamp: DateTime<Utc>,
     pub transactions: SlotMap<
         DefaultKey,
@@ -81,6 +86,7 @@ pub struct EventHandlerComponentState {
     wasi_http_ctx: WasiHttpCtx,
     resource_table: ResourceTable,
     event_store: Arc<AsyncUmaDbClient>,
+    pub module_store_ref: ActorRef<ModuleStoreActor>,
     conn: Connection,
     current_event_id: Uuid,
     current_correlation_id: Uuid,
@@ -104,6 +110,7 @@ impl EventHandlerComponentState {
         wasi_ctx: WasiCtx,
         resource_table: ResourceTable,
         event_store: Arc<AsyncUmaDbClient>,
+        module_store_ref: ActorRef<ModuleStoreActor>,
         conn: Connection,
         last_position: Option<u64>,
     ) -> Self {
@@ -112,6 +119,7 @@ impl EventHandlerComponentState {
             wasi_http_ctx: WasiHttpCtx::new(),
             resource_table,
             event_store,
+            module_store_ref,
             conn,
             current_event_id: Uuid::nil(),
             current_correlation_id: Uuid::nil(),

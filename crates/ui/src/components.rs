@@ -669,7 +669,9 @@ fn parse_union_field(key: &str, prop: &serde_json::Value) -> Option<UnionField> 
                 non_null.first().copied().unwrap_or("string")
             }
         } else {
-            prop.get("type").and_then(|t| t.as_str()).unwrap_or("string")
+            prop.get("type")
+                .and_then(|t| t.as_str())
+                .unwrap_or("string")
         };
         match type_str {
             "string" => UnionFieldType::Text,
@@ -696,11 +698,7 @@ fn parse_discriminated_union(prop: &serde_json::Value) -> Option<Vec<UnionVarian
     let mut variants = Vec::new();
     for variant in variants_json {
         let properties = variant.get("properties")?.as_object()?;
-        let tag_value = properties
-            .get("type")?
-            .get("const")?
-            .as_str()?
-            .to_owned();
+        let tag_value = properties.get("type")?.get("const")?.as_str()?.to_owned();
         let required_arr: Vec<&str> = variant
             .get("required")
             .and_then(|r| r.as_array())
@@ -765,9 +763,7 @@ fn parse_fields(schema: &Schema) -> Option<Vec<FormField>> {
         };
 
         // complex schemas: try discriminated union first, fall back to inline JSON
-        if prop.get("anyOf").is_some()
-            || prop.get("oneOf").is_some()
-            || prop.get("allOf").is_some()
+        if prop.get("anyOf").is_some() || prop.get("oneOf").is_some() || prop.get("allOf").is_some()
         {
             let required = required_arr.contains(&key.as_str());
             let description = prop

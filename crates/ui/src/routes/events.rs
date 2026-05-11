@@ -1,5 +1,9 @@
 use std::collections::HashMap;
 
+use aes_gcm::{
+    Aes256Gcm, Nonce,
+    aead::{Aead, KeyInit},
+};
 use axum::{
     extract::{Query, State},
     http::HeaderMap,
@@ -10,6 +14,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use umadb_dcb::{DcbEventStoreAsync, DcbQuery, DcbQueryItem};
 use umari_core::event::StoredEventData;
+use umari_runtime::module_store::actor::{GetCryptoKey, GetCryptoKeyById};
 use uuid::Uuid;
 
 use crate::{UiState, error::HtmlError, htmx::respond_wide};
@@ -21,6 +26,13 @@ pub struct EventsQuery {
     pub limit: Option<u32>,
 }
 
+enum EventData {
+    Plain(Value),
+    Decrypted(Value),
+    CryptoShredded,
+}
+
+
 struct EventView {
     position: u64,
     uuid: Option<Uuid>,
@@ -30,7 +42,8 @@ struct EventView {
     correlation_id: Uuid,
     causation_id: Uuid,
     triggering_event_id: Option<Uuid>,
-    data: Value,
+    encryption_scope: Option<String>,
+    data: EventData,
 }
 
 // Border-left colors for correlation groups (inline styles to avoid Tailwind purging)
@@ -111,6 +124,44 @@ pub async fn list_events(
             Ok(v) => v,
             Err(_) => continue,
         };
+
+        let data = match &stored.encryption_scope {
+            None => EventData::Plain(stored.data),
+            Some(scope) => {
+                let key: Option<[u8; 32]> = if let Some(key_id) = stored.encryption_key_id {
+                    state
+                        .module_store_ref
+                        .ask(GetCryptoKeyById { id: key_id })
+                        .await
+                        .ok()
+                        .flatten()
+                } else {
+                    state
+                        .module_store_ref
+                        .ask(GetCryptoKey { scope: scope.as_str().into() })
+                        .await
+                        .ok()
+                        .flatten()
+                        .map(|(_id, key)| key)
+                };
+
+                match key {
+                    None => EventData::CryptoShredded,
+                    Some(key) => (|| -> Option<EventData> {
+                        let hex_str = stored.data.as_str()?;
+                        let ciphertext = hex::decode(hex_str).ok()?;
+                        let uuid = seq.event.uuid?;
+                        let cipher = Aes256Gcm::new_from_slice(&key).ok()?;
+                        let nonce = Nonce::from_slice(&uuid.as_bytes()[..12]);
+                        let plaintext = cipher.decrypt(nonce, ciphertext.as_ref()).ok()?;
+                        let value = serde_json::from_slice(&plaintext).ok()?;
+                        Some(EventData::Decrypted(value))
+                    })()
+                    .unwrap_or(EventData::CryptoShredded),
+                }
+            }
+        };
+
         events.push(EventView {
             position: seq.position,
             uuid: seq.event.uuid,
@@ -120,7 +171,8 @@ pub async fn list_events(
             correlation_id: stored.correlation_id,
             causation_id: stored.causation_id,
             triggering_event_id: stored.triggering_event_id,
-            data: stored.data,
+            encryption_scope: stored.encryption_scope,
+            data,
         });
     }
 
@@ -226,7 +278,15 @@ pub async fn list_events(
                                     }
                                 }
                                 td class="px-3 py-2 text-gray-500 dark:text-gray-500 font-mono text-xs" { (ev.position) }
-                                td class="px-3 py-2 font-mono text-xs text-gray-900 dark:text-gray-100" { (ev.event_type) }
+                                td class="px-3 py-2 font-mono text-xs text-gray-900 dark:text-gray-100" {
+                                    (ev.event_type)
+                                    @if let Some(scope) = &ev.encryption_scope {
+                                        svg class="inline ml-1 text-gray-400 dark:text-gray-500" title=(scope) width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle" {
+                                            rect x="3" y="11" width="18" height="11" rx="2" ry="2" {}
+                                            path d="M7 11V7a5 5 0 0 1 10 0v4" {}
+                                        }
+                                    }
+                                }
                                 td class="px-3 py-2" {
                                     div class="flex flex-wrap gap-1" {
                                         @for tag in &ev.tags {
@@ -289,9 +349,24 @@ pub async fn list_events(
                                                 }
                                             }
                                         }
+                                        @if let Some(scope) = &ev.encryption_scope {
+                                            span {
+                                                "Encrypted: "
+                                                span class="font-mono text-gray-700 dark:text-gray-300" { (scope) }
+                                            }
+                                        }
                                     }
-                                    pre class="ev-json text-xs text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-all px-4 py-3" {
-                                        (serde_json::to_string_pretty(&ev.data).unwrap_or_default())
+                                    @match &ev.data {
+                                        EventData::Plain(v) | EventData::Decrypted(v) => {
+                                            pre class="ev-json text-xs text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-all px-4 py-3" {
+                                                (serde_json::to_string_pretty(v).unwrap_or_default())
+                                            }
+                                        }
+                                        EventData::CryptoShredded => {
+                                            p class="text-xs text-gray-400 dark:text-gray-500 italic px-4 py-3" {
+                                                "🔒 Data unavailable — encryption key has been deleted (crypto-shredded)"
+                                            }
+                                        }
                                     }
                                 }
                             }

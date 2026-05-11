@@ -45,6 +45,10 @@ env = { WIT = "command" }
 extend = "update-wit"
 env = { WIT = "common" }
 
+[tasks.update-wit-crypto]
+extend = "update-wit"
+env = { WIT = "crypto" }
+
 [tasks.update-wit-effect]
 extend = "update-wit"
 env = { WIT = "effect" }
@@ -62,6 +66,7 @@ workspace = false
 dependencies = [
   "update-wit-command",
   "update-wit-common",
+  "update-wit-crypto",
   "update-wit-effect",
   "update-wit-projector",
   "update-wit-sqlite",
@@ -78,6 +83,10 @@ env = { WIT = "command" }
 [tasks.clean-wit-deps-common]
 extend = "clean-wit-deps"
 env = { WIT = "common" }
+
+[tasks.clean-wit-deps-crypto]
+extend = "clean-wit-deps"
+env = { WIT = "crypto" }
 
 [tasks.clean-wit-deps-effect]
 extend = "clean-wit-deps"
@@ -96,6 +105,7 @@ workspace = false
 dependencies = [
   "clean-wit-deps-command",
   "clean-wit-deps-common",
+  "clean-wit-deps-crypto",
   "clean-wit-deps-effect",
   "clean-wit-deps-projector",
   "clean-wit-deps-sqlite",

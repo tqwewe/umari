@@ -8,6 +8,7 @@ use kameo::prelude::*;
 use kameo_actors::pubsub::{PubSub, Publish};
 use rusqlite::Connection;
 use semver::Version;
+use uuid::Uuid;
 
 use crate::events::ModuleEvent;
 
@@ -154,6 +155,29 @@ impl ModuleStoreActor {
         key: Arc<str>,
     ) -> Result<bool, ModuleStoreError> {
         self.store.delete_env_var(module_type, &name, &key)
+    }
+
+    #[message]
+    pub fn get_crypto_key(
+        &self,
+        scope: Arc<str>,
+    ) -> Result<Option<(Uuid, [u8; 32])>, ModuleStoreError> {
+        self.store.get_crypto_key(&scope)
+    }
+
+    #[message]
+    pub fn get_crypto_key_by_id(&self, id: Uuid) -> Result<Option<[u8; 32]>, ModuleStoreError> {
+        self.store.get_crypto_key_by_id(id)
+    }
+
+    #[message]
+    pub fn create_crypto_key(&self, scope: Arc<str>) -> Result<(Uuid, [u8; 32]), ModuleStoreError> {
+        self.store.create_crypto_key(&scope)
+    }
+
+    #[message]
+    pub fn delete_crypto_key(&self, scope: Arc<str>) -> Result<(), ModuleStoreError> {
+        self.store.delete_crypto_key(&scope)
     }
 }
 

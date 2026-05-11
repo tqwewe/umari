@@ -68,6 +68,8 @@ pub fn transform_stored_event<Q: EventSet>(
         causation_id: event.causation_id,
         triggering_event_id: event.triggering_event_id,
         idempotency_key: event.idempotency_key,
+        encryption_scope: event.encryption_scope,
+        encryption_key_id: event.encryption_key_id,
         data,
     })
 }
@@ -108,6 +110,11 @@ impl From<StoredEvent> for crate::event::StoredEvent<serde_json::Value> {
                 .parse::<uuid::Uuid>()
                 .expect("host guaranteed valid uuid for idempotency_key")
         });
+        let encryption_key_id = event.encryption_key_id.map(|encryption_key_id| {
+            encryption_key_id
+                .parse::<uuid::Uuid>()
+                .expect("host guaranteed valid uuid for encryption_key_id")
+        });
 
         let data: serde_json::Value =
             serde_json::from_str(&event.data).expect("host guaranteed valid json for event data");
@@ -122,6 +129,8 @@ impl From<StoredEvent> for crate::event::StoredEvent<serde_json::Value> {
             causation_id,
             triggering_event_id,
             idempotency_key,
+            encryption_scope: event.encryption_scope,
+            encryption_key_id,
             data,
         }
     }

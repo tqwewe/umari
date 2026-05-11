@@ -8,6 +8,10 @@ use std::{
     time::Duration,
 };
 
+use aes_gcm::{
+    Aes256Gcm, Nonce,
+    aead::{Aead, KeyInit},
+};
 use futures_util::{StreamExt, stream::FuturesOrdered};
 use kameo::prelude::*;
 use rusqlite::{Connection, OptionalExtension};
@@ -23,7 +27,13 @@ use wasmtime::{
 };
 use wasmtime_wasi::{ResourceTable, WasiCtx};
 
-use crate::{module_store::INIT_SQL, output::ModuleOutput};
+use crate::{
+    module_store::{
+        INIT_SQL,
+        actor::{GetCryptoKey, ModuleStoreActor},
+    },
+    output::ModuleOutput,
+};
 
 use super::{EventHandlerModule, ModuleError, PartitionKey};
 use crate::{
@@ -66,6 +76,7 @@ pub struct ModuleActorArgs<A> {
     pub engine: Engine,
     pub linker: Linker<wit::EventHandlerComponentState>,
     pub event_store: Arc<AsyncUmaDbClient>,
+    pub module_store_ref: ActorRef<ModuleStoreActor>,
     pub command_ref: ActorRef<CommandActor>,
     pub component: Component,
     pub name: Arc<str>,
@@ -158,6 +169,7 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
             wasi_ctx,
             ResourceTable::new(),
             args.event_store.clone(),
+            args.module_store_ref.clone(),
             conn,
             last_position,
         );
@@ -236,6 +248,7 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
                 command_ref: worker_args.command_ref.clone(),
                 ack_recipient: ack_recipient.clone(),
                 event_store: worker_args.event_store.clone(),
+                module_store_ref: worker_args.module_store_ref.clone(),
                 name: worker_args.name.clone(),
                 args: worker_args.args.clone(),
                 output: output.clone(),
@@ -381,15 +394,29 @@ impl<A: EventHandlerModule> ModuleActor<A> {
             causation_id: data.causation_id,
             triggering_event_id: data.triggering_event_id,
             idempotency_key: data.idempotency_key,
+            encryption_scope: data.encryption_scope,
+            encryption_key_id: data.encryption_key_id,
             data: data.data,
         })
     }
 
     async fn process_batch(&mut self, batch: Vec<DcbSequencedEvent>) -> Result<(), ModuleError> {
+        let module_store_ref = self.store.data().module_store_ref.clone();
         if A::POOL_SIZE > 0 {
             for event in batch {
                 let position = event.position;
                 let stored_event = Self::deserialize_event(event)?;
+                let stored_event = decrypt_stored_event(stored_event, &module_store_ref).await;
+                if stored_event.encryption_scope.is_some() && stored_event.data == Value::Null {
+                    let pool = self
+                        .worker_pool
+                        .as_mut()
+                        .expect("worker pool must be initialized when POOL_SIZE > 0");
+                    pool.in_flight.insert(position);
+                    self.handle_ack(position).await?;
+                    continue;
+                }
+
                 let process_event_msg = ProcessEvent {
                     current_event_id: stored_event.id,
                     correlation_id: stored_event.correlation_id,
@@ -436,8 +463,13 @@ impl<A: EventHandlerModule> ModuleActor<A> {
             let mut new_position = None;
             for event in batch {
                 new_position = Some(event.position);
-                let store = self.store.data_mut();
                 let stored_event = Self::deserialize_event(event)?;
+                let stored_event = decrypt_stored_event(stored_event, &module_store_ref).await;
+                if stored_event.encryption_scope.is_some() && stored_event.data == Value::Null {
+                    continue;
+                }
+
+                let store = self.store.data_mut();
                 store.update_current_event_id(stored_event.id);
                 store.update_current_correlation_id(stored_event.correlation_id);
                 let wit_event = stored_event.into();
@@ -521,4 +553,38 @@ impl<A: EventHandlerModule> ModuleActor<A> {
         }
         Ok(())
     }
+}
+
+async fn decrypt_stored_event(
+    mut event: StoredEvent<Value>,
+    module_store_ref: &ActorRef<ModuleStoreActor>,
+) -> StoredEvent<Value> {
+    let Some((scope, key_id)) = event.encryption_scope.as_ref().zip(event.encryption_key_id) else {
+        return event;
+    };
+
+    let key = module_store_ref
+        .ask(GetCryptoKey {
+            scope: scope.as_str().into(),
+        })
+        .await
+        .ok()
+        .flatten();
+
+    event.data = match key {
+        None => Value::Null,
+        Some((current_key_id, key)) => (|| -> Option<Value> {
+            if key_id != current_key_id {
+                return None;
+            };
+            let hex_str = event.data.as_str()?;
+            let ciphertext = hex::decode(hex_str).ok()?;
+            let cipher = Aes256Gcm::new_from_slice(&key).ok()?;
+            let nonce = Nonce::from_slice(&event.id.as_bytes()[..12]);
+            let plaintext = cipher.decrypt(nonce, ciphertext.as_ref()).ok()?;
+            serde_json::from_slice(&plaintext).ok()
+        })()
+        .unwrap_or(Value::Null),
+    };
+    event
 }

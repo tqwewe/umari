@@ -390,10 +390,7 @@ fn upload_module(
 ) -> Result<()> {
     let wasm_path = module.wasm_path();
     if !wasm_path.exists() {
-        return Err(anyhow!(
-            "wasm file not found at '{}'",
-            wasm_path.display()
-        ));
+        return Err(anyhow!("wasm file not found at '{}'", wasm_path.display()));
     }
 
     let version = module.version().to_string();
@@ -489,8 +486,8 @@ fn write_version_to_manifest(module: &AnyModule, new_version: &str) -> Result<()
             let mut pkg: serde_json::Value = serde_json::from_str(&content)
                 .with_context(|| format!("failed to parse {}", manifest_path.display()))?;
             pkg["version"] = serde_json::Value::String(new_version.to_string());
-            let updated = serde_json::to_string_pretty(&pkg)
-                .context("failed to serialize package.json")?;
+            let updated =
+                serde_json::to_string_pretty(&pkg).context("failed to serialize package.json")?;
             std::fs::write(&manifest_path, updated + "\n")
                 .with_context(|| format!("failed to write {}", manifest_path.display()))?;
         }

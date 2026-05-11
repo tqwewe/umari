@@ -59,6 +59,12 @@ pub enum ModuleStoreError {
     #[error("invalid module name '{0}': module names must be snake case")]
     InvalidName(String),
 
+    #[error("invalid crypto key for scope '{scope}'")]
+    InvalidCryptoKey { scope: String },
+
+    #[error("crypto key for scope '{scope}' has been permanently deleted")]
+    CryptoKeyPermanentlyDeleted { scope: String },
+
     #[error("module already exists")]
     ModuleAlreadyExists,
 

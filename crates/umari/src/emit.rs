@@ -1,4 +1,5 @@
 use serde_json::Value;
+use uuid::Uuid;
 
 use crate::{
     domain_id::DomainIdBindings,
@@ -29,6 +30,8 @@ pub struct EmitEvent {
     pub data: Value,
     /// Domain ID values for indexing
     pub domain_ids: DomainIdBindings,
+    /// Encryption scope
+    pub encryption_scope: Option<String>,
 }
 
 impl Emit {
@@ -52,10 +55,12 @@ impl Emit {
     /// Add an event, returning an error if serialization fails.
     pub fn try_event<E: Event>(mut self, event: E) -> Result<Self, SerializationError> {
         let domain_ids = event.domain_ids();
+        let encryption_scope = event.encryption_scope();
         let emitted = EmitEvent {
             event_type: E::EVENT_TYPE.to_string(),
             data: serde_json::to_value(event)?,
             domain_ids,
+            encryption_scope,
         };
         self.events.push(emitted);
         Ok(self)
@@ -92,21 +97,30 @@ impl Emit {
 impl EmitEvent {
     pub fn new<E: Event>(event: E) -> Self {
         let domain_ids = event.domain_ids();
+        let encryption_scope = event.encryption_scope();
         EmitEvent {
             event_type: E::EVENT_TYPE.to_string(),
             data: serde_json::to_value(event).expect("event serialization failed"),
             domain_ids,
+            encryption_scope,
         }
     }
 }
 
-pub fn encode_with_envelope(envelope: EventEnvelope, data: Value) -> Vec<u8> {
+pub fn encode_with_envelope(
+    envelope: EventEnvelope,
+    data: Value,
+    encryption_scope: Option<String>,
+    encryption_key_id: Option<Uuid>,
+) -> Vec<u8> {
     serde_json::to_vec(&StoredEventData {
         timestamp: envelope.timestamp,
         correlation_id: envelope.correlation_id,
         causation_id: envelope.causation_id,
         triggering_event_id: envelope.triggering_event_id,
         idempotency_key: envelope.idempotency_key,
+        encryption_scope,
+        encryption_key_id,
         data,
     })
     .unwrap()

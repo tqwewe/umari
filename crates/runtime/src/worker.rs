@@ -1,9 +1,4 @@
-use std::{
-    collections::HashMap,
-    ops::ControlFlow,
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{collections::HashMap, ops::ControlFlow, path::PathBuf, sync::Arc};
 
 use kameo::prelude::*;
 use rusqlite::Connection;
@@ -15,7 +10,10 @@ use wasmtime::{
 };
 use wasmtime_wasi::{ResourceTable, WasiCtx};
 
-use crate::{module_store::INIT_SQL, output::ModuleOutput};
+use crate::{
+    module_store::{INIT_SQL, actor::ModuleStoreActor},
+    output::ModuleOutput,
+};
 
 use crate::{
     command::actor::CommandActor,
@@ -34,6 +32,7 @@ pub struct ModuleWorkerArgs<A: EventHandlerModule> {
     pub command_ref: ActorRef<CommandActor>,
     pub ack_recipient: Recipient<WorkerAck>,
     pub event_store: Arc<AsyncUmaDbClient>,
+    pub module_store_ref: ActorRef<ModuleStoreActor>,
     pub name: Arc<str>,
     pub args: A::Args,
     pub output: ModuleOutput,
@@ -80,6 +79,7 @@ impl<A: EventHandlerModule> Actor for ModuleWorkerActor<A> {
             wasi_ctx,
             ResourceTable::new(),
             args.event_store.clone(),
+            args.module_store_ref.clone(),
             conn,
             None,
         );

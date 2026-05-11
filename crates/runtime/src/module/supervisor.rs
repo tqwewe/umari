@@ -406,6 +406,7 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
                 engine: self.engine.clone(),
                 linker: self.linker.clone(),
                 event_store: self.event_store.clone(),
+                module_store_ref: self.module_store_ref.clone(),
                 command_ref: self.command_ref.clone(),
                 component: pending.component.clone(),
                 name: name.clone(),

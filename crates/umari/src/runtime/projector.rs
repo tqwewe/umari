@@ -23,11 +23,6 @@ macro_rules! export_projector {
     ($ty:path) => {
         type ExportedProjection = $crate::runtime::projector::ProjectorExport<$ty>;
         $crate::runtime::projector::export!(ExportedProjection with_types_in $crate::runtime::projector);
-
-        // $crate::runtime::projector::export!({
-        //     ty: $crate::runtime::projector::ProjectorExport<$ty>,
-        //     with_types_in: $crate::runtime::projector,
-        // });
     };
 }
 

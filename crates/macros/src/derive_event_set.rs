@@ -85,53 +85,103 @@ impl DeriveEventSet {
                 }
             });
 
-        let match_arms = events.iter().map(
-            |QueryEvent {
-                 ident: variant_ident,
-                 ty,
-                 ..
-             }| {
+        // Group variants by type (using token string as key) so that variants sharing
+        // the same Rust type are matched in a single arm with scope-based if-else dispatch.
+        let mut seen_match_keys: Vec<String> = Vec::new();
+        let mut match_groups: Vec<(&Type, Vec<&QueryEvent>)> = Vec::new();
+        for event in &events {
+            let ty = &event.ty;
+            let key = quote!(#ty).to_string();
+            if let Some(pos) = seen_match_keys.iter().position(|k| k == &key) {
+                match_groups[pos].1.push(event);
+            } else {
+                seen_match_keys.push(key);
+                match_groups.push((ty, vec![event]));
+            }
+        }
+
+        let match_arms = match_groups.iter().map(|(ty, group)| {
+            // Separate scoped (has static fields) from fallback (no static constraints) variants.
+            let mut scoped: Vec<(Vec<TokenStream>, &QueryEvent)> = Vec::new();
+            let mut fallback: Option<&QueryEvent> = None;
+
+            for event in group.iter() {
+                let static_checks: Vec<TokenStream> = event
+                    .scope
+                    .as_ref()
+                    .map(|entries| {
+                        entries
+                            .iter()
+                            .filter_map(|e| match e {
+                                ScopeEntry::Static(id, val) => {
+                                    let field = id.to_string();
+                                    Some(quote! {
+                                        data.get(#field).and_then(|v| v.as_str()) == ::std::option::Option::Some(#val)
+                                    })
+                                }
+                                ScopeEntry::Dynamic(_) => None,
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+
+                if static_checks.is_empty() {
+                    fallback = Some(event);
+                } else {
+                    scoped.push((static_checks, event));
+                }
+            }
+
+            let arm_body = if scoped.is_empty() {
+                // No static constraints at all — simple deserialization.
+                let event = fallback.unwrap_or(group[0]);
+                let variant_ident = &event.ident;
                 quote! {
-                    <#ty as ::umari::event::Event>::EVENT_TYPE => {
+                    ::std::option::Option::Some(
+                        ::umari::__private::serde_json::from_value::<#ty>(::std::clone::Clone::clone(data))
+                            .map(#ident::#variant_ident)
+                            .map_err(::umari::error::SerializationError::from)
+                    )
+                }
+            } else {
+                // Build if / else-if chain for each scoped variant, then an else branch.
+                let mut chain = quote! {};
+                for (i, (checks, event)) in scoped.iter().enumerate() {
+                    let variant_ident = &event.ident;
+                    let deserialize = quote! {
                         ::std::option::Option::Some(
                             ::umari::__private::serde_json::from_value::<#ty>(::std::clone::Clone::clone(data))
                                 .map(#ident::#variant_ident)
                                 .map_err(::umari::error::SerializationError::from)
                         )
-                    }
+                    };
+                    let keyword = if i == 0 { quote!(if) } else { quote!(else if) };
+                    chain = quote! { #chain #keyword #(#checks)&&* { #deserialize } };
                 }
-            },
-        );
 
-        let as_into_event_impls = events.iter().map(
-            |QueryEvent {
-                 ident: variant_ident,
-                 ty,
-                 ..
-             }| {
-                quote! {
-                    #[automatically_derived]
-                    impl ::umari::event::AsEvent<#ty> for #ident {
-                        fn as_event(&self) -> ::std::option::Option<&#ty> {
-                            match self {
-                                #ident::#variant_ident(ev) => ::std::option::Option::Some(ev),
-                                _ => ::std::option::Option::None,
+                let else_branch = match fallback {
+                    Some(event) => {
+                        let variant_ident = &event.ident;
+                        quote! {
+                            else {
+                                ::std::option::Option::Some(
+                                    ::umari::__private::serde_json::from_value::<#ty>(::std::clone::Clone::clone(data))
+                                        .map(#ident::#variant_ident)
+                                        .map_err(::umari::error::SerializationError::from)
+                                )
                             }
                         }
                     }
+                    None => quote! { else { ::std::option::Option::None } },
+                };
 
-                    #[automatically_derived]
-                    impl ::umari::event::IntoEvent<#ty> for #ident {
-                        fn into_event(self) -> ::std::option::Option<#ty> {
-                            match self {
-                                #ident::#variant_ident(ev) => ::std::option::Option::Some(ev),
-                                _ => ::std::option::Option::None,
-                            }
-                        }
-                    }
-                }
-            },
-        );
+                quote! { #chain #else_branch }
+            };
+
+            quote! {
+                <#ty as ::umari::event::Event>::EVENT_TYPE => { #arm_body }
+            }
+        });
 
         let validations = events.iter().filter_map(|QueryEvent { scope, ty, .. }| {
             scope.as_ref().map(|scope_entries| {
@@ -199,8 +249,6 @@ impl DeriveEventSet {
                     }
                 }
             }
-
-            #( #as_into_event_impls )*
 
             #( #validations )*
         }

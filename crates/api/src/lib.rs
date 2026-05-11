@@ -22,6 +22,7 @@ use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
 use crate::routes::{
+    crypto_keys::delete_crypto_key,
     execute::execute,
     modules::{
         activate_command, activate_effect, activate_projector, deactivate_command,
@@ -70,6 +71,7 @@ use umari_types::*;
         routes::modules::delete_projector_env_var,
         routes::modules::delete_effect_env_var,
         routes::execute::execute,
+        routes::crypto_keys::delete_crypto_key,
     ),
     components(
         schemas(
@@ -101,7 +103,8 @@ use umari_types::*;
         (name = "projectors", description = "Projector module management"),
         (name = "effects", description = "Effect module management"),
         (name = "modules", description = "Cross-module operations"),
-        (name = "execution", description = "Command execution")
+        (name = "execution", description = "Command execution"),
+        (name = "crypto-keys", description = "Encryption key management")
     ),
     info(
         title = "Umari Event-Sourcing API",
@@ -201,6 +204,8 @@ pub async fn start_server(addr: impl ToSocketAddrs, state: AppState) -> io::Resu
         .route("/commands/active", get(get_command_health))
         .route("/projectors/active", get(get_projector_health))
         .route("/effects/active", get(get_effect_health))
+        // Crypto key management
+        .route("/crypto-keys/{scope}", delete(delete_crypto_key))
         .layer(DefaultBodyLimit::max(100 * 1024 * 1024)) // 100 MB
         .with_state(state);
 

@@ -32,8 +32,20 @@ pub struct StoredEvent<T> {
     pub timestamp: DateTime<Utc>,
     pub correlation_id: Uuid,
     pub causation_id: Uuid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub triggering_event_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub idempotency_key: Option<Uuid>,
+    /// The scope used to look up the encryption key for this event's data, if encrypted.
+    ///
+    /// Typically a user or entity identifier (e.g. `"user:abc123"`). When the key for this
+    /// scope is deleted, the event data becomes permanently unreadable (crypto-shredding).
+    ///
+    /// `None` if the event data is not encrypted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encryption_scope: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encryption_key_id: Option<Uuid>,
     pub data: T,
 }
 
@@ -49,18 +61,26 @@ impl<T> StoredEvent<T> {
             causation_id: self.causation_id,
             triggering_event_id: self.triggering_event_id,
             idempotency_key: self.idempotency_key,
+            encryption_scope: self.encryption_scope,
+            encryption_key_id: self.encryption_key_id,
             data,
         }
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StoredEventData<T> {
     pub timestamp: DateTime<Utc>,
     pub correlation_id: Uuid,
     pub causation_id: Uuid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub triggering_event_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub idempotency_key: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encryption_scope: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encryption_key_id: Option<Uuid>,
     pub data: T,
 }
 
@@ -86,6 +106,10 @@ pub struct StoredEventData<T> {
 pub trait Event: DomainIds + Serialize + DeserializeOwned + Sized {
     /// The event type name as it appears in the event store.
     const EVENT_TYPE: &'static str;
+
+    fn encryption_scope(&self) -> Option<String> {
+        None
+    }
 }
 
 /// Identifies which domain ID fields a specific event type requires when queried.

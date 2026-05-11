@@ -14,6 +14,7 @@ wit_bindgen::generate!({
         "umari:command/transaction@0.1.0": crate::runtime::command,
         "umari:command/types@0.1.0": crate::runtime::command,
         "umari:common/types@0.1.0": crate::runtime::common,
+        "umari:crypto/keys@0.1.0": crate::runtime::crypto,
         "umari:sqlite/types@0.1.0": crate::runtime::sqlite,
         "umari:sqlite/connection@0.1.0": crate::runtime::sqlite,
         "umari:sqlite/statement@0.1.0": crate::runtime::sqlite,

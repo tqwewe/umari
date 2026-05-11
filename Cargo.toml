@@ -22,6 +22,7 @@ umari-runtime = { path = "crates/runtime" }
 umari-types = { path = "crates/types" }
 umari-ui = { path = "crates/ui" }
 
+aes-gcm = "0.10"
 anyhow = "1.0"
 axum = { version = "0.8", features = ["multipart"] }
 bytes = "1.11"

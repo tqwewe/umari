@@ -7,6 +7,8 @@ license.workspace = true
 umari-core = { workspace = true }
 umari-runtime = { workspace = true }
 umari-types = { workspace = true }
+
+aes-gcm.workspace = true
 axum.workspace = true
 bytes.workspace = true
 hex.workspace = true
