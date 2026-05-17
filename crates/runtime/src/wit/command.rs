@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use aes_gcm::{
     Aes256Gcm, Nonce,
@@ -24,7 +24,7 @@ pub use self::umari::command::{types::*, *};
 
 use crate::{
     command::CommandError,
-    module_store::actor::{CreateCryptoKey, GetCryptoKey, ModuleStoreActor},
+    module_store::actor::{CreateCryptoKey, GetCryptoKeyById, ModuleStoreActor},
     wit,
 };
 
@@ -353,6 +353,8 @@ async fn transaction_commit(
                         .ask(CreateCryptoKey {
                             scope: scope.as_str().into(),
                         })
+                        .reply_timeout(Duration::from_secs(5))
+                        .send()
                         .await
                         .map_err(|err| match err {
                             SendError::HandlerError(err) => wasmtime::Error::msg(err.to_string()),
@@ -447,25 +449,24 @@ async fn decrypt_event_data(
     encryption_scope: Option<&str>,
     encryption_key_id: Option<uuid::Uuid>,
 ) -> wasmtime::Result<Value> {
-    let Some((scope, key_id)) = encryption_scope.zip(encryption_key_id) else {
+    let Some(key_id) = encryption_key_id else {
+        let _ = encryption_scope;
         return Ok(data);
     };
 
+    // Look up the exact key that encrypted this event; the scope's current
+    // key may have rotated and would decrypt the wrong ciphertext.
     let key = module_store_ref
-        .ask(GetCryptoKey {
-            scope: scope.into(),
-        })
+        .ask(GetCryptoKeyById { id: key_id })
+        .reply_timeout(Duration::from_secs(5))
+        .send()
         .await
         .map_err(|err| wasmtime::Error::msg(err.to_string()))?;
 
-    let Some((current_key_id, key)) = key else {
+    let Some(key) = key else {
         // crypto-shredded: fold receives null, from_event returns None
         return Ok(Value::Null);
     };
-    if key_id != current_key_id {
-        // crypto-shredded: fold receives null, from_event returns None
-        return Ok(Value::Null);
-    }
 
     let ciphertext_hex = match &data {
         Value::String(s) => s.as_str(),

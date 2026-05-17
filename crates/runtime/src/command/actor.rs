@@ -2,6 +2,7 @@ use std::{collections::HashMap, ops::ControlFlow, sync::Arc, time::Duration};
 
 use chrono::{DateTime, Utc};
 use kameo::prelude::*;
+use kameo_actors::pubsub::{PubSub, Subscribe};
 use rand::{SeedableRng, rngs::StdRng};
 use schemars::Schema;
 use semver::Version;
@@ -54,6 +55,7 @@ pub struct CommandActorArgs {
     pub event_store: Arc<AsyncUmaDbClient>,
     pub module_store_ref: ActorRef<ModuleStoreActor>,
     pub compile_cache: Arc<CompileCache>,
+    pub module_pubsub: ActorRef<PubSub<ModuleEvent>>,
 }
 
 impl Actor for CommandActor {
@@ -64,11 +66,25 @@ impl Actor for CommandActor {
         "CommandActor"
     }
 
-    async fn on_start(args: Self::Args, _actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
+    async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         let mut linker = Linker::new(&args.engine);
         wasmtime_wasi::p2::add_to_linker_async(&mut linker)?;
         wasmtime_wasi_http::p2::add_only_http_to_linker_async(&mut linker)?;
         wit::command::Command::add_to_linker::<_, HasSelf<_>>(&mut linker, |s| s)?;
+
+        // Subscribe ourselves to module_pubsub in on_start so the subscription
+        // is restored if either side gets restarted by supervision. We log
+        // (rather than fail) so a transient PubSub hiccup doesn't take the
+        // CommandActor down — we'll still serve direct asks.
+        if let Err(err) = args
+            .module_pubsub
+            .ask(Subscribe(actor_ref.clone()))
+            .reply_timeout(Duration::from_secs(2))
+            .send()
+            .await
+        {
+            warn!("failed to subscribe command actor to module_pubsub: {err}");
+        }
 
         let active_modules = args
             .module_store_ref

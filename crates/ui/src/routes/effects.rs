@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use axum::{
     Form,
@@ -51,7 +51,14 @@ pub async fn list_effects(
     let active_effects = state.effect_supervisor_ref.ask(ActiveModules).await?;
     let mut health: HashMap<Arc<str>, ModuleHealth> = HashMap::new();
     for (name, module) in active_effects {
-        let last_position = module.actor_ref.ask(LastPosition).await.ok().flatten();
+        let last_position = module
+            .actor_ref
+            .ask(LastPosition)
+            .reply_timeout(Duration::from_secs(2))
+            .send()
+            .await
+            .ok()
+            .flatten();
         let shutdown_reason = module.actor_ref.with_shutdown_result(|r| match r {
             Ok(reason) => reason.to_string(),
             Err(err) => err.to_string(),
@@ -108,7 +115,14 @@ pub async fn get_effect(
 
     let (health, entries) = match &active_module {
         Some(module) => {
-            let last_position = module.actor_ref.ask(LastPosition).await.ok().flatten();
+            let last_position = module
+            .actor_ref
+            .ask(LastPosition)
+            .reply_timeout(Duration::from_secs(2))
+            .send()
+            .await
+            .ok()
+            .flatten();
             let shutdown_reason = module.actor_ref.with_shutdown_result(|r| match r {
                 Ok(reason) => reason.to_string(),
                 Err(err) => err.to_string(),

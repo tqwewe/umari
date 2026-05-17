@@ -4,8 +4,11 @@ mod routes;
 use std::{path::PathBuf, sync::Arc};
 
 use axum::{
-    Router,
-    extract::DefaultBodyLimit,
+    Json, Router,
+    extract::{DefaultBodyLimit, Request, State},
+    http::StatusCode,
+    middleware::Next,
+    response::{IntoResponse, Response},
     routing::{delete, get, post, put},
 };
 use kameo::actor::ActorRef;
@@ -125,6 +128,79 @@ pub struct AppState {
     pub projector_supervisor_ref: ActorRef<ModuleSupervisor<ProjectorWorld>>,
     pub effect_supervisor_ref: ActorRef<ModuleSupervisor<EffectWorld>>,
     pub event_store: Arc<AsyncUmaDbClient>,
+    pub api_key: Option<Arc<str>>,
+}
+
+async fn auth_middleware(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let Some(api_key) = &state.api_key else {
+        return next.run(request).await;
+    };
+
+    let path = request.uri().path();
+
+    // API routes are identified by their path prefix; everything else is the browser UI
+    let is_api = path.starts_with("/execute")
+        || path.starts_with("/commands")
+        || path.starts_with("/projectors")
+        || path.starts_with("/effects")
+        || path.starts_with("/modules")
+        || path.starts_with("/crypto-keys")
+        || path.starts_with("/api-docs")
+        || path.starts_with("/swagger-ui");
+
+    if is_api {
+        // bearer token auth for the REST API
+        let authorized = request
+            .headers()
+            .get(axum::http::header::AUTHORIZATION)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.strip_prefix("Bearer "))
+            .map(|token| token == api_key.as_ref())
+            .unwrap_or(false);
+
+        if !authorized {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse {
+                    error: ErrorBody {
+                        code: ErrorCode::Unauthorized,
+                        message: Some("invalid or missing api key".to_string()),
+                    },
+                }),
+            )
+                .into_response();
+        }
+    } else {
+        // login and logout are always accessible
+        if path == "/ui/login" || path == "/ui/logout" {
+            return next.run(request).await;
+        }
+
+        // cookie-based auth for the browser UI
+        let authenticated = request
+            .headers()
+            .get(axum::http::header::COOKIE)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|cookies| {
+                cookies.split(';').find_map(|part| {
+                    part.trim()
+                        .strip_prefix(umari_ui::SESSION_COOKIE)
+                        .and_then(|s| s.strip_prefix('='))
+                })
+            })
+            .map(|token| token == api_key.as_ref())
+            .unwrap_or(false);
+
+        if !authenticated {
+            return axum::response::Redirect::to("/ui/login").into_response();
+        }
+    }
+
+    next.run(request).await
 }
 
 pub async fn start_server(addr: impl ToSocketAddrs, state: AppState) -> io::Result<()> {
@@ -140,6 +216,7 @@ pub async fn start_server(addr: impl ToSocketAddrs, state: AppState) -> io::Resu
         projector_supervisor_ref: state.projector_supervisor_ref.clone(),
         effect_supervisor_ref: state.effect_supervisor_ref.clone(),
         event_store: state.event_store.clone(),
+        api_key: state.api_key.clone(),
     };
 
     // Create API routes with state
@@ -207,10 +284,16 @@ pub async fn start_server(addr: impl ToSocketAddrs, state: AppState) -> io::Resu
         // Crypto key management
         .route("/crypto-keys/{scope}", delete(delete_crypto_key))
         .layer(DefaultBodyLimit::max(100 * 1024 * 1024)) // 100 MB
-        .with_state(state);
+        .with_state(state.clone());
 
-    // Merge routers
-    let app = ui_router(ui_state).merge(api_router).merge(swagger_router);
+    // Merge routers and apply auth middleware to everything
+    let app = ui_router(ui_state)
+        .merge(api_router)
+        .merge(swagger_router)
+        .layer(axum::middleware::from_fn_with_state(
+            state,
+            auth_middleware,
+        ));
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await

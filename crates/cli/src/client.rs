@@ -8,20 +8,29 @@ use ureq::{Agent, Body, http::Response};
 
 pub struct ApiClient {
     base_url: String,
+    api_key: Option<String>,
     agent: Agent,
 }
 
 impl ApiClient {
-    pub fn new(base_url: String) -> Self {
+    pub fn new(base_url: String, api_key: Option<String>) -> Self {
         let agent = Agent::config_builder()
             .http_status_as_error(false)
             .build()
             .new_agent();
-        ApiClient { base_url, agent }
+        ApiClient {
+            base_url,
+            api_key,
+            agent,
+        }
     }
 
     fn url(&self, path: &str) -> String {
         format!("{}{}", self.base_url, path)
+    }
+
+    fn auth_header(&self) -> Option<String> {
+        self.api_key.as_ref().map(|k| format!("Bearer {k}"))
     }
 
     fn check_response(&self, response: Response<Body>) -> Result<Response<Body>> {
@@ -41,6 +50,7 @@ impl ApiClient {
                 ErrorCode::Database => "database error",
                 ErrorCode::Integrity => "integrity error",
                 ErrorCode::Internal => "internal server error",
+                ErrorCode::Unauthorized => "unauthorized",
             };
             return Err(anyhow!("{fallback} (status {status})"));
         }
@@ -48,9 +58,11 @@ impl ApiClient {
     }
 
     pub fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
-        let response: Response<Body> = self
-            .agent
-            .get(&self.url(path))
+        let mut req = self.agent.get(&self.url(path));
+        if let Some(auth) = self.auth_header() {
+            req = req.header("Authorization", &auth);
+        }
+        let response: Response<Body> = req
             .call()
             .context("connection error")
             .and_then(|r| self.check_response(r))?;
@@ -65,10 +77,14 @@ impl ApiClient {
     pub fn post<B: Serialize, T: DeserializeOwned>(&self, path: &str, body: &B) -> Result<T> {
         let json_body = serde_json::to_string(body).context("failed to serialize request body")?;
 
-        let response: Response<Body> = self
+        let mut req = self
             .agent
             .post(&self.url(path))
-            .header("Content-Type", "application/json")
+            .header("Content-Type", "application/json");
+        if let Some(auth) = self.auth_header() {
+            req = req.header("Authorization", &auth);
+        }
+        let response: Response<Body> = req
             .send(&json_body)
             .context("connection error")
             .and_then(|r| self.check_response(r))?;
@@ -83,10 +99,14 @@ impl ApiClient {
     pub fn put<B: Serialize, T: DeserializeOwned>(&self, path: &str, body: &B) -> Result<T> {
         let json_body = serde_json::to_string(body).context("failed to serialize request body")?;
 
-        let response: Response<Body> = self
+        let mut req = self
             .agent
             .put(&self.url(path))
-            .header("Content-Type", "application/json")
+            .header("Content-Type", "application/json");
+        if let Some(auth) = self.auth_header() {
+            req = req.header("Authorization", &auth);
+        }
+        let response: Response<Body> = req
             .send(&json_body)
             .context("connection error")
             .and_then(|r| self.check_response(r))?;
@@ -99,9 +119,11 @@ impl ApiClient {
     }
 
     pub fn delete<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
-        let response: Response<Body> = self
-            .agent
-            .delete(&self.url(path))
+        let mut req = self.agent.delete(&self.url(path));
+        if let Some(auth) = self.auth_header() {
+            req = req.header("Authorization", &auth);
+        }
+        let response: Response<Body> = req
             .call()
             .context("connection error")
             .and_then(|r| self.check_response(r))?;
@@ -172,15 +194,14 @@ impl ApiClient {
             "/{module_type}/{name}/versions/{version}?activate={activate}"
         ));
 
-        let response: Response<Body> = self
-            .agent
-            .post(&url)
-            .header(
-                "Content-Type",
-                &format!("multipart/form-data; boundary={boundary}"),
-            )
-            .send(&multipart_body)
-            .context("connection error")?;
+        let mut req = self.agent.post(&url).header(
+            "Content-Type",
+            &format!("multipart/form-data; boundary={boundary}"),
+        );
+        if let Some(auth) = self.auth_header() {
+            req = req.header("Authorization", &auth);
+        }
+        let response: Response<Body> = req.send(&multipart_body).context("connection error")?;
 
         pb.finish_and_clear();
 

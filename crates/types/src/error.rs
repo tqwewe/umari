@@ -10,6 +10,7 @@ pub enum ErrorCode {
     Database,
     Integrity,
     Internal,
+    Unauthorized,
 }
 
 #[derive(Serialize, Deserialize)]

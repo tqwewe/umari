@@ -22,6 +22,10 @@ struct Cli {
     )]
     url: String,
 
+    /// API key for authentication (overrides UMARI_API_KEY env var)
+    #[arg(long, global = true, env = "UMARI_API_KEY")]
+    api_key: Option<String>,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -321,7 +325,7 @@ fn parse_key_val(s: &str) -> Result<(String, String), String> {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let client = ApiClient::new(cli.url);
+    let client = ApiClient::new(cli.url, cli.api_key);
 
     match cli.command {
         Commands::Commands { command } => match command {

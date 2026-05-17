@@ -1,10 +1,7 @@
 use std::{path::PathBuf, sync::Arc};
 
 use kameo::{error::RegistryError, prelude::*, supervision::SupervisionStrategy};
-use kameo_actors::{
-    DeliveryStrategy,
-    pubsub::{PubSub, Subscribe},
-};
+use kameo_actors::{DeliveryStrategy, pubsub::PubSub};
 use thiserror::Error;
 use tokio::fs;
 use umadb_client::AsyncUmaDbClient;
@@ -98,7 +95,9 @@ impl Actor for RuntimeSupervisor {
             })
             .await?;
 
-        // Setup command system
+        // Setup command system — CommandActor subscribes itself to module_pubsub
+        // in its on_start so that if either PubSub or CommandActor is ever
+        // restarted by supervision, the subscription is re-established.
         let command_ref = CommandActor::supervise(
             &supervisor_ref,
             CommandActorArgs {
@@ -106,16 +105,12 @@ impl Actor for RuntimeSupervisor {
                 event_store: event_store.clone(),
                 module_store_ref: module_store_ref.clone(),
                 compile_cache: compile_cache.clone(),
+                module_pubsub: module_pubsub.clone(),
             },
         )
         .spawn()
         .await;
         command_ref.register("command")?;
-
-        module_pubsub
-            .ask(Subscribe(command_ref.clone()))
-            .await
-            .map_err(|_| RuntimeError::ModulePubSubSendError)?;
 
         // Setup event handlers: projector, effect
 
@@ -129,7 +124,7 @@ impl Actor for RuntimeSupervisor {
                     module_store_ref.clone(),
                     command_ref.clone(),
                     compile_cache.clone(),
-                    &module_pubsub,
+                    module_pubsub.clone(),
                     $name,
                     $args,
                 )
@@ -169,10 +164,12 @@ async fn spawn_event_handler_supervisor<A: EventHandlerModule>(
     module_store_ref: ActorRef<ModuleStoreActor>,
     command_ref: ActorRef<CommandActor>,
     compile_cache: Arc<CompileCache>,
-    module_pubsub: &ActorRef<PubSub<ModuleEvent>>,
+    module_pubsub: ActorRef<PubSub<ModuleEvent>>,
     name: &'static str,
     args: A::Args,
 ) -> Result<ActorRef<ModuleSupervisor<A>>, RuntimeError> {
+    // The supervisor subscribes itself to module_pubsub in its on_start, so
+    // restarts (of either side) re-establish the subscription automatically.
     let actor_ref = ModuleSupervisor::<A>::supervise(
         supervisor_ref,
         ModuleSupervisorArgs {
@@ -182,17 +179,13 @@ async fn spawn_event_handler_supervisor<A: EventHandlerModule>(
             module_store_ref,
             command_ref,
             compile_cache,
+            module_pubsub,
             args,
         },
     )
     .spawn()
     .await;
     actor_ref.register(name)?;
-
-    module_pubsub
-        .ask(Subscribe(actor_ref.clone()))
-        .await
-        .map_err(|_| RuntimeError::ModulePubSubSendError)?;
 
     Ok(actor_ref)
 }

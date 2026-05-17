@@ -1,6 +1,7 @@
 use std::{collections::HashMap, fs, ops::ControlFlow, path::PathBuf, sync::Arc, time::Duration};
 
 use kameo::{prelude::*, supervision::RestartPolicy};
+use kameo_actors::pubsub::{PubSub, Subscribe};
 use rusqlite::{Connection, OptionalExtension};
 use semver::Version;
 use tokio::task::JoinSet;
@@ -48,6 +49,8 @@ pub struct ModuleSupervisor<A: EventHandlerModule> {
     module_store_ref: ActorRef<ModuleStoreActor>,
     command_ref: ActorRef<CommandActor>,
     compile_cache: Arc<CompileCache>,
+    #[allow(dead_code)]
+    module_pubsub: ActorRef<PubSub<ModuleEvent>>,
     modules: HashMap<Arc<str>, VersionedModule<A>>,
     /// Modules waiting for their predecessor to stop before spawning.
     /// Keyed by the stopping actor's ID; value is (module name, pending info).
@@ -64,6 +67,7 @@ pub struct ModuleSupervisorArgs<A> {
     pub module_store_ref: ActorRef<ModuleStoreActor>,
     pub command_ref: ActorRef<CommandActor>,
     pub compile_cache: Arc<CompileCache>,
+    pub module_pubsub: ActorRef<PubSub<ModuleEvent>>,
     pub args: A,
 }
 
@@ -86,6 +90,19 @@ impl<A: EventHandlerModule> Actor for ModuleSupervisor<A> {
         wit::sqlite::Sqlite::add_to_linker::<_, HasSelf<_>>(&mut linker, |s| s)?;
         A::add_to_linker(&mut linker)?;
 
+        // Subscribe in on_start so the subscription is restored after any
+        // supervision restart of either side. Log on failure rather than
+        // abort startup — direct asks to this supervisor still work.
+        if let Err(err) = args
+            .module_pubsub
+            .ask(Subscribe(actor_ref.clone()))
+            .reply_timeout(Duration::from_secs(2))
+            .send()
+            .await
+        {
+            warn!(module_type = %A::MODULE_TYPE, "failed to subscribe supervisor to module_pubsub: {err}");
+        }
+
         let active_modules = args
             .module_store_ref
             .ask(GetAllActiveModules {
@@ -106,6 +123,7 @@ impl<A: EventHandlerModule> Actor for ModuleSupervisor<A> {
             module_store_ref: args.module_store_ref,
             command_ref: args.command_ref,
             compile_cache: compile_cache.clone(),
+            module_pubsub: args.module_pubsub,
             modules: HashMap::with_capacity(active_modules.len()),
             pending: HashMap::new(),
             backoff: HashMap::new(),
@@ -248,6 +266,8 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
                 module_type: A::MODULE_TYPE,
                 name: name.clone(),
             })
+            .reply_timeout(Duration::from_secs(5))
+            .send()
             .await?
             .ok_or(ModuleError::NotActive)?;
         let engine = self.engine.clone();
@@ -268,8 +288,13 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
             && old.actor_ref.is_alive()
         {
             let old_id = old.actor_ref.id();
-            let _ = old.actor_ref.stop_gracefully().await;
             self.pending.insert(old_id, (name, pending));
+            // Spawn so we don't block the supervisor's handler on the old actor's
+            // mailbox capacity; on_link_died will pick the pending entry up.
+            let old_actor = old.actor_ref.clone();
+            tokio::spawn(async move {
+                let _ = old_actor.stop_gracefully().await;
+            });
         } else {
             self.spawn_module(ctx.actor_ref(), name, pending, false)
                 .await?;
@@ -317,9 +342,14 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
         {
             debug!(module_type = %A::MODULE_TYPE, %name, version = %old_module.version, "stopping module");
             let old_id = old_module.actor_ref.id();
-            let _ = old_module.actor_ref.stop_gracefully().await;
             // Replace any previously queued pending entry for the same actor.
             self.pending.insert(old_id, (name, pending));
+            // Spawn so we don't block the supervisor's handler on the old actor's
+            // mailbox capacity; on_link_died will pick the pending entry up.
+            let old_actor = old_module.actor_ref.clone();
+            tokio::spawn(async move {
+                let _ = old_actor.stop_gracefully().await;
+            });
             return Ok(());
         }
 
@@ -395,6 +425,8 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
                 module_type: A::MODULE_TYPE,
                 name: name.clone(),
             })
+            .reply_timeout(Duration::from_secs(5))
+            .send()
             .await
             .unwrap_or_default();
 
@@ -417,7 +449,12 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
             },
         )
         .restart_policy(RestartPolicy::Never)
-        .spawn_in_thread()
+        // Unbounded so workers' WorkerAcks never backpressure into the workers
+        // themselves (which would defeat the whole worker pool) and so that
+        // supervisor stop_gracefully signals always get enqueued without
+        // blocking the supervisor's handler. Memory growth is bounded by the
+        // `in_flight > 100` backpressure in `ModuleActor::next`.
+        .spawn_in_thread_with_mailbox(mailbox::unbounded())
         .await;
 
         self.modules.insert(
@@ -521,8 +558,15 @@ impl<A: EventHandlerModule> Message<ModuleEvent> for ModuleSupervisor<A> {
                 if module_type == A::MODULE_TYPE {
                     self.backoff.remove(&name);
                     if let Some(module) = self.modules.remove(&name) {
-                        let _ = module.actor_ref.stop_gracefully().await;
-                        info!(module_type = %A::MODULE_TYPE, %name, version = %module.version, "module unloaded");
+                        // Spawn so the supervisor isn't blocked on the module's
+                        // mailbox capacity while it drains its current batch.
+                        let actor = module.actor_ref.clone();
+                        let version = module.version.clone();
+                        let module_name = name.clone();
+                        tokio::spawn(async move {
+                            let _ = actor.stop_gracefully().await;
+                            info!(module_type = %A::MODULE_TYPE, name = %module_name, %version, "module unloaded");
+                        });
                     }
                 }
             }

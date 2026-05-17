@@ -80,12 +80,18 @@ fn page_inner(title: &str, content: Markup, wide: bool) -> Markup {
                             class="nav-link flex items-center px-3 py-2 rounded-md text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
                             { "Events" }
                     }
-                    div class="border-t border-gray-200 dark:border-gray-700 p-3 shrink-0" {
+                    div class="border-t border-gray-200 dark:border-gray-700 p-3 shrink-0 space-y-1" {
                         button onclick="umariToggleDark()"
                             class="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                         {
                             span id="dark-icon" {}
                             span { "Toggle theme" }
+                        }
+                        a href="/ui/logout"
+                            class="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                        {
+                            span { "⎋" }
+                            span { "Sign out" }
                         }
                     }
                 }

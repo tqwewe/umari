@@ -38,6 +38,7 @@ impl IntoResponse for Error {
             ErrorCode::Database => StatusCode::INTERNAL_SERVER_ERROR,
             ErrorCode::Integrity => StatusCode::UNPROCESSABLE_ENTITY,
             ErrorCode::Internal => StatusCode::INTERNAL_SERVER_ERROR,
+            ErrorCode::Unauthorized => StatusCode::UNAUTHORIZED,
         };
 
         (

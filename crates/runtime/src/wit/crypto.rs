@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use wasmtime::component::bindgen;
 
 use crate::{module_store::actor::DeleteCryptoKey, wit::EventHandlerComponentState};
@@ -17,6 +19,8 @@ impl Host for EventHandlerComponentState {
             .ask(DeleteCryptoKey {
                 scope: scope.into(),
             })
+            .reply_timeout(Duration::from_secs(5))
+            .send()
             .await?;
         Ok(())
     }

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
 use aes_gcm::{
     Aes256Gcm, Nonce,
@@ -132,6 +132,8 @@ pub async fn list_events(
                     state
                         .module_store_ref
                         .ask(GetCryptoKeyById { id: key_id })
+                        .reply_timeout(Duration::from_secs(5))
+                        .send()
                         .await
                         .ok()
                         .flatten()
@@ -139,6 +141,8 @@ pub async fn list_events(
                     state
                         .module_store_ref
                         .ask(GetCryptoKey { scope: scope.as_str().into() })
+                        .reply_timeout(Duration::from_secs(5))
+                        .send()
                         .await
                         .ok()
                         .flatten()

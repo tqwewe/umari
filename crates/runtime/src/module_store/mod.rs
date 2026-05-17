@@ -20,6 +20,9 @@ pub const INIT_SQL: &str = "
     PRAGMA temp_store = MEMORY;
     PRAGMA foreign_keys = ON;
     PRAGMA wal_autocheckpoint = 1000;
+    -- Wait up to 5s for a writer lock instead of returning SQLITE_BUSY immediately;
+    -- parent ModuleActor and pooled workers each hold their own connection.
+    PRAGMA busy_timeout = 5000;
 ";
 
 pub type ModuleId = (ModuleType, String, Version);

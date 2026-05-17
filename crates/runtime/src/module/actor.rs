@@ -30,7 +30,7 @@ use wasmtime_wasi::{ResourceTable, WasiCtx};
 use crate::{
     module_store::{
         INIT_SQL,
-        actor::{GetCryptoKey, ModuleStoreActor},
+        actor::{GetCryptoKeyById, ModuleStoreActor},
     },
     output::ModuleOutput,
 };
@@ -559,24 +559,23 @@ async fn decrypt_stored_event(
     mut event: StoredEvent<Value>,
     module_store_ref: &ActorRef<ModuleStoreActor>,
 ) -> StoredEvent<Value> {
-    let Some((scope, key_id)) = event.encryption_scope.as_ref().zip(event.encryption_key_id) else {
+    let Some(key_id) = event.encryption_key_id else {
         return event;
     };
 
+    // Fetch the exact key that encrypted this event (by id), not the scope's current key —
+    // otherwise key rotation would make every old event look crypto-shredded.
     let key = module_store_ref
-        .ask(GetCryptoKey {
-            scope: scope.as_str().into(),
-        })
+        .ask(GetCryptoKeyById { id: key_id })
+        .reply_timeout(Duration::from_secs(5))
+        .send()
         .await
         .ok()
         .flatten();
 
     event.data = match key {
         None => Value::Null,
-        Some((current_key_id, key)) => (|| -> Option<Value> {
-            if key_id != current_key_id {
-                return None;
-            };
+        Some(key) => (|| -> Option<Value> {
             let hex_str = event.data.as_str()?;
             let ciphertext = hex::decode(hex_str).ok()?;
             let cipher = Aes256Gcm::new_from_slice(&key).ok()?;

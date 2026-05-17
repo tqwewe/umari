@@ -58,6 +58,10 @@ struct Cli {
     /// Verbose logging
     #[arg(short, long, env = "UMARI_VERBOSE")]
     verbose: bool,
+
+    /// API key required on all requests (via Authorization: Bearer <key>)
+    #[arg(long, env = "UMARI_API_KEY")]
+    api_key: Option<String>,
 }
 
 #[tokio::main(name = "umari", flavor = "multi_thread")]
@@ -142,6 +146,7 @@ async fn main() {
     // Start API server
     let api_handle = tokio::spawn({
         let api_addr = cli.api_addr.clone();
+        let api_key: Option<Arc<str>> = cli.api_key.map(|k| k.into());
         async move {
             trace!("starting API server on {api_addr}");
             let state = AppState {
@@ -151,6 +156,7 @@ async fn main() {
                 projector_supervisor_ref,
                 effect_supervisor_ref,
                 event_store,
+                api_key,
             };
             if let Err(err) = start_server(&api_addr, state).await {
                 error!("API server error: {err}");

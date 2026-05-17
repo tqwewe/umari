@@ -5,6 +5,7 @@ pub mod layout;
 mod routes;
 
 use std::{path::PathBuf, sync::Arc};
+pub use routes::login::SESSION_COOKIE;
 
 use axum::{
     Router,
@@ -28,6 +29,7 @@ use crate::routes::{
     events::list_events,
     execute::execute_command,
     index::index,
+    login::{login_get, login_post, logout},
     projectors::{get_projector, list_projectors, query_projector},
     replay::replay,
     upload::upload_module,
@@ -41,10 +43,13 @@ pub struct UiState {
     pub projector_supervisor_ref: ActorRef<ModuleSupervisor<ProjectorWorld>>,
     pub effect_supervisor_ref: ActorRef<ModuleSupervisor<EffectWorld>>,
     pub event_store: Arc<AsyncUmaDbClient>,
+    pub api_key: Option<Arc<str>>,
 }
 
 pub fn ui_router(state: UiState) -> Router {
     Router::new()
+        .route("/ui/login", get(login_get).post(login_post))
+        .route("/ui/logout", get(logout))
         .route("/", get(index))
         .route("/ui/commands", get(list_commands))
         .route("/ui/commands/{name}", get(get_command))

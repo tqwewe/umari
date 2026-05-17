@@ -45,6 +45,12 @@ pub struct ModuleWorkerActor<A: EventHandlerModule> {
     handler: ResourceAny,
     ack_recipient: Recipient<WorkerAck>,
     output: ModuleOutput,
+    /// Position of the event currently being processed. Set on entry to
+    /// `process_event` and cleared after the ack is sent. If it's still set
+    /// when `on_panic` runs, we know the worker died mid-event without acking
+    /// and we need to send a failure ack ourselves so the parent's watermark
+    /// doesn't get stuck forever.
+    current_position: Option<u64>,
 }
 
 impl<A: EventHandlerModule> Actor for ModuleWorkerActor<A> {
@@ -112,6 +118,7 @@ impl<A: EventHandlerModule> Actor for ModuleWorkerActor<A> {
             handler,
             ack_recipient: args.ack_recipient,
             output: args.output,
+            current_position: None,
         })
     }
 
@@ -133,6 +140,16 @@ impl<A: EventHandlerModule> Actor for ModuleWorkerActor<A> {
             }
             PanicReason::OnLinkDied => {}
         }
+        if let Some(position) = self.current_position.take() {
+            let msg = err
+                .with_str(|s| s.to_string())
+                .unwrap_or_else(|| format!("{err:?}"));
+            let _ = self
+                .ack_recipient
+                .tell(WorkerAck(Err((position, msg))))
+                .send()
+                .await;
+        }
         Ok(ControlFlow::Break(ActorStopReason::Panicked(err)))
     }
 }
@@ -147,11 +164,14 @@ impl<A: EventHandlerModule> ModuleWorkerActor<A> {
         event: wit::common::StoredEvent,
         position: u64,
     ) -> Result<(), ModuleError> {
+        // Track the position so `on_panic` can send a failure ack if the
+        // handler or the post-handle commit blows up before we ack ourselves.
+        self.current_position = Some(position);
         let store = self.store.data_mut();
         store.update_current_event_id(current_event_id);
         store.update_current_correlation_id(correlation_id);
 
-        match self
+        let result = match self
             .instance
             .handle_event(&mut self.store, self.handler, &event)
             .await
@@ -176,6 +196,8 @@ impl<A: EventHandlerModule> ModuleWorkerActor<A> {
                     .await;
                 Err(ModuleError::Wasmtime(err))
             }
-        }
+        };
+        self.current_position = None;
+        result
     }
 }
