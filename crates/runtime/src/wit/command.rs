@@ -134,7 +134,7 @@ impl transaction::HostTransaction for wit::CommandComponentState {
         let envelope = EventEnvelope {
             timestamp: self.timestamp,
             correlation_id: context.correlation_id,
-            causation_id: uuid::Uuid::new_v4(),
+            causation_id: context.causation_id,
             triggering_event_id: context.triggering_event_id,
             idempotency_key: context.idempotency_key,
         };
@@ -196,7 +196,7 @@ impl transaction::HostTransaction for wit::EventHandlerComponentState {
         let envelope = EventEnvelope {
             timestamp: Utc::now(),
             correlation_id: context.correlation_id,
-            causation_id: uuid::Uuid::new_v4(),
+            causation_id: context.causation_id,
             triggering_event_id: context.triggering_event_id,
             idempotency_key: context.idempotency_key,
         };
@@ -416,18 +416,20 @@ impl TryFrom<CommandContext> for umari_core::command::CommandContext {
         Ok(umari_core::command::CommandContext {
             correlation_id: uuid::Uuid::parse_str(&ctx.correlation_id)
                 .context("invalid correlation id")?,
+            causation_id: uuid::Uuid::parse_str(&ctx.causation_id)
+                .context("invalid causation id")?,
             triggering_event_id: ctx
                 .triggering_event_id
                 .as_deref()
                 .map(uuid::Uuid::parse_str)
                 .transpose()
-                .context("invalid causation id")?,
+                .context("invalid triggering event id")?,
             idempotency_key: ctx
                 .idempotency_key
                 .as_deref()
                 .map(uuid::Uuid::parse_str)
                 .transpose()
-                .context("invalid indempotency key")?,
+                .context("invalid idempotency key")?,
         })
     }
 }
@@ -436,6 +438,7 @@ impl From<umari_core::command::CommandContext> for CommandContext {
     fn from(ctx: umari_core::command::CommandContext) -> Self {
         CommandContext {
             correlation_id: ctx.correlation_id.to_string(),
+            causation_id: ctx.causation_id.to_string(),
             triggering_event_id: ctx.triggering_event_id.as_ref().map(ToString::to_string),
             idempotency_key: ctx.idempotency_key.as_ref().map(ToString::to_string),
         }

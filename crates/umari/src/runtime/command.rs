@@ -44,6 +44,7 @@ where
 
         let context = crate::command::CommandContext {
             correlation_id: uuid::Uuid::parse_str(&context.correlation_id).unwrap(),
+            causation_id: uuid::Uuid::parse_str(&context.causation_id).unwrap(),
             triggering_event_id: context
                 .triggering_event_id
                 .as_deref()
@@ -83,6 +84,7 @@ impl From<crate::command::CommandContext> for CommandContext {
     fn from(ctx: crate::command::CommandContext) -> Self {
         CommandContext {
             correlation_id: ctx.correlation_id.to_string(),
+            causation_id: ctx.causation_id.to_string(),
             triggering_event_id: ctx.triggering_event_id.as_ref().map(ToString::to_string),
             idempotency_key: ctx.idempotency_key.as_ref().map(ToString::to_string),
         }

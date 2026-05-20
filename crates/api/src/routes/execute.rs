@@ -70,6 +70,7 @@ pub async fn execute(
         .transpose()?;
     let context = CommandContext {
         correlation_id,
+        causation_id: Uuid::new_v4(),
         triggering_event_id,
         idempotency_key,
     };

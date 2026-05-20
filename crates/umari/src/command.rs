@@ -154,9 +154,11 @@ impl<I: DomainIds, Fs> Command<I, Fs> {
             .enumerate()
             .map(|(i, event)| {
                 let id = {
-                    let mut key =
-                        Vec::with_capacity(mem::size_of::<uuid::Bytes>() + mem::size_of::<u32>());
+                    let mut key = Vec::with_capacity(
+                        mem::size_of::<uuid::Bytes>() * 2 + mem::size_of::<u32>(),
+                    );
                     key.extend_from_slice(self.context.correlation_id.as_bytes());
+                    key.extend_from_slice(self.context.causation_id.as_bytes());
                     key.extend_from_slice(&(i as u32).to_be_bytes());
                     Uuid::new_v5(&IDEMPOTENCY_NAMESPACE, &key)
                 };
@@ -237,6 +239,8 @@ pub trait CommandName {
 pub struct CommandContext {
     /// Original request ID (flows through everything)
     pub correlation_id: Uuid,
+    /// Unique ID for this specific command execution
+    pub causation_id: Uuid,
     /// Event ID that triggered this command (for sagas)
     pub triggering_event_id: Option<Uuid>,
     /// Client-supplied key for deduplicating retried command executions.
@@ -248,10 +252,16 @@ impl CommandContext {
         CURRENT_EVENT_CONTEXT.with_borrow(|ctx| {
             ctx.map(|ctx| CommandContext {
                 correlation_id: ctx.correlation_id,
+                causation_id: Uuid::new_v4(),
                 triggering_event_id: Some(ctx.triggering_event_id),
                 idempotency_key: None,
             })
-            .unwrap_or_default()
+            .unwrap_or_else(|| CommandContext {
+                correlation_id: Uuid::new_v4(),
+                causation_id: Uuid::new_v4(),
+                triggering_event_id: None,
+                idempotency_key: None,
+            })
         })
     }
 
