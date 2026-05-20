@@ -11,6 +11,7 @@ interface types {
 
     record command-context {
         correlation-id: uuid,
+        causation-id: uuid,
         triggering-event-id: option<uuid>,
         idempotency-key: option<uuid>,
     }
