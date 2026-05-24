@@ -367,10 +367,25 @@ pub fn deploy(
     let (build_stats, alive) =
         run_build_phase(&ui, &modules, debug, jobs, /*finalize=*/ false);
 
+    // The full set of rust module names used by Phase 1's `cargo build -p A
+    // -p B ...`. Bump-rebuilds need to use the same `-p` set so cargo's
+    // feature unification produces byte-identical wasm — otherwise every
+    // deploy oscillates between multi-build bytes (uploaded at the current
+    // version) and single-build bytes (uploaded at the bumped version),
+    // triggering an endless bump cycle.
+    let rust_names: Vec<&str> = modules
+        .iter()
+        .filter_map(|m| match m {
+            AnyModule::Rust(r) => Some(r.name.as_str()),
+            _ => None,
+        })
+        .collect();
+
     let upload_stats = run_upload_phase(
         client,
         &ui,
         &alive,
+        &rust_names,
         no_activate,
         bump_patch,
         debug,
@@ -682,10 +697,20 @@ fn build_one_js(module: &JsModule) -> Result<()> {
     Ok(())
 }
 
-fn build_one_rust(module: &Module, debug: bool) -> Result<()> {
-    let mut args = vec!["build", "-p", &module.name, "--target", "wasm32-wasip2"];
+// Rebuilds the rust modules using the same `-p` set as Phase 1's
+// `run_rust_build`. Using the same set keeps cargo's feature unification
+// identical, so the resulting wasm bytes match what Phase 1 produces. A
+// single-package `cargo build -p <one>` can unify features differently and
+// emit different bytes for shared deps, which would make every subsequent
+// deploy see a hash mismatch and bump again.
+fn build_rust(rust_names: &[&str], debug: bool) -> Result<()> {
+    let mut args = vec!["build", "--target", "wasm32-wasip2"];
     if !debug {
         args.push("--release");
+    }
+    for name in rust_names {
+        args.push("-p");
+        args.push(name);
     }
     let output = Command::new("cargo")
         .args(&args)
@@ -698,9 +723,9 @@ fn build_one_rust(module: &Module, debug: bool) -> Result<()> {
     Ok(())
 }
 
-fn rebuild_module(module: &AnyModule, debug: bool) -> Result<()> {
+fn rebuild_module(module: &AnyModule, rust_names: &[&str], debug: bool) -> Result<()> {
     match module {
-        AnyModule::Rust(m) => build_one_rust(m, debug),
+        AnyModule::Rust(_) => build_rust(rust_names, debug),
         AnyModule::Js(m) => build_one_js(m),
     }
 }
@@ -711,6 +736,7 @@ fn run_upload_phase(
     client: &ApiClient,
     ui: &DeployUi,
     modules: &[&AnyModule],
+    rust_names: &[&str],
     no_activate: bool,
     bump_patch: bool,
     debug: bool,
@@ -730,7 +756,7 @@ fn run_upload_phase(
                     Some(m) => m,
                     None => break,
                 };
-                let status = upload_one(client, m, no_activate, bump_patch, debug);
+                let status = upload_one(client, m, rust_names, no_activate, bump_patch, debug);
                 let ty = m.module_type();
                 {
                     let mut g = stats.lock().unwrap();
@@ -754,6 +780,7 @@ fn run_upload_phase(
 fn upload_one(
     client: &ApiClient,
     module: &AnyModule,
+    rust_names: &[&str],
     no_activate: bool,
     bump_patch: bool,
     debug: bool,
@@ -791,7 +818,7 @@ fn upload_one(
             if let Err(err) = write_version_to_manifest(module, &new_version) {
                 return Status::Failed { msg: err.to_string() };
             }
-            if let Err(err) = rebuild_module(module, debug) {
+            if let Err(err) = rebuild_module(module, rust_names, debug) {
                 return Status::Failed { msg: err.to_string() };
             }
             match client.upload_wasm(
