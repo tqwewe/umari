@@ -67,6 +67,9 @@ enum Commands {
         paths: Vec<PathBuf>,
         #[arg(long)]
         debug: bool,
+        /// max parallel builds (cargo -j, JS worker count, upload worker count); 0 = auto
+        #[arg(long, short = 'j', default_value_t = 0)]
+        jobs: usize,
     },
     /// build and deploy wasm modules to the server
     Deploy {
@@ -80,6 +83,9 @@ enum Commands {
         bump_patch: bool,
         #[arg(long)]
         debug: bool,
+        /// max parallel builds (cargo -j, JS worker count, upload worker count); 0 = auto
+        #[arg(long, short = 'j', default_value_t = 0)]
+        jobs: usize,
     },
     /// scaffold a new module in the workspace
     New {
@@ -443,13 +449,16 @@ fn main() -> Result<()> {
             ModulesSubcommand::Active { r#type } => commands::modules::active(&client, r#type),
         },
         Commands::Execute { name, input } => commands::execute::execute(&client, name, input),
-        Commands::Build { paths, debug } => commands::workspace::build(paths, debug),
+        Commands::Build { paths, debug, jobs } => {
+            commands::workspace::build(paths, debug, jobs)
+        }
         Commands::Deploy {
             paths,
             no_activate,
             bump_patch,
             debug,
-        } => commands::workspace::deploy(&client, paths, no_activate, bump_patch, debug),
+            jobs,
+        } => commands::workspace::deploy(&client, paths, no_activate, bump_patch, debug, jobs),
         Commands::New { command } => match command {
             NewSubcommand::Command { name, lang } => match lang {
                 Lang::Js => commands::new::generate_js("command", &name),

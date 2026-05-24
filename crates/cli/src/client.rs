@@ -1,7 +1,6 @@
 use std::{collections::BTreeMap, path::Path};
 
 use anyhow::{Context, Result, anyhow};
-use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Serialize, de::DeserializeOwned};
 use umari_types::{ErrorCode, ErrorResponse, UploadResponse};
 use ureq::{Agent, Body, http::Response};
@@ -144,22 +143,8 @@ impl ApiClient {
         file_path: &Path,
         activate: bool,
     ) -> Result<Option<(bool, UploadResponse)>> {
-        // Read file and show progress
-        let file_size = std::fs::metadata(file_path)
-            .with_context(|| format!("failed to read file metadata: {}", file_path.display()))?
-            .len();
-
-        let pb = ProgressBar::new(file_size);
-        pb.set_style(
-            ProgressStyle::default_bar()
-                .template("{spinner:.green} uploading {bytes}/{total_bytes}")
-                .unwrap(),
-        );
-
         let wasm_bytes = std::fs::read(file_path)
             .with_context(|| format!("failed to read file: {}", file_path.display()))?;
-
-        pb.set_position(file_size);
 
         // Build multipart body
         let boundary = "----UmariCLIBoundary";
@@ -202,8 +187,6 @@ impl ApiClient {
             req = req.header("Authorization", &auth);
         }
         let response: Response<Body> = req.send(&multipart_body).context("connection error")?;
-
-        pb.finish_and_clear();
 
         if response.status().as_u16() == 409 {
             return Ok(None);

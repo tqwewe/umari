@@ -1,5 +1,6 @@
 #[allow(clippy::module_inception)]
 pub mod commands;
+pub mod deploy_ui;
 pub mod effects;
 pub mod env_vars;
 pub mod execute;
