@@ -10,6 +10,7 @@ pub enum ModuleEvent {
         module_type: ModuleType,
         name: Arc<str>,
         version: Version,
+        wasm_bytes: Arc<[u8]>,
     },
     Deactivated {
         module_type: ModuleType,

@@ -284,6 +284,9 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
             None
         };
 
+        args.output
+            .push_system(format!("module started v{}", args.version));
+
         Ok(ModuleActor {
             store,
             instance,

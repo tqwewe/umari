@@ -25,7 +25,7 @@ use crate::{
     events::ModuleEvent,
     module_store::{
         ModuleType,
-        actor::{GetActiveModule, GetAllActiveModules, ModuleStoreActor},
+        actor::{GetAllActiveModules, ModuleStoreActor},
     },
     output::ModuleOutput,
     wit::{self, CommandComponentState, ExecuteResult},
@@ -379,50 +379,46 @@ impl Message<ModuleEvent> for CommandActor {
                 module_type,
                 name,
                 version,
+                wasm_bytes,
             } => {
                 if module_type == ModuleType::Command {
-                    let module = self
-                        .module_store_ref
-                        .ask(GetActiveModule {
-                            module_type: ModuleType::Command,
-                            name: name.clone(),
-                        })
-                        .reply_timeout(Duration::from_secs(2))
-                        .send()
-                        .await?;
-                    match module {
-                        Some((_, wasm_bytes)) => {
-                            let engine = self.engine.clone();
-                            let cache = self.compile_cache.clone();
-                            let actor_ref = ctx.actor_ref().clone();
-                            tokio::spawn(async move {
-                                match tokio::task::spawn_blocking(move || {
-                                    cache.load_component(&engine, &wasm_bytes)
-                                })
-                                .await
-                                {
-                                    Ok(Ok(component)) => {
-                                        let _ = actor_ref
-                                            .tell(ModuleCompiled {
-                                                name,
-                                                version,
-                                                component,
-                                            })
-                                            .await;
-                                    }
-                                    Ok(Err(err)) => {
-                                        error!(module_type = %ModuleType::Command, %name, %version, "failed to compile module: {err}");
-                                    }
-                                    Err(err) => {
-                                        error!(module_type = %ModuleType::Command, %name, %version, "compilation task panicked: {err}");
-                                    }
-                                }
-                            });
-                        }
-                        None => {
-                            warn!(module_type = %ModuleType::Command, %name, %version, "active module not found");
-                        }
+                    if let Some(current) = self.components.get(&name)
+                        && current.version == version
+                    {
+                        debug!(
+                            module_type = %ModuleType::Command,
+                            %name,
+                            %version,
+                            "command already loaded at this version, skipping reactivation"
+                        );
+                        return Ok(());
                     }
+                    let engine = self.engine.clone();
+                    let cache = self.compile_cache.clone();
+                    let actor_ref = ctx.actor_ref().clone();
+                    tokio::spawn(async move {
+                        match tokio::task::spawn_blocking(move || {
+                            cache.load_component(&engine, &wasm_bytes)
+                        })
+                        .await
+                        {
+                            Ok(Ok(component)) => {
+                                let _ = actor_ref
+                                    .tell(ModuleCompiled {
+                                        name,
+                                        version,
+                                        component,
+                                    })
+                                    .await;
+                            }
+                            Ok(Err(err)) => {
+                                error!(module_type = %ModuleType::Command, %name, %version, "failed to compile module: {err}");
+                            }
+                            Err(err) => {
+                                error!(module_type = %ModuleType::Command, %name, %version, "compilation task panicked: {err}");
+                            }
+                        }
+                    });
                 }
             }
             ModuleEvent::Deactivated { module_type, name } => {

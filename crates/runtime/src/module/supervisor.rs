@@ -176,11 +176,17 @@ impl<A: EventHandlerModule> Actor for ModuleSupervisor<A> {
         &mut self,
         actor_ref: WeakActorRef<Self>,
         id: ActorId,
-        _reason: ActorStopReason,
+        reason: ActorStopReason,
     ) -> Result<ControlFlow<ActorStopReason>, Self::Error> {
         if let Some((name, pending)) = self.pending.remove(&id)
             && let Some(supervisor_ref) = actor_ref.upgrade()
         {
+            debug!(
+                module_type = %A::MODULE_TYPE,
+                %name,
+                ?reason,
+                "swapping in pending module after old actor stopped"
+            );
             self.spawn_module(&supervisor_ref, name, pending, false)
                 .await?;
             return Ok(ControlFlow::Continue(()));
@@ -217,12 +223,15 @@ impl<A: EventHandlerModule> Actor for ModuleSupervisor<A> {
                 module_type = %A::MODULE_TYPE,
                 %name,
                 ?delay,
+                ?reason,
                 "module failed, retrying with backoff"
             );
 
             module
                 .output
-                .push_system(format!("restarting (attempt {attempt}, delay {delay:?})"));
+                .push_system(format!(
+                    "restarting (attempt {attempt}, delay {delay:?}): {reason:?}"
+                ));
 
             if let Some(supervisor_ref) = actor_ref.upgrade() {
                 let name = name.clone();
@@ -280,7 +289,7 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
             version,
             component,
             reset_db: true,
-            output: ModuleOutput::new(500),
+            output: ModuleOutput::with_file(500, &self.module_log_path(&name)),
         };
         self.backoff.remove(&name);
         info!(module_type = %A::MODULE_TYPE, %name, "resetting module");
@@ -300,6 +309,12 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
                 .await?;
         }
         Ok(())
+    }
+
+    fn module_log_path(&self, name: &str) -> std::path::PathBuf {
+        self.data_dir
+            .join(A::MODULE_TYPE.to_string())
+            .join(format!("{}.log", name))
     }
 
     fn read_last_position(&self, name: &str) -> Option<u64> {
@@ -334,7 +349,7 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
             version,
             component,
             reset_db: false,
-            output: ModuleOutput::new(500),
+            output: ModuleOutput::with_file(500, &self.module_log_path(&name)),
         };
 
         if let Some(old_module) = self.modules.remove(&name)
@@ -391,7 +406,7 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
             .modules
             .get(&name)
             .map(|m| m.output.clone())
-            .unwrap_or_else(|| ModuleOutput::new(500));
+            .unwrap_or_else(|| ModuleOutput::with_file(500, &self.module_log_path(&name)));
         let pending = PendingModule {
             version,
             component,
@@ -508,50 +523,48 @@ impl<A: EventHandlerModule> Message<ModuleEvent> for ModuleSupervisor<A> {
                 module_type,
                 name,
                 version,
+                wasm_bytes,
             } => {
                 if module_type == A::MODULE_TYPE {
-                    let module = self
-                        .module_store_ref
-                        .ask(GetActiveModule {
-                            module_type: A::MODULE_TYPE,
-                            name: name.clone(),
-                        })
-                        .reply_timeout(Duration::from_secs(2))
-                        .send()
-                        .await?;
-                    match module {
-                        Some((version, wasm_bytes)) => {
-                            let engine = self.engine.clone();
-                            let cache = self.compile_cache.clone();
-                            let actor_ref = ctx.actor_ref().clone();
-                            tokio::spawn(async move {
-                                match tokio::task::spawn_blocking(move || {
-                                    cache.load_component(&engine, &wasm_bytes)
-                                })
-                                .await
-                                {
-                                    Ok(Ok(component)) => {
-                                        let _ = actor_ref
-                                            .tell(ModuleCompiled {
-                                                name,
-                                                version,
-                                                component,
-                                            })
-                                            .await;
-                                    }
-                                    Ok(Err(err)) => {
-                                        error!(module_type = %A::MODULE_TYPE, %name, %version, "failed to compile module: {err}");
-                                    }
-                                    Err(err) => {
-                                        error!(module_type = %A::MODULE_TYPE, %name, %version, "compilation task panicked: {err}");
-                                    }
-                                }
-                            });
-                        }
-                        None => {
-                            warn!(module_type = %A::MODULE_TYPE, %name, %version, "active module not found");
-                        }
+                    if let Some(current) = self.modules.get(&name)
+                        && current.actor_ref.is_alive()
+                        && current.version == version
+                    {
+                        debug!(
+                            module_type = %A::MODULE_TYPE,
+                            %name,
+                            %version,
+                            "module already loaded at this version, skipping reactivation"
+                        );
+                        return Ok(());
                     }
+                    let engine = self.engine.clone();
+                    let cache = self.compile_cache.clone();
+                    let actor_ref = ctx.actor_ref().clone();
+                    let module_type = A::MODULE_TYPE;
+                    tokio::spawn(async move {
+                        match tokio::task::spawn_blocking(move || {
+                            cache.load_component(&engine, &wasm_bytes)
+                        })
+                        .await
+                        {
+                            Ok(Ok(component)) => {
+                                let _ = actor_ref
+                                    .tell(ModuleCompiled {
+                                        name,
+                                        version,
+                                        component,
+                                    })
+                                    .await;
+                            }
+                            Ok(Err(err)) => {
+                                error!(%module_type, %name, %version, "failed to compile module: {err}");
+                            }
+                            Err(err) => {
+                                error!(%module_type, %name, %version, "compilation task panicked: {err}");
+                            }
+                        }
+                    });
                 }
             }
             ModuleEvent::Deactivated { module_type, name } => {

@@ -1,6 +1,8 @@
 use std::{
     collections::VecDeque,
-    io,
+    fs::{File, OpenOptions},
+    io::{self, Write},
+    path::Path,
     pin::Pin,
     sync::{Arc, Mutex},
     task::{Context, Poll},
@@ -9,6 +11,7 @@ use std::{
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use tokio::io::AsyncWrite;
+use tracing::warn;
 use wasmtime_wasi::{
     async_trait,
     cli::{IsTerminal, StdoutStream},
@@ -35,10 +38,30 @@ struct OutputInner {
     stdout_buf: String,
     stderr_buf: String,
     entries: VecDeque<LogEntry>,
+    // Optional append-only log file. `None` if no path was supplied or if a
+    // write previously failed; the ring buffer remains the source of truth
+    // for the UI either way.
+    file: Option<File>,
 }
 
 impl OutputInner {
     fn push_entry(&mut self, entry: LogEntry) {
+        if let Some(file) = self.file.as_mut() {
+            let stream = match entry.stream {
+                LogStream::Stdout => "stdout",
+                LogStream::Stderr => "stderr",
+                LogStream::System => "system",
+            };
+            if let Err(err) = writeln!(
+                file,
+                "{} [{stream}] {}",
+                entry.timestamp.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+                entry.message,
+            ) {
+                warn!(%err, "failed to write to module log file; disabling file logging for this module");
+                self.file = None;
+            }
+        }
         if self.entries.len() >= self.max_entries {
             self.entries.pop_front();
         }
@@ -85,6 +108,29 @@ impl ModuleOutput {
                 stdout_buf: String::new(),
                 stderr_buf: String::new(),
                 entries: VecDeque::new(),
+                file: None,
+            })),
+        }
+    }
+
+    pub fn with_file(max_entries: usize, path: &Path) -> Self {
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let file = match OpenOptions::new().create(true).append(true).open(path) {
+            Ok(f) => Some(f),
+            Err(err) => {
+                warn!(path = %path.display(), %err, "failed to open module log file; falling back to in-memory only");
+                None
+            }
+        };
+        ModuleOutput {
+            inner: Arc::new(Mutex::new(OutputInner {
+                max_entries,
+                stdout_buf: String::new(),
+                stderr_buf: String::new(),
+                entries: VecDeque::new(),
+                file,
             })),
         }
     }

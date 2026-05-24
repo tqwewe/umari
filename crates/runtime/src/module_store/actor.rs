@@ -81,11 +81,21 @@ impl ModuleStoreActor {
             .store
             .activate_module(module_type, &name, version.clone())?;
         if activated {
+            let wasm_bytes: Arc<[u8]> = self
+                .store
+                .load_module(module_type, &name, version.clone())?
+                .map(|(bytes, _sha)| bytes.into())
+                .ok_or_else(|| ModuleStoreError::ModuleNotFound {
+                    module_type,
+                    name: name.to_string(),
+                    version: version.clone(),
+                })?;
             self.module_pubsub
                 .tell(Publish(ModuleEvent::Activated {
                     module_type,
                     name,
                     version,
+                    wasm_bytes,
                 }))
                 .await
                 .map_err(|err| ModuleStoreError::ModulePubSubSendError(err.map_msg(|_| ())))?;
