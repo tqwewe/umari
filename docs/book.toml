@@ -1,0 +1,15 @@
+[book]
+title = "The Umari Book"
+authors = ["Ari Seyhun"]
+language = "en"
+
+[output.html]
+mathjax-support = false
+smart-punctuation = true
+
+[output.html.fold]
+enable = true
+level = 1
+
+[rust]
+edition = "2024"
