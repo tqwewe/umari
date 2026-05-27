@@ -28,6 +28,9 @@ jobs:
       - name: Build mdBook
         run: mdbook build docs
 
+      - name: Add CNAME
+        run: echo "umari.tqwewe.com" > docs/book/CNAME
+
       - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@v4
         with:
