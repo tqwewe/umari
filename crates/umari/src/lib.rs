@@ -107,7 +107,7 @@ pub mod prelude {
     pub use crate::projector::*;
     pub use crate::runtime::crypto::umari::crypto::keys::delete_key as delete_crypto_key;
     pub use crate::sqlite::*;
-    pub use crate::{emit, export_effect, export_projector, params, reject};
+    pub use crate::{emit, export_effect, export_projector, params};
     pub use indexmap::indexmap as domain_ids;
     pub use umari_macros::{DomainIds, Event, EventSet, FromDomainIds, export_command};
 }
