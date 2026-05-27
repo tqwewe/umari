@@ -20,13 +20,13 @@ These tags are used by the event store (UmaDB) for DCB queries. When a command r
 
 ## Choosing domain IDs
 
-Ask yourself: **"If this field changes, does it affect a different entity's consistency boundary?"**
+Ask yourself: **"If this field changes, does it identify a different entity's consistency boundary?"**
 
 - `shop_id` on `WarrantySold` — yes, the warranty belongs to a specific shop. Domain ID.
 - `customer_email` on `WarrantySold` — no, it's just data about the warranty. Not a domain ID.
-- `line_item_id` on `WarrantySold` — yes, it's used as an idempotency key to prevent duplicate sales. Domain ID.
+- `line_item_id` on `WarrantySold` — yes, a single line item can only be sold once. Adding it as a domain ID lets a fold ask "has this line ever been sold?" and reject duplicates. Domain ID.
 
-If you're unsure, err on the side of fewer domain IDs. You can always add them later, and adding domain IDs is backwards-compatible (existing events just won't have the new tag). Removing a domain ID, however, would require backfilling all existing events.
+If you're unsure, err on the side of fewer domain IDs. Adding one later is backwards-compatible — existing events just won't have the new tag. Removing one is not — you'd have to backfill every existing event.
 
 ## The DomainIds trait
 

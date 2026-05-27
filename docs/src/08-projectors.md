@@ -187,7 +187,7 @@ Each event handler should be a single SQL statement or a small, bounded operatio
 
 ### Use prepared statements
 
-For frequently executed queries, use `prepare()` in `init()` and call `.execute()` / `.query()` on the statement:
+For SQL that runs on every event, build a `Statement` once in `init()` and reuse it:
 
 ```rust
 struct Widgets {
@@ -195,19 +195,28 @@ struct Widgets {
     archive: Statement,
 }
 
-fn init() -> Result<Self, SqliteError> {
-    Ok(Widgets {
-        insert: prepare("INSERT INTO widgets ...")?,
-        archive: prepare("UPDATE widgets ...")?,
-    })
-}
+impl Projector for Widgets {
+    type Query = WidgetEvents;
 
-fn handle(&mut self, event: StoredEvent<Self::Query>) -> Result<(), SqliteError> {
-    self.insert.execute((id, name))?;
+    fn init() -> anyhow::Result<Self> {
+        execute_batch("CREATE TABLE IF NOT EXISTS widgets (...)")?;
+        Ok(Widgets {
+            insert: prepare("INSERT INTO widgets (id, name) VALUES (?1, ?2)"),
+            archive: prepare("UPDATE widgets SET archived = TRUE WHERE id = ?1"),
+        })
+    }
+
+    fn handle(&mut self, event: StoredEvent<WidgetEvents>) -> anyhow::Result<()> {
+        match event.data {
+            WidgetEvents::Created(ev) => { self.insert.execute(params![ev.id, ev.name])?; }
+            WidgetEvents::Archived(ev) => { self.archive.execute(params![ev.id])?; }
+        }
+        Ok(())
+    }
 }
 ```
 
-The `Statement` type is prepared once and reused across all events, avoiding repeated parsing overhead.
+The statement is parsed once and reused across every event, avoiding the per-event compilation cost.
 
 ## Replaying projectors
 

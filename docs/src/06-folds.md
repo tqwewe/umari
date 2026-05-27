@@ -1,6 +1,18 @@
 # 6. Folds
 
-A **fold** defines how to derive a piece of state by replaying events in order. Folds are the only way commands access historical event data — they have no direct query capability and no SQLite access.
+A **fold** is a "reduce" over the event log. You declare which events to read and how each one updates a piece of in-memory state. Commands replay folds on every call to recover whatever state they need to make a decision — they have no SQLite, no other query path.
+
+If you've used `Iterator::fold`, the mental model is identical:
+
+```rust
+// Iterator::fold
+events.iter().fold(State::default(), |state, event| apply(state, event));
+
+// Umari Fold trait
+fn apply(&self, state: &mut Self::State, event: StoredEvent<E>) { ... }
+```
+
+The runtime supplies the events (scoped by the fold's domain IDs) and the initial state (`State::default()`). You only write the body.
 
 ## The Fold trait
 

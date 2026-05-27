@@ -127,32 +127,28 @@ You can also implement **domain-level idempotency** inside the execute closure:
 
 ```rust
 pub struct CommandContext {
-    pub correlation_id: Uuid,
-    pub causation_id: Uuid,
-    pub triggering_event_id: Option<Uuid>,
+    pub correlation_id: Uuid,           // request that started the chain
+    pub causation_id: Uuid,             // this specific execution
+    pub triggering_event_id: Option<Uuid>,  // the event that called us, if any
     pub idempotency_key: Option<Uuid>,
 }
 ```
 
-### When called externally (HTTP, CLI)
+You almost never construct this by hand. Use `CommandContext::new()` and the right values are populated automatically:
+
+| Where the command runs | What `new()` produces |
+|------------------------|------------------------|
+| HTTP / CLI entry point | fresh `correlation_id`, fresh `causation_id`, `triggering_event_id = None` |
+| Inside an effect's `handle()` | inherits `correlation_id` and `triggering_event_id` from the effect's current event; fresh `causation_id` |
+
+The effect context lives in a thread-local (`CURRENT_EVENT_CONTEXT`) that the runtime sets before each `handle()` call. To override fields explicitly:
 
 ```rust
-let context = CommandContext::new();
-// correlation_id = new UUID
-// causation_id = new UUID
-// triggering_event_id = None
+CommandContext::new()
+    .with_correlation_id(id)
+    .with_triggering_event_id(id)
+    .with_idempotency_key(key)
 ```
-
-### When called from within an effect
-
-```rust
-let context = CommandContext::new();
-// correlation_id = inherited from the effect's event
-// causation_id = new UUID for this command execution
-// triggering_event_id = the event that triggered this effect
-```
-
-`CommandContext::new()` automatically detects whether it's running inside an effect (via thread-local `CURRENT_EVENT_CONTEXT`) and inherits the correlation context accordingly.
 
 ## Private vs public commands
 
@@ -246,17 +242,16 @@ pub struct EmittedEvent {
 }
 ```
 
-Effects use `ExecuteOutput` to inspect whether a private command actually emitted events (the idempotency guard):
+Effects use `ExecuteOutput` to ask "did this idempotency-guard command actually emit anything?":
 
 ```rust
 let receipt = ScheduleWebhookRegistration::execute(&input)?;
-let was_scheduled = receipt.events.iter().any(|e| {
-    e.event_type == ShopWebhooksRegistrationScheduled::EVENT_TYPE
-});
-if !was_scheduled {
-    return Ok(());  // Already done — skip side effect
+if !receipt.has_event::<ShopWebhooksRegistrationScheduled>() {
+    return Ok(());  // already scheduled — skip the side effect
 }
 ```
+
+`has_event::<E>()` checks whether any event of type `E` is present in `receipt.events`. If the command short-circuited (idempotency hit, or invariant failed silently), the receipt will be empty and the effect can bail out cleanly.
 
 ## Complete command example
 

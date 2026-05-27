@@ -20,13 +20,13 @@ Umari adds two key innovations on top of classical event sourcing:
 
 Umari splits business logic into three distinct concerns, each compiled as a separate WASM module:
 
-| Module | Role | Writes events? | Has SQLite? | Idempotency |
-|--------|------|---------------|-------------|-------------|
-| **Command** | Validate input, enforce invariants, emit events | Yes (only writer) | No | Fold state check in execute closure |
-| **Projector** | Build read models from events | No | Yes (external reads OK) | Structural: same events → same SQLite |
-| **Effect** | React to events, perform side effects (HTTP, send email) | Via commands only | Yes (internal only) | Fold-check → side effect → record |
+| Module | Job | Writes events? | SQLite? |
+|--------|-----|----------------|---------|
+| **Command** | Validate input, check invariants, emit events | Yes — the only writer | No |
+| **Projector** | Build queryable read models from the event stream | No | Yes |
+| **Effect** | React to events with side effects (HTTP, email, third-party APIs) | Only by calling commands | Yes |
 
-Commands are the **only mechanism for writing events**. Projectors and effects subscribe to events and react. Effects can trigger commands, which write events, which trigger more effects — forming a causal chain.
+Commands are the **only mechanism for writing events**. Projectors and effects subscribe to events and react. Effects can call commands, which write events, which trigger more projectors and effects — forming a causal chain.
 
 ## How it fits together
 

@@ -181,26 +181,30 @@ impl Effect for OrderProcessor {
     fn handle(&mut self, event: StoredEvent<Self::Query>) -> anyhow::Result<()> {
         match event.data {
             OrderEvents::OrderPlaced(ev) => {
-                // Schedule — check if already processed
-                let receipt = SchedulePaymentProcessing::execute(
-                    &SchedulePaymentProcessingInput { order_id: ev.order_id },
+                // 1. Fold-check via a private command — if the "scheduled"
+                //    event was already emitted, the command short-circuits
+                //    and the receipt is empty.
+                let receipt = schedule_payment_processing(
+                    SchedulePaymentProcessingInput { order_id: ev.order_id },
+                    CommandContext::new(),
                 )?;
                 if !receipt.has_event::<PaymentProcessingScheduled>() {
-                    return Ok(());
+                    return Ok(()); // already processed on a previous run
                 }
 
-                // Side effect — call payment gateway
+                // 2. Side effect — call the payment gateway.
                 let response = self.http_client
                     .post("https://payment.example.com/process")
                     .json(&json!({ "order_id": ev.order_id, "amount": ev.amount }))
                     .send()?;
 
-                // Record — persist outcome
-                RecordPaymentResult::execute(
-                    &RecordPaymentResultInput {
+                // 3. Record outcome via another private command.
+                record_payment_result(
+                    RecordPaymentResultInput {
                         order_id: ev.order_id,
                         success: response.status().is_success(),
                     },
+                    CommandContext::new(),
                 )?;
             }
         }
@@ -210,10 +214,10 @@ impl Effect for OrderProcessor {
 ```
 
 Key differences:
-- Effects use the fold-check → side effect → record pattern for idempotency
-- Effects have their own SQLite for internal state (like saga state) but it's not the idempotency source
-- Effects execute commands directly (no message bus)
-- Effects can make HTTP calls directly via WASI
+- Effects use the fold-check → side effect → record pattern for idempotency.
+- Effects have their own SQLite for internal state, but it's not the idempotency source — the event store is.
+- Effects call commands directly as Rust functions; no message bus.
+- HTTP is provided via WASI; no host-side bridging code.
 
 ## EventStoreDB streams → UmaDB DCB
 

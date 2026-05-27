@@ -40,34 +40,37 @@ Command::new(input, context)           // Create builder
     .execute(|input, states| { .. })    // Run with fold states
 ```
 
-## Emit macros
+## Emit and reject
 
 ```rust
 emit![]                                // No events
 emit![Event { field: val }]            // Single event
 emit![EventA { .. }, EventB { .. }]    // Multiple events
-reject!("message {var}")               // Return business error
+
+// Business rejections — use anyhow::ensure! / bail!:
+anyhow::ensure!(balance >= amount, "insufficient funds");
+anyhow::bail!("shop not connected");
 ```
 
 ## SQLite API
 
 ```rust
 // Connection-level
-execute(sql, params) -> Result<usize, SqliteError>
-execute_batch(sql) -> Result<(), SqliteError>
-query_one(sql, params) -> Row
-query_row(sql, params) -> Option<Row>
+execute(sql, params)       -> Result<usize, SqliteError>
+execute_batch(sql)         -> Result<(), SqliteError>
+query_one(sql, params)     -> Row              // traps on 0 or >1 rows
+query_row(sql, params)     -> Option<Row>
+last_insert_rowid()        -> Option<i64>
 
-// Prepared statements
-prepare(sql) -> Result<Statement, SqliteError>
-stmt.execute(params) -> Result<usize, SqliteError>
-stmt.query(params) -> Vec<Row>
-stmt.query_one(params) -> Row
-stmt.query_row(params) -> Option<Row>
+// Prepared statements (built with prepare(sql) -> Statement)
+stmt.execute(params)       -> Result<usize, SqliteError>
+stmt.query(params)         -> Vec<Row>
+stmt.query_one(params)     -> Row              // traps on 0 or >1 rows
+stmt.query_row(params)     -> Option<Row>
 
 // Parameters
-params![val1, val2, val3]
-params![(single_val,)]  // Single-element tuple
+params![]                        // no params
+params![val1, val2, val3]        // positional
 
 // Reading
 row.get::<&str, String>("column_name")
@@ -110,15 +113,27 @@ CommandContext::new()                           // Auto-detect (effect or extern
     .with_idempotency_key(key)                  // Set idempotency key
 ```
 
-## Environment variables (server)
+## Environment variables
 
-| Variable | Default |
-|----------|---------|
-| `UMARI_DATA_DIR` | `./umari-data` |
-| `UMARI_EVENT_STORE_URL` | `http://localhost:50051` |
-| `UMARI_API_ADDR` | `127.0.0.1:3000` |
-| `UMARI_API_KEY` | (none) |
-| `UMARI_LOG` | `umari=info` |
+### Server (`umari` binary)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `UMARI_DATA_DIR` | `./umari-data` | runtime database directory |
+| `UMARI_EVENT_STORE_URL` | `http://localhost:50051` | UmaDB event store URL |
+| `UMARI_API_ADDR` | `127.0.0.1:3000` | HTTP API bind address |
+| `UMARI_API_KEY` | _(none)_ | required `Authorization: Bearer <key>` |
+| `UMARI_LOG` | `umari=info` | `tracing-subscriber` filter |
+| `UMARI_VERBOSE` | `false` | set log level to `trace` |
+| `UMARI_NO_BANNER` | `false` | hide the startup banner |
+| `UMARI_SHUTDOWN_TIMEOUT` | `10s` | graceful shutdown deadline |
+
+### CLI (`umari-cli` / `umari` client)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `UMARI_URL` | `http://localhost:3000` | server URL |
+| `UMARI_API_KEY` | _(none)_ | bearer token sent with each request |
 
 ## Essential imports
 

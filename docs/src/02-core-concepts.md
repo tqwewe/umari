@@ -65,21 +65,21 @@ Events are stored in a single global log. Domain ID tags enable the runtime to e
 
 ## State is derived, not stored
 
-There is no "current state" table in Umari. All state is derived by replaying events:
+There is no "current state" table. Everything is derived from events:
 
-- **Commands** derive state through **folds** — replaying events to build the state needed for decision-making
-- **Projectors** derive state by handling events and writing to SQLite read models
-- **Effects** derive internal tracking state through SQLite, but idempotency is anchored in the event store
+| Module | How it derives state |
+|--------|----------------------|
+| Command | **Folds** — replay just the events this domain ID touches, in memory, on every call |
+| Projector | `handle()` updates SQLite as events arrive. The SQLite file is a rebuildable cache, not the source of truth |
+| Effect | Tracks internal work in SQLite, but checks the event store (via folds) to decide whether a side effect has already happened |
 
-Delete all SQLite databases, replay all events, and the system returns to identical state with no duplicate side effects.
+The contract: delete every SQLite file, replay events from position 0, end up in the same state — and side effects that already ran don't run again.
 
 ## Commands are the only writers
 
-Commands are the **sole mechanism** for appending events to the event store. Projectors never write directly.
+Every event in the store comes from a command. Projectors never write events; effects don't either — when an effect needs to write, it calls a command function inline. A command is just a regular Rust function exported with `#[export_command]`, so any module can import and call one directly.
 
-Effects can write to the event store too, but only through the same `Command::new(...).execute(...)` API that defines a normal command. In other words, the unit that writes is always "a command" — it's just that effects can call those command functions inline rather than going through the module dispatcher. That lets commands be plain, reusable Rust functions: you can import a command module directly and call it, or define private internal commands inside an effect crate purely for idempotency bookkeeping.
-
-This constraint ensures that all writes pass through validation and invariant checks, and that every event has a clear causal chain.
+That single rule keeps every write going through validation and invariant checks, and gives every event a clear causal chain.
 
 ## Causal chain
 
@@ -89,22 +89,12 @@ Every event traces back to the user action that initiated it:
 User HTTP request
   └── Command "create-warranty-plan"
         └── Event "warranty.plan.created"  (correlation_id = req_id)
-              └── Effect "sync-warranty-plan-product-variantions"
+              └── Effect "sync-warranty-plan-product-variations"
                     └── Command "create-master-product"  (triggering_event_id = above)
                           └── Event "shop.master_product.created"
 ```
 
 The `correlation_id` flows through the entire chain. The `triggering_event_id` links each downstream command to the specific event that caused it.
-
-## Full replayability
-
-The system is designed so that all SQLite databases can be deleted and rebuilt from events alone. This is not a theoretical property — it's enforced by the architecture:
-
-| Module | How replayability is guaranteed |
-|--------|-------------------------------|
-| Command | No SQLite. All state is derived from event store via folds. |
-| Projector | Processes events in order from the beginning. Same events → same SQLite. |
-| Effect | Idempotency is anchored in the event store via fold-checks against completion events. SQLite is for internal optimization only. |
 
 ## Key principles
 

@@ -45,7 +45,7 @@ pub struct WarrantySold {
     #[domain_id] pub shop_id: u64,       // ✓ — identifies the shop
     #[domain_id] pub warranty_id: Uuid,  // ✓ — identifies the warranty
     #[domain_id] pub order_id: u64,      // ✓ — identifies the order
-    #[domain_id] pub line_item_id: u64,  // ✓ — idempotency key
+    #[domain_id] pub line_item_id: u64,  // ✓ — identifies the order line
     pub plan_title: String,              // ✗ — just data
     pub customer_email: String,          // ✗ — just data
     pub price: Decimal,                  // ✗ — just data

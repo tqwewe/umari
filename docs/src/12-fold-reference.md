@@ -1,77 +1,80 @@
 # 12. Fold Reference
 
-This chapter documents all built-in fold types provided by `umari::prelude`. These generic folds cover the most common state derivation patterns, reducing boilerplate.
+`umari::prelude` ships a handful of generic folds for the most common state-derivation shapes — "did this happen?", "what's the latest value?", "how many times?", "which of these two won?". Reach for these first; only write a custom fold when none of them fit.
+
+| Fold | State | Pick when you ask… |
+|------|-------|--------------------|
+| [`EventFold<E>`](#eventfold) | `EventState<E>` | "Give me every occurrence of `E`" |
+| [`LatestEvent<E>`](#latestevent) | `Option<StoredEvent<E>>` | "What's the most recent `E`?" |
+| [`EventCounter<E>`](#eventcounter) | `u64` | "How many `E` have happened?" |
+| [`EventToggle<A, B>`](#eventtoggle) | `ToggleState<A, B>` | "Was the last event `A` or `B`?" |
+| [`SingleEvent<E>`](#singleevent) | — (an `EventSet`) | Custom fold that only reads one event type |
 
 ## EventFold
 
-Collects **all** occurrences of event type `E` into a `Vec`. Use when you need the full history.
+Collects **every** occurrence of event type `E` into a `Vec`.
 
 **State**: `EventState<E>`
 
 ```rust
-let fold = cmd.fold::<EventFold<ShopConnected>>();
-
-cmd.execute(|input, connected| {
-    // connected: EventState<ShopConnected>
+.fold::<EventFold<ShopConnected>>()
+.execute(|input, connected| {
     if connected.exists() {
-        // At least one ShopConnected event has occurred
         let first = &connected.events[0];
+        // ...
     }
+    Ok(emit![])
 })
 ```
 
-**`EventState<E>` methods**:
-
 ```rust
 impl<E: Event> EventState<E> {
-    pub fn exists(&self) -> bool { !self.events.is_empty() }
-    pub events: Vec<StoredEvent<E>>
+    pub events: Vec<StoredEvent<E>>;
+    pub fn exists(&self) -> bool;
 }
 ```
 
-**Use when**: You need to iterate over all occurrences or check properties of individual events in the history.
-
-**Avoid when**: You only need the most recent value. Use `LatestEvent` instead for efficiency.
+**Use when**: you need to inspect or aggregate over the full history.
+**Avoid when**: you only need the most recent value — `LatestEvent` is cheaper.
 
 ## LatestEvent
 
-Keeps only the **most recent** occurrence of event `E`. Each new event replaces the previous one.
+Keeps only the **most recent** `E`. Each new event replaces the previous.
 
 **State**: `Option<StoredEvent<E>>`
 
 ```rust
-let fold = cmd.fold::<LatestEvent<WarrantyPlanUpdated>>();
-
-cmd.execute(|input, latest_update| {
-    if let Some(event) = latest_update {
+.fold::<LatestEvent<WarrantyPlanUpdated>>()
+.execute(|input, latest| {
+    if let Some(event) = latest {
         // event.data is the most recent WarrantyPlanUpdated
     }
+    Ok(emit![])
 })
 ```
 
-**Use when**: You only care about the current value — the most recent `Updated` event, the last `Connected` event, etc.
-
-**Avoid when**: You need the full event history.
+**Use when**: you care about the current value — last `Updated`, last `Connected`, etc.
+**Avoid when**: you need the full history.
 
 ## EventCounter
 
-Counts occurrences of event `E` without storing any event data.
+Counts occurrences of `E` without storing event data.
 
 **State**: `u64`
 
 ```rust
-let fold = cmd.fold::<EventCounter<WarrantySold>>();
-
-cmd.execute(|input, sale_count| {
-    if sale_count >= MAX_WARRANTIES {
-        reject!("shop has reached the maximum number of warranties");
-    }
+.fold::<EventCounter<WarrantySold>>()
+.execute(|input, sale_count| {
+    anyhow::ensure!(
+        sale_count < MAX_WARRANTIES,
+        "shop has reached the maximum number of warranties"
+    );
+    Ok(emit![/* ... */])
 })
 ```
 
-**Use when**: You only need a count — `ensure!(sale_count > 0, "no sales yet")`.
-
-**Avoid when**: You need to inspect individual events.
+**Use when**: you only need a count.
+**Avoid when**: you need to inspect individual events.
 
 ## EventToggle
 
@@ -80,43 +83,45 @@ Tracks which of **two opposing events** occurred last. Designed for created/dele
 **State**: `ToggleState<A, B>`
 
 ```rust
-let fold = cmd.fold::<EventToggle<WarrantyPlanArchived, WarrantyPlanUnarchived>>();
-
-cmd.execute(|input, toggle| {
-    match toggle.last {
-        None => { /* Neither event has occurred */ }
-        Some(ToggleSide::A(archived_event)) => { /* Currently archived */ }
-        Some(ToggleSide::B(unarchived_event)) => { /* Currently unarchived */ }
+.fold::<EventToggle<WarrantyPlanArchived, WarrantyPlanUnarchived>>()
+.execute(|input, toggle| {
+    if toggle.is_a() {
+        // currently archived
+    } else if toggle.is_b() {
+        // currently unarchived
+    } else {
+        // neither has happened
     }
+    Ok(emit![])
 })
 ```
 
-**`ToggleState<A, B>` methods**:
-
 ```rust
 impl<A: Event, B: Event> ToggleState<A, B> {
-    pub fn is_a(&self) -> bool  // True if last event was of type A
-    pub fn is_b(&self) -> bool  // True if last event was of type B
-    pub last: Option<ToggleSide<A, B>>
+    pub last: Option<ToggleSide<A, B>>;
+    pub fn is_a(&self) -> bool;
+    pub fn is_b(&self) -> bool;
+    pub fn as_a(&self) -> Option<&StoredEvent<A>>;
+    pub fn as_b(&self) -> Option<&StoredEvent<B>>;
 }
 ```
 
-**Use when**: You have paired opposing events — archived/unarchived, activated/deactivated, locked/unlocked.
-
-**Constraints**: `A` and `B` must share the same domain ID fields.
+**Use when**: paired opposing events — archived/unarchived, activated/deactivated, locked/unlocked.
+**Constraint**: `A` and `B` must share the same domain ID fields.
 
 ## SingleEvent
 
-Not a fold, but an `EventSet` for folds that only need one event type.
+Not a fold — an `EventSet` shorthand for custom folds that only read a single event type. Use it as `type Events = SingleEvent<MyEvent>;`.
 
 ```rust
 #[derive(DomainIds, FromDomainIds)]
 pub struct ShopExistsFold {
-    #[domain_id] pub shop_id: u64,
+    #[domain_id]
+    pub shop_id: u64,
 }
 
 impl Fold for ShopExistsFold {
-    type Events = SingleEvent<ShopConnected>;  // Only one event type
+    type Events = SingleEvent<ShopConnected>;
     type State = bool;
 
     fn apply(&self, exists: &mut bool, _event: StoredEvent<ShopConnected>) {
@@ -127,7 +132,7 @@ impl Fold for ShopExistsFold {
 
 ## Custom folds
 
-When built-in types don't fit, implement `Fold` directly:
+When none of the built-ins fit, implement `Fold` yourself:
 
 ```rust
 #[derive(DomainIds, FromDomainIds)]

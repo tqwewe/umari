@@ -1,16 +1,22 @@
 # 11. SQLite API Reference
 
-Projectors and effects have access to a SQLite database. Each module gets its own isolated database file — modules cannot read each other's data. This chapter is a complete reference for the SQLite API available inside WASM modules.
+Projectors and effects each get their own isolated SQLite database file. Modules cannot read each other's data. This chapter is the complete reference for the SQLite API available inside WASM modules.
 
-## Overview
+## Mental model
 
-The SQLite API is provided by the `umari::prelude::*` import. It wraps rusqlite with a simplified, type-safe interface designed for the WASM guest environment.
+- **`execute*` / `query*` free functions** run against the implicit connection — convenient for one-offs.
+- **`prepare()`** returns a `Statement` you store on your module struct, so the SQL is compiled once and reused per event.
+- **Errors that return `Result`** are constraint violations you can recover from. Everything else (wrong column name, wrong type, "expected one row but got two") **traps the module** — the runtime treats traps as bugs, not business failures.
 
-## Connection-level functions
+Every `handle()` call runs inside an implicit transaction. Don't reach for `BEGIN`/`COMMIT` yourself.
+
+## Free functions
+
+These all operate on the module's connection.
 
 ### `execute(sql, params) -> Result<usize, SqliteError>`
 
-Execute a SQL statement and return the number of rows affected.
+Run a single statement, returning rows affected.
 
 ```rust
 execute(
@@ -21,7 +27,7 @@ execute(
 
 ### `execute_batch(sql) -> Result<(), SqliteError>`
 
-Execute multiple SQL statements separated by semicolons. Typically used in `init()` for creating tables and indexes.
+Run multiple statements separated by semicolons. Use this in `init()` for DDL.
 
 ```rust
 execute_batch(
@@ -37,31 +43,41 @@ execute_batch(
 
 ### `query_one(sql, params) -> Row`
 
-Execute a query that returns exactly one row. **Traps** if no row is found or if multiple rows are returned.
+Return exactly one row. **Traps** if zero or multiple rows match.
 
 ```rust
-let row = query_one("SELECT name, price FROM plans WHERE plan_id = ?1", params![plan_id]);
+let row = query_one(
+    "SELECT name, price FROM plans WHERE plan_id = ?1",
+    params![plan_id],
+);
 let name: String = row.get("name");
 let price: String = row.get(1);  // by column index
 ```
 
 ### `query_row(sql, params) -> Option<Row>`
 
-Execute a query that returns zero or one row. Returns `None` if no rows match. If multiple rows match, returns only the first.
+Return at most one row. Extra rows are silently dropped — the first match wins.
 
 ```rust
-if let Some(row) = query_row("SELECT access_token FROM shops WHERE shop_id = ?1", params![id]) {
+if let Some(row) = query_row(
+    "SELECT access_token FROM shops WHERE shop_id = ?1",
+    params![id],
+) {
     let token: String = row.get(0);
 }
 ```
 
+### `last_insert_rowid() -> Option<i64>`
+
+Returns the rowid of the most recent successful `INSERT` on this connection, or `None` if no insert has happened yet.
+
 ## Prepared statements
 
-For frequently executed queries, use `prepare()` in `init()` to create reusable statements.
+For queries that run on every event, prepare once in `init()` and reuse:
 
-### `prepare(sql) -> Result<Statement, SqliteError>`
+### `prepare(sql) -> Statement`
 
-Prepare a SQL statement. Store it in your module struct.
+Returns a `Statement` directly — there's no `Result`. A malformed SQL string traps the module.
 
 ```rust
 struct MyProjector {
@@ -69,55 +85,52 @@ struct MyProjector {
     archive_widget: Statement,
 }
 
-fn init() -> Result<Self, SqliteError> {
-    Ok(MyProjector {
-        insert_widget: prepare("INSERT INTO widgets (id, name) VALUES (?1, ?2)")?,
-        archive_widget: prepare("UPDATE widgets SET archived = TRUE WHERE id = ?1")?,
-    })
+impl Projector for MyProjector {
+    type Query = WidgetEvents;
+
+    fn init() -> anyhow::Result<Self> {
+        execute_batch("CREATE TABLE IF NOT EXISTS widgets (...)")?;
+        Ok(MyProjector {
+            insert_widget: prepare("INSERT INTO widgets (id, name) VALUES (?1, ?2)"),
+            archive_widget: prepare("UPDATE widgets SET archived = TRUE WHERE id = ?1"),
+        })
+    }
+
+    fn handle(&mut self, event: StoredEvent<WidgetEvents>) -> anyhow::Result<()> {
+        // ...
+        Ok(())
+    }
 }
 ```
 
-### `Statement::execute(params) -> Result<usize, SqliteError>`
+### Statement methods
 
-Execute a prepared statement, returning the number of affected rows.
+| Method | Returns | Traps on |
+|--------|---------|----------|
+| `execute(params)` | `Result<usize, SqliteError>` | — |
+| `query(params)` | `Vec<Row>` | — |
+| `query_one(params)` | `Row` | zero rows, or more than one row |
+| `query_row(params)` | `Option<Row>` | — |
 
 ```rust
 self.insert_widget.execute(params![id.to_string(), name])?;
-```
 
-### `Statement::query(params) -> Vec<Row>`
-
-Execute a prepared statement and return all result rows.
-
-```rust
-let rows = self.list_widgets.query(params![shop_id])?;
+let rows = self.list_widgets.query(params![shop_id]);
 for row in rows {
     let name: String = row.get("name");
 }
 ```
 
-### `Statement::query_one(params) -> Row`
-
-Execute and return exactly one row. **Traps** if zero or multiple rows.
-
-### `Statement::query_row(params) -> Option<Row>`
-
-Execute and return zero or one row.
-
 ## Parameters
 
-Parameters are passed using the `params!` macro. It converts Rust values into SQLite values:
+Pass parameters using the `params!` macro:
 
 ```rust
-params![value1, value2, value3]
-params![]  // empty params
+params![]                          // no params
+params![value1, value2, value3]    // positional params for ?1, ?2, ?3
 ```
 
-Single parameters with trailing comma:
-
-```rust
-params![(id,)]  // single-element tuple
-```
+Each value is converted through `Into<SqliteValue>`. To pass a single value, write `params![id]` — there's no trailing-comma syntax.
 
 ### Supported parameter types
 
@@ -129,90 +142,75 @@ params![(id,)]  // single-element tuple
 | `f32`, `f64` | Real |
 | `String`, `&str` | Text |
 | `Vec<u8>` | Blob |
-| `Uuid` | Text (formatted string) |
-| `Option<T>` | Null or T |
-| `()` | Empty params |
-
-Values are auto-converted via the `Into<SqliteValue>` trait.
+| `Uuid` | Text (canonical hyphenated form) |
+| `Option<T>` | Null when `None`, otherwise `T` |
 
 ## Reading rows
 
-### `Row::get<I: ColumnIndex, T: FromValue>(column) -> T`
+### `Row::get<I, T>(column) -> T`
 
-Get a column value by name or index.
+Get a column value by name (`&str`) or zero-based position (`usize`). Traps on type mismatch or unknown column.
 
 ```rust
 let name: String = row.get("name");
 let count: i64 = row.get(0);
-let optional: Option<String> = row.get("nullable_col");
+let maybe: Option<String> = row.get("nullable_col");
 ```
 
-### `Row::tuple<T: FromRow>() -> T`
+### `Row::tuple<T>() -> T`
 
-Unpack a row into a tuple by position.
+Unpack the first N columns into a tuple by position (up to 8 columns).
 
 ```rust
 let (id, name, price): (String, String, String) = row.tuple();
 ```
 
-### Supported read types
+### Supported column types
 
-| `FromValue` impl | SQLite value |
-|-----------------|-------------|
-| `bool` | Integer (0 = false, non-zero = true) |
+| Rust type | SQLite value |
+|-----------|--------------|
+| `bool` | Integer (0 = false, 1 = true; other values trap) |
 | `String` | Text |
 | `i64` | Integer |
 | `f64` | Real |
 | `Vec<u8>` | Blob |
-| `Option<T>` | Null → None, otherwise → Some(T) |
+| `Option<T>` | Null → `None`, otherwise `Some(T)` |
 
-### ColumnIndex
+## Errors
 
-You can index by `&str` (column name) or `usize` (zero-based position).
-
-## Error types
-
-### `SqliteError`
-
-The error type returned by all SQL operations. Contains a `ConstraintViolation` for constraint errors.
+`SqliteError` only covers constraint violations — those are the only failures the API surfaces as `Result`:
 
 ```rust
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Error)]
 pub enum SqliteError {
-    #[error("{0}")]
     ConstraintViolation(ConstraintViolation),
 }
 
 pub struct ConstraintViolation {
-    pub kind: ConstraintViolationKind,
+    pub kind: ConstraintViolationKind, // Unique, PrimaryKey, NotNull, ForeignKey, Check, Other
     pub message: String,
 }
 ```
 
-### `ConstraintViolationKind`
+Use it when you want a `UNIQUE` collision to mean "this event was already projected, skip":
 
 ```rust
-pub enum ConstraintViolationKind {
-    Unique,
-    PrimaryKey,
-    NotNull,
-    ForeignKey,
-    Check,
-    Other,
+match execute("INSERT INTO widgets (id, name) VALUES (?1, ?2)", params![id, name]) {
+    Ok(_) => {}
+    Err(SqliteError::ConstraintViolation(v)) if v.kind == ConstraintViolationKind::Unique => {
+        // already projected — fine
+    }
+    Err(err) => return Err(err.into()),
 }
 ```
 
 ## Transactions
 
-All SQLite operations in projectors and effects run within an implicit transaction. The runtime wraps every `handle()` call in a transaction that begins before the call and commits after. You don't need to manage transactions manually.
-
-For projectors, each event is a separate transaction. For effects, the worker manages transactions across event batches.
+The runtime wraps every `handle()` call in a transaction: it begins before the call and commits if `handle()` returns `Ok`. Returning `Err` rolls back. You don't manage transactions manually.
 
 ## Best practices
 
-- **Use `IF NOT EXISTS`** in DDL statements
-- **Store UUIDs as TEXT** — SQLite has no native UUID type
-- **Store decimals as TEXT** — avoids floating-point precision issues
-- **Use `params!` macro** rather than string interpolation — prevents SQL injection
-- **Prepare statements in `init()`** for queries that run on every event
-- **Use one-off `execute()` / `query_row()`** for infrequent operations
+- Use `IF NOT EXISTS` in DDL so `init()` is idempotent across module restarts.
+- Store UUIDs as `TEXT` (SQLite has no UUID type) — `Uuid` already converts to canonical text.
+- Store decimals as `TEXT` to avoid floating-point precision issues.
+- Always use `params!` — never interpolate into the SQL string.
+- Prepare statements that run per-event in `init()`; use the free functions for one-offs.
