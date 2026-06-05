@@ -1,0 +1,16 @@
+{
+  "name": "connect-shop",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "umari": { "wasm": "dist/module.wasm" },
+  "scripts": {
+    "build": "umari-js build src/index.ts --out dist/module.wasm"
+  },
+  "devDependencies": {
+    "@umari/js": "file:../..",
+    "@bytecodealliance/jco": "^1.17.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.6.0"
+  }
+}

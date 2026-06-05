@@ -1,145 +1,83 @@
-import { zodToJsonSchema } from "zod-to-json-schema";
+import type { EmittedEventPayload } from "./event.js";
+import type { BoundFold } from "./fold.js";
+import type { CommandContext } from "./util/lift-lower.js";
 
-import type {
-  CommandDef,
-  EmittedEvent,
-  EventFilter,
-  FoldDef,
-  RuleDef,
-  StatesOf,
-  StoredEventRaw,
-} from "./types.ts";
-import {
-  buildQueryItems,
-  collectFoldEvents,
-  extractBindings,
-} from "./query.ts";
-import { applyEventsToFolds, checkAllRules } from "./apply.ts";
-
-/**
- * Define a command. `state` and `rules` are optional — omit them when not needed:
- *
- *   const ConnectShop = defineCommand({
- *     input: z.object({ shop_id: z.number() }),
- *     domainIds: ["shop_id"],
- *     emit(_, input) { return [ShopConnected.create(input)]; },
- *   });
- */
-export function defineCommand<
-  TInput extends object,
-  const TDomainIds extends readonly (keyof TInput & string)[],
-  TState extends Record<string, FoldDef<any, any>> = Record<never, never>,
-  TRules extends readonly RuleDef<TInput>[] = readonly [],
->(def: {
-  input: { parse(data: unknown): TInput };
-  domainIds: TDomainIds;
-  state?: TState;
-  rules?: TRules;
-  emit: (states: StatesOf<TState>, input: TInput) => EmittedEvent[];
-}): CommandDef<TInput, TDomainIds, TState, TRules> {
-  return {
-    _tag: "command",
-    _schema: def.input,
-    _domainIds: def.domainIds,
-    _state: (def.state ?? {}) as TState,
-    _rules: (def.rules ?? []) as unknown as TRules,
-    _emit: def.emit,
-  };
+/** A schema-like object: anything with `.parse(unknown) → T`. */
+export interface InputSchema<T> {
+  parse(raw: unknown): T;
+  /** Optional JSON Schema string, returned by `command.schema()`. */
+  jsonSchema?(): string;
 }
 
-// ─── WIT export shape ────────────────────────────────────────────────────────
-// These types mirror the jco-generated command world exports.
-// query() and execute() throw on error (jco maps WIT result<T,E> to throw).
+/** Map returned from `folds(input)`. Values are bound folds. */
+export type FoldsMap = Readonly<Record<string, BoundFold<unknown>>>;
 
-type WitEventQuery = { items: Array<{ types: string[]; tags: string[] }> };
-
-type WitEmittedEvent = {
-  eventType: string;
-  data: string;
-  domainIds: Array<{ name: string; id?: string }>;
+/** State map handed to `execute(...)`, keyed by the same names as `folds(input)`. */
+export type FoldStates<TFolds extends FoldsMap> = {
+  [K in keyof TFolds]: TFolds[K] extends BoundFold<infer S> ? S : never;
 };
 
-type WitExecuteOutput = { events: WitEmittedEvent[] };
+/** Argument object passed into `execute`. */
+export interface ExecuteArgs<TInput, TFolds extends FoldsMap> {
+  input: TInput;
+  folds: FoldStates<TFolds>;
+  context: CommandContext;
+  /** Build an `EmittedEventPayload[]` from zero or more events. */
+  emit: (...events: EmittedEventPayload[]) => EmittedEventPayload[];
+  /** Short-circuit with `error::rejected(message)`. */
+  reject: (message: string) => never;
+  /** Short-circuit with `error::invalid-input(message)`. */
+  invalidInput: (message: string) => never;
+}
+
+/** Options accepted by `defineCommand`. */
+export interface DefineCommandOptions<TInput extends object, TFolds extends FoldsMap> {
+  /** Optional input schema; if present, called with the parsed JSON. */
+  input?: InputSchema<TInput>;
+  /** Field names that key the command's DCB query. Must be in `TInput`. */
+  domainIds: readonly (keyof TInput & string)[];
+  /** Folds to replay before `execute`. Names become properties on `folds`. */
+  folds: (input: TInput) => TFolds;
+  /** Body — runs after all folds have been applied. */
+  execute: (args: ExecuteArgs<TInput, TFolds>) => EmittedEventPayload[] | undefined;
+}
+
+/** Pure-data definition produced by `defineCommand`. */
+export interface CommandDefinition<TInput extends object, TFolds extends FoldsMap> {
+  readonly __umariCommand: true;
+  readonly input: InputSchema<TInput> | undefined;
+  readonly domainIds: readonly (keyof TInput & string)[];
+  readonly folds: (input: TInput) => TFolds;
+  readonly execute: (args: ExecuteArgs<TInput, TFolds>) => EmittedEventPayload[] | undefined;
+}
 
 /**
- * Wire up the WIT exports for a command module.
+ * Define a command — pure data, no side effects. Wrap with `exportCommand`
+ * to wire to the WIT exports.
  *
- * Usage in entry point:
- *   export const { schema, query, execute } = exportCommand(ConnectShop);
+ * ```ts
+ * export default defineCommand<Input>({
+ *   domainIds: ['shopId', 'planId'] as const,
+ *   folds: ({ shopId, planId }) => ({
+ *     shopExists: ShopExistsFold({ shopId }),
+ *     plan: EventFold(WarrantyPlanCreated)({ planId, shopId }),
+ *   }),
+ *   execute: ({ input, folds, emit, reject }) => {
+ *     if (!folds.shopExists) reject('shop does not exist');
+ *     if (folds.plan.length > 0) return emit();
+ *     return emit(WarrantyPlanCreated({ ... }));
+ *   },
+ * });
+ * ```
  */
-export function exportCommand<
-  TInput extends object,
-  TDomainIds extends readonly (keyof TInput & string)[],
-  TState extends Record<string, FoldDef<any, any>>,
-  TRules extends readonly RuleDef<TInput>[],
->(def: CommandDef<TInput, TDomainIds, TState, TRules>) {
+export function defineCommand<TInput extends object, TFolds extends FoldsMap>(
+  opts: DefineCommandOptions<TInput, TFolds>,
+): CommandDefinition<TInput, TFolds> {
   return {
-    // Returns undefined if no schema (matches jco: option<json> → Json | undefined)
-    schema(): string | undefined {
-      try {
-        return JSON.stringify(zodToJsonSchema(def._schema as any));
-      } catch {
-        return undefined;
-      }
-    },
-
-    // Throws on invalid input (jco maps result<T,E> to throw)
-    query(inputJson: string): WitEventQuery {
-      const input = def._schema.parse(JSON.parse(inputJson)) as TInput;
-
-      const bindings = extractBindings(
-        def._domainIds as unknown as string[],
-        input as Record<string, unknown>,
-      );
-      const allEvents = collectFoldEvents(
-        def._state,
-        def._rules as readonly RuleDef[],
-      );
-      const { items } = buildQueryItems(allEvents, bindings);
-
-      return {
-        items: items.map((item: EventFilter) => ({
-          types: item.types,
-          tags: item.tags,
-        })),
-      };
-    },
-
-    // Throws on invalid input or rule rejection
-    execute(inputJson: string, rawEvents: StoredEventRaw[]): WitExecuteOutput {
-      const input = def._schema.parse(JSON.parse(inputJson)) as TInput;
-
-      const bindings = extractBindings(
-        def._domainIds as unknown as string[],
-        input as Record<string, unknown>,
-      );
-
-      // Check rules — each rule applies events to its own fold(s)
-      const ruleError = checkAllRules(
-        def._rules as readonly RuleDef[],
-        rawEvents,
-        bindings,
-        input,
-      );
-      if (ruleError) {
-        throw Object.assign(new Error(ruleError), { tag: "rejected", val: ruleError });
-      }
-
-      // Apply events to command state folds
-      const states = applyEventsToFolds(def._state, rawEvents, bindings);
-
-      const emittedEvents = def._emit(states, input);
-
-      return {
-        events: emittedEvents.map((e) => ({
-          eventType: e.eventType,
-          data: e.data,
-          domainIds: e.domainIds.map((d) => ({
-            name: d.name,
-            ...(d.id !== null && { id: d.id }),
-          })),
-        })),
-      };
-    },
+    __umariCommand: true,
+    input: opts.input,
+    domainIds: opts.domainIds,
+    folds: opts.folds,
+    execute: opts.execute,
   };
 }

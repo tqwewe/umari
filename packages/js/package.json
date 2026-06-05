@@ -1,31 +1,63 @@
 {
   "name": "@umari/js",
   "version": "0.1.0",
-  "description": "TypeScript SDK for writing umari modules compiled to WASM",
+  "description": "TypeScript SDK for authoring Umari WASM modules (commands, projectors, effects).",
   "type": "module",
   "sideEffects": false,
+  "license": "MIT",
+  "bin": {
+    "umari-js": "./bin/umari-js.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./sqlite": {
+      "types": "./dist/sqlite.d.ts",
+      "import": "./dist/sqlite.js"
+    },
+    "./crypto": {
+      "types": "./dist/crypto.d.ts",
+      "import": "./dist/crypto.js"
+    },
+    "./http": {
+      "types": "./dist/http.d.ts",
+      "import": "./dist/http.js"
+    },
+    "./env": {
+      "types": "./dist/env.d.ts",
+      "import": "./dist/env.js"
+    }
   },
   "files": [
-    "src",
+    "dist",
     "wit",
-    "scripts"
+    "bin",
+    "scripts",
+    "README.md"
   ],
   "scripts": {
-    "prepare": "node scripts/copy-wit.js",
+    "prepare": "node scripts/copy-wit.mjs",
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "generate-types": "jco types ../../wit/command --out-dir src/generated/command && jco types ../../wit/projector --out-dir src/generated/projector && jco types ../../wit/effect --out-dir src/generated/effect && jco types ../../wit/sqlite --world-name sqlite --out-dir src/generated/sqlite"
+    "test": "vitest run"
   },
   "peerDependencies": {
-    "zod": "^3.0.0"
+    "@bytecodealliance/jco": "^1.17.0",
+    "esbuild": "^0.25.0"
   },
-  "dependencies": {
-    "zod-to-json-schema": "^3.23.0"
+  "peerDependenciesMeta": {
+    "@bytecodealliance/jco": { "optional": false },
+    "esbuild": { "optional": false }
   },
   "devDependencies": {
-    "@bytecodealliance/jco": "^1.17.6",
-    "typescript": "^5.0.0",
-    "zod": "^3.23.0"
+    "@bytecodealliance/jco": "^1.17.0",
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
   }
 }

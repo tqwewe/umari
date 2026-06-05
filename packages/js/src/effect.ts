@@ -1,73 +1,62 @@
-import type {
-  AnyEventEntry,
-  EffectContext,
-  EventDef,
-  EventQuery,
-  EventUnionFromEntries,
-  StoredEventRaw,
-} from "./types.ts";
-import { buildQueryFromEntries } from "./query.ts";
-import { deserializeEvent } from "./apply.ts";
-import { createExecutor } from "./executor.ts";
-import { fetch } from "./http.ts";
+import type { EventDef, StoredEventUnion } from "./event.js";
+
+/** Options accepted by `defineEffect`. */
+export interface DefineEffectOptions<
+  TEvents extends readonly EventDef[],
+  TState = undefined,
+> {
+  /** Event definitions this effect subscribes to. */
+  events: TEvents;
+  /** Build initial state on construction. */
+  init?: () => TState;
+  /**
+   * Return a partition key for the event. Events sharing a key are processed
+   * serially. `undefined` means the event goes through the global lane.
+   */
+  partitionKey?: (event: StoredEventUnion<TEvents>, state: TState) => string | undefined;
+  /** Handle a single event. May be async — runtime awaits the returned promise. */
+  handle: (event: StoredEventUnion<TEvents>, state: TState) => void | Promise<void>;
+}
+
+/** Pure-data definition produced by `defineEffect`. */
+export interface EffectDefinition<
+  TEvents extends readonly EventDef[] = readonly EventDef[],
+  TState = unknown,
+> {
+  readonly __umariEffect: true;
+  readonly events: TEvents;
+  readonly init: (() => TState) | undefined;
+  readonly partitionKey:
+    | ((event: StoredEventUnion<TEvents>, state: TState) => string | undefined)
+    | undefined;
+  readonly handle: (event: StoredEventUnion<TEvents>, state: TState) => void | Promise<void>;
+}
 
 /**
- * Define and export an effect module in one step.
+ * Define an effect.
  *
- * Returns an `Effect` class for use as a named export in your entry point:
- *
- *   export const Effect = exportEffect({
- *     events: [WarrantySold],
- *     partitionKey: (event) => event.data.shop_id,
- *     async handle(event, { fetch, executor }) {
- *       await fetch("https://...", { ... });
- *     },
- *   });
+ * ```ts
+ * export default defineEffect({
+ *   events: [ShopConnected],
+ *   init: () => ({ endpoint: env('NOTIFY_ENDPOINT') }),
+ *   partitionKey: (event) => event.data.shopId.toString(),
+ *   handle: async (event, state) => {
+ *     await fetch(state.endpoint, { method: 'POST', body: JSON.stringify({...}) });
+ *   },
+ * });
+ * ```
  */
-export function exportEffect<
-  const TEvents extends readonly AnyEventEntry[],
->(def: {
-  events: TEvents;
-  partitionKey?: (
-    event: EventUnionFromEntries<TEvents>,
-  ) => string | number | null | undefined;
-  handle: (
-    event: EventUnionFromEntries<TEvents>,
-    ctx: EffectContext,
-  ) => Promise<void>;
-}) {
-  return class Effect {
-    constructor() {}
-
-    query(): EventQuery {
-      return buildQueryFromEntries(def.events);
-    }
-
-    partitionKey(raw: StoredEventRaw): string | undefined {
-      if (!def.partitionKey) return undefined;
-      const typed = deserializeEvent(raw);
-      const key = def.partitionKey(typed as any);
-      return key != null ? String(key) : undefined;
-    }
-
-    async handle(raw: StoredEventRaw): Promise<void> {
-      const isSubscribed = def.events.some((entry) => {
-        const eventDef = "type" in entry
-          ? (entry as EventDef<any, any, any>)
-          : (entry as { event: EventDef<any, any, any> }).event;
-        return eventDef.type === raw.eventType;
-      });
-      if (!isSubscribed) return;
-
-      const typed = deserializeEvent(raw);
-
-      const executor = createExecutor({
-        correlationId: raw.correlationId,
-        triggeringEventId: raw.id,
-      });
-
-      const ctx: EffectContext = { executor, fetch };
-      await def.handle(typed as any, ctx);
-    }
+export function defineEffect<
+  const TEvents extends readonly EventDef[],
+  TState = undefined,
+>(
+  opts: DefineEffectOptions<TEvents, TState>,
+): EffectDefinition<TEvents, TState> {
+  return {
+    __umariEffect: true,
+    events: opts.events,
+    init: opts.init,
+    partitionKey: opts.partitionKey,
+    handle: opts.handle,
   };
 }

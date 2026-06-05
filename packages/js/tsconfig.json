@@ -1,21 +1,21 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
     "strict": true,
     "noUncheckedIndexedAccess": true,
-    "exactOptionalPropertyTypes": true,
-    "verbatimModuleSyntax": true,
-    "allowImportingTsExtensions": true,
-    "noEmit": true,
-    "lib": ["ES2022", "DOM", "ESNext.Disposable"],
-    "paths": {
-      "umari:sqlite/connection@0.1.0": ["./src/generated/sqlite/interfaces/umari-sqlite-connection.d.ts"],
-      "umari:sqlite/statement@0.1.0": ["./src/generated/sqlite/interfaces/umari-sqlite-statement.d.ts"],
-      "umari:sqlite/types@0.1.0": ["./src/generated/sqlite/interfaces/umari-sqlite-types.d.ts"],
-      "umari:command/executor@0.1.0": ["./src/generated/command/interfaces/umari-command-executor.d.ts"]
-    }
+    "noFallthroughCasesInSwitch": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "declaration": true,
+    "sourceMap": true,
+    "resolveJsonModule": true,
+    "types": ["node"]
   },
-  "include": ["src/**/*.ts", "examples/**/*.ts"]
+  "include": ["src/**/*.ts", "scripts/**/*.mjs"],
+  "exclude": ["node_modules", "dist"]
 }

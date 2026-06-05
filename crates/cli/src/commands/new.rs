@@ -162,9 +162,25 @@ fn package_json_content(module_type: &str, name: &str) -> String {
     } else {
         ""
     };
-    format!(
-        "{{\n  \"name\": \"{name}\",\n  \"version\": \"0.1.0\",\n  \"umari\": {{\n    \"wasm\": \"dist/module.wasm\"\n  }},\n  \"scripts\": {{\n    \"build\": \"esbuild src/index.ts --bundle --outfile=dist/bundle.js --format=esm --platform=neutral --external:'umari:*' && jco componentize dist/bundle.js --wit node_modules/@umari/js/wit/{module_type} --world-name {module_type} --out dist/module.wasm\"\n  }},\n  \"devDependencies\": {{\n    \"@bytecodealliance/jco\": \"^1.17.6\",\n    \"@umari/js\": \"../../packages/js\",\n    \"esbuild\": \"^0.25.0\"{extra_deps}\n  }}\n}}\n"
-    )
+    let _ = module_type;
+    formatdoc! {r#"
+        {{
+          "name": "{name}",
+          "version": "0.1.0",
+          "type": "module",
+          "umari": {{
+            "wasm": "dist/module.wasm"
+          }},
+          "scripts": {{
+            "build": "umari-js build src/index.ts --out dist/module.wasm"
+          }},
+          "devDependencies": {{
+            "@bytecodealliance/jco": "^1.17.0",
+            "@umari/js": "../../packages/js",
+            "esbuild": "^0.25.0"{extra_deps}
+          }}
+        }}
+    "#}
 }
 
 fn tsconfig_json_content() -> &'static str {
@@ -173,15 +189,68 @@ fn tsconfig_json_content() -> &'static str {
 
 fn index_ts_content(module_type: &str, type_name: &str) -> String {
     match module_type {
-        "command" => format!(
-            "import {{ z }} from \"zod\";\nimport {{ defineCommand, exportCommand }} from \"@umari/js\";\n\nconst {type_name} = defineCommand({{\n  input: z.object({{\n    // TODO: add fields; domain ID fields must be in domainIds below\n  }}),\n  domainIds: [],\n  emit(_state, _input) {{\n    return [];\n  }},\n}});\n\nexport const {{ schema, query, execute }} = exportCommand({type_name});\n"
-        ),
-        "projector" => format!(
-            "import {{ exportProjector }} from \"@umari/js\";\nimport type {{ SqliteDb }} from \"@umari/js\";\n\nexport const {type_name} = exportProjector({{\n  events: [],\n  setup(_db: SqliteDb) {{\n    // TODO: CREATE TABLE IF NOT EXISTS ...\n  }},\n  handle(_event, _db) {{}},\n}});\n"
-        ),
-        "effect" => format!(
-            "import {{ exportEffect }} from \"@umari/js\";\n\nexport const {type_name} = exportEffect({{\n  events: [],\n  handle(_event) {{}},\n}});\n"
-        ),
+        "command" => formatdoc! {r#"
+            import {{ z }} from "zod";
+            import {{ defineCommand, exportCommand, emit }} from "@umari/js";
+
+            type Input = z.infer<typeof InputSchema>;
+
+            const InputSchema = z.object({{
+              // TODO: add fields. Domain ID fields must also appear in `domainIds` below.
+            }});
+
+            const {type_name} = defineCommand<Input, {{}}>({{
+              input: InputSchema,
+              domainIds: [] as const,
+              folds: (_input) => ({{
+                // TODO: declare bound folds, e.g. exists: ShopExistsFold({{ shopId: input.shopId }})
+              }}),
+              execute: ({{ input: _input, folds: _folds }}) => {{
+                return emit();
+              }},
+            }});
+
+            export const {{ schema, execute }} = exportCommand({type_name});
+        "#},
+        "projector" => formatdoc! {r#"
+            import {{ defineProjector, exportProjector, sqlite }} from "@umari/js";
+
+            const {type_name} = defineProjector({{
+              events: [
+                // TODO: list event definitions this projector subscribes to.
+              ],
+              init: () => {{
+                sqlite.executeBatch(`
+                  -- TODO: CREATE TABLE IF NOT EXISTS …
+                `);
+              }},
+              handle: (event) => {{
+                switch (event.type) {{
+                  // TODO: dispatch per event.type
+                }}
+              }},
+            }});
+
+            export const {{ projector }} = exportProjector({type_name});
+        "#},
+        "effect" => formatdoc! {r#"
+            import {{ defineEffect, exportEffect }} from "@umari/js";
+
+            const {type_name} = defineEffect({{
+              events: [
+                // TODO: list event definitions this effect subscribes to.
+              ],
+              init: () => {{
+                return {{}};
+              }},
+              partitionKey: (_event) => undefined,
+              handle: async (_event, _state) => {{
+                // TODO: perform side effects, optionally call other commands via `execute(...)`.
+              }},
+            }});
+
+            export const {{ effect }} = exportEffect({type_name});
+        "#},
         _ => unreachable!(),
     }
 }

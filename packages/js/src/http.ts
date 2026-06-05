@@ -1,14 +1,8 @@
-// http.ts — HTTP wrapper for effects
+// Effects can use the global `fetch` directly. StarlingMonkey wires it to
+// `wasi:http/outgoing-handler` inside the WASM guest. In projector modules,
+// `fetch` will fail: the projector WIT world does not import `wasi:http`.
 //
-// ComponentizeJS backed by WASI P2 provides `globalThis.fetch` automatically
-// when the WIT world imports `wasi:http/outgoing-handler`. No explicit wrapper
-// is needed — simply re-export the global fetch for use in EffectContext.
-//
-// If ComponentizeJS does NOT polyfill globalThis.fetch in a future version,
-// replace this with an explicit wrapper over the jco-generated WASI HTTP bindings.
+// This file is documentation-as-code so users can write
+// `import { fetch } from '@umari/js/http'` and have a single import path.
 
-// ComponentizeJS provides globalThis.fetch backed by wasi:http/outgoing-handler
-export const fetch = globalThis.fetch as (
-  input: string | URL | Request,
-  init?: RequestInit,
-) => Promise<Response>;
+export const fetch: typeof globalThis.fetch = globalThis.fetch;
