@@ -61,7 +61,7 @@ pub struct ShopExistsFold {
 
 `FromDomainIds` generates a constructor that takes domain ID bindings and creates the fold struct. Only fields matching the fold's `#[domain_id]` fields are copied from the bindings. This is how a command that declares `shop_id=42` and `plan_id=abc` on its input automatically passes just `shop_id=42` to the `ShopExistsFold`.
 
-**Where it's used**: `FromDomainIds` is only used by the `Command` builder's `.fold::<T>()` and `.fold_args::<T>(args)` methods — those are the call sites that take a fold type by name and construct it from the command's input bindings. If you always reach for `.fold_with(|input| ...)` instead, you don't strictly need `FromDomainIds`. It may be removed in the future, but for now derive it on your fold structs so they're usable with `.fold::<T>()`.
+**Where it's used**: `FromDomainIds` is used by the `Command` builder's `.fold::<T>()` and `.fold_args::<T>(args)` methods — those are the call sites that take a fold type by name and construct it from the command's input bindings. Derive it on your fold structs to make them usable with `.fold::<T>()`.
 
 The generic `EventFold<E>`, `LatestEvent<E>`, `EventCounter<E>`, and `EventToggle<A,B>` all implement `FromDomainIds` automatically — they filter bindings to only the fields that the event type `E` declares as domain IDs.
 
