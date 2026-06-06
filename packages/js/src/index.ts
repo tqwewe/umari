@@ -37,6 +37,20 @@ export { exportCommand, type CommandExports } from "./runtime/command-exports.js
 export { exportProjector, type ProjectorResource } from "./runtime/projector-exports.js";
 export { exportEffect, type EffectResource } from "./runtime/effect-exports.js";
 
+// ── WIT shapes (re-exported so consumer .d.ts files can name them when
+//    inferring the return types of exportCommand / exportProjector / exportEffect)
+export type {
+  Result,
+  WitCommandContext,
+  WitCommandError,
+  WitDomainId,
+  WitEmittedEvent,
+  WitEventFilter,
+  WitEventQuery,
+  WitExecuteOutput,
+  WitStoredEvent,
+} from "./types/wit.js";
+
 // ── FoldQuery
 export { foldQuery, type FoldQueryResult } from "./fold-query.js";
 

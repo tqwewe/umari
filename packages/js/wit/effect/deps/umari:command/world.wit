@@ -1,0 +1,27 @@
+package umari:command@0.1.0;
+
+interface transaction {
+    use types.{command-context, emit-event};
+    use umari:common/types@0.1.0.{event-query, stored-event};
+
+    resource transaction {
+        constructor(query: event-query);
+        next-batch: func() -> list<stored-event>;
+        commit: func(context: command-context, events: list<emit-event>) -> option<u64>;
+    }
+}
+
+/// The command world - what a command module must implement
+world command {
+    import executor;
+    import transaction;
+
+    use types.{command-context, error, execute-output};
+    use umari:common/types@0.1.0.{event-query, json, stored-event};
+
+    /// An optional json schema for the command input.
+    export schema: func() -> option<json>;
+
+    /// Executes the command, saving events to the event store.
+    export execute: func(input: json, context: command-context) -> result<execute-output, error>;
+}

@@ -1,0 +1,8 @@
+package umari:command@0.1.0;
+
+interface executor {
+    use types.{command-context, error};
+    use umari:common/types@0.1.0.{event-type, json, uuid};
+
+    execute: func(command: string, input: json, context: command-context);
+}

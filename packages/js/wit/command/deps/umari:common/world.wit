@@ -1,0 +1,6 @@
+package umari:common@0.1.0;
+
+/// Minimal world for generating common types bindings
+world common {
+    import types;
+}

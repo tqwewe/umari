@@ -1,0 +1,16 @@
+package umari:projector@0.1.0;
+
+interface projector {
+    use umari:common/types@0.1.0.{event-query, stored-event};
+    use umari:sqlite/types@0.1.0.{sqlite-error};
+
+    variant error {
+        sqlite(sqlite-error),
+    }
+
+    resource projector {
+        constructor();
+        query: func() -> event-query;
+        handle: func(event: stored-event);
+    }
+}

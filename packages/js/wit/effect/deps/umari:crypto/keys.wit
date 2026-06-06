@@ -1,0 +1,7 @@
+package umari:crypto@0.1.0;
+
+interface keys {
+    /// Permanently deletes the encryption key for the given scope.
+    /// This operation is irreversible — the scope can never be recreated.
+    delete-key: func(scope: string);
+}
