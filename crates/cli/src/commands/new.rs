@@ -1,4 +1,5 @@
 use std::fs;
+use std::path::Path;
 use std::process::Command;
 
 use anyhow::{Result, anyhow, bail};
@@ -19,6 +20,39 @@ fn workspace_root() -> Result<String> {
     }
     let meta: CargoMetadata = serde_json::from_slice(&output.stdout)?;
     Ok(meta.workspace_root)
+}
+
+fn has_workspace_marker(dir: &Path) -> bool {
+    if dir.join(".git").exists() {
+        return true;
+    }
+    if let Ok(content) = fs::read_to_string(dir.join("Cargo.toml")) {
+        if content.contains("[workspace]") {
+            return true;
+        }
+    }
+    if let Ok(content) = fs::read_to_string(dir.join("package.json")) {
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+            if json.get("workspaces").is_some() {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn js_workspace_root() -> Result<String> {
+    let cwd = std::env::current_dir()?;
+    let mut current = cwd.as_path();
+    loop {
+        if has_workspace_marker(current) {
+            return Ok(current.to_string_lossy().into_owned());
+        }
+        match current.parent() {
+            Some(p) => current = p,
+            None => return Ok(cwd.to_string_lossy().into_owned()),
+        }
+    }
 }
 
 fn kebab_to_pascal(name: &str) -> String {
@@ -256,7 +290,7 @@ fn index_ts_content(module_type: &str, type_name: &str) -> String {
 }
 
 pub fn generate_js(module_type: &str, name: &str) -> Result<()> {
-    let root = workspace_root()?;
+    let root = js_workspace_root()?;
     let plural = type_plural(module_type);
     let module_dir = std::path::Path::new(&root).join(plural).join(name);
 
