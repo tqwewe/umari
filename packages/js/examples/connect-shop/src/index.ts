@@ -16,7 +16,6 @@ export const ShopConnected = defineEvent<ShopConnectedData>()("shop.connected", 
 });
 
 const ShopExistsFold = defineFold({
-  name: "ShopExistsFold",
   domainIds: ["shopId"] as const,
   events: [ShopConnected],
   initial: () => false,

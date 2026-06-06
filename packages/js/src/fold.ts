@@ -18,8 +18,6 @@ export interface FoldDef<
   TState = unknown,
 > {
   readonly __umariFold: true;
-  /** Human label for tracing/debugging. */
-  readonly name: string;
   /** Field names this fold keys on; subset of each event's domain ids. */
   readonly domainIds: readonly string[];
   /** Event definitions this fold reads. */
@@ -35,8 +33,6 @@ export interface FoldDef<
 /** Internal handle: a fold + a binding-aware closure to `apply` events. */
 export interface BoundFold<TState = unknown> {
   readonly __umariBoundFold: true;
-  /** Human label for tracing. */
-  readonly name: string;
   /** Initial state. Each replay starts from a fresh value. */
   initial(): TState;
   /** All event-type entries this bound fold reads. */
@@ -89,8 +85,6 @@ export interface DefineFoldOptions<
   TEvents extends readonly EventDef[],
   TState,
 > {
-  /** Human label for tracing/debugging. */
-  name: string;
   /** Field names this fold keys on (subset of every event's domain ids). */
   domainIds: readonly (keyof TBindings & string)[];
   /** Event definitions to read. */
@@ -106,7 +100,6 @@ export interface DefineFoldOptions<
  *
  * ```ts
  * const ShopExistsFold = defineFold({
- *   name: 'ShopExistsFold',
  *   domainIds: ['shopId'] as const,
  *   events: [ShopConnected, ShopReconnected],
  *   initial: () => false,
@@ -131,7 +124,6 @@ export function defineFold<
     const boundBindings = bindingMap(bindings, options.domainIds);
     return {
       __umariBoundFold: true,
-      name: options.name,
       initial: options.initial,
       entries,
       bindings: boundBindings,
@@ -145,7 +137,6 @@ export function defineFold<
 
   Object.defineProperties(fn, {
     __umariFold: { value: true, enumerable: false },
-    name: { value: options.name, enumerable: true },
     domainIds: { value: options.domainIds, enumerable: true },
     events: { value: options.events, enumerable: true },
     initial: { value: options.initial, enumerable: false },
@@ -172,7 +163,6 @@ export function EventFold<E extends EventDef>(event: E) {
   const entries = buildEntries([event]);
   const fn = ((bindings: Bindings): BoundFold<State> => ({
     __umariBoundFold: true,
-    name: `EventFold(${event.type})`,
     initial: () => [],
     entries,
     bindings: bindingMap(bindings, event.domainIds),
@@ -200,7 +190,6 @@ export function LatestEvent<E extends EventDef>(event: E) {
   const entries = buildEntries([event]);
   const fn = ((bindings: Bindings): BoundFold<State> => ({
     __umariBoundFold: true,
-    name: `LatestEvent(${event.type})`,
     initial: () => ({ value: undefined }),
     entries,
     bindings: bindingMap(bindings, event.domainIds),
@@ -225,7 +214,6 @@ export function EventCounter<E extends EventDef>(event: E) {
   const entries = buildEntries([event]);
   const fn = ((bindings: Bindings): BoundFold<State> => ({
     __umariBoundFold: true,
-    name: `EventCounter(${event.type})`,
     initial: () => ({ count: 0n }),
     entries,
     bindings: bindingMap(bindings, event.domainIds),
@@ -262,7 +250,6 @@ export function EventToggle<A extends EventDef, B extends EventDef>(a: A, b: B) 
   ];
   const fn = ((bindings: Bindings): BoundFold<State> => ({
     __umariBoundFold: true,
-    name: `EventToggle(${a.type}, ${b.type})`,
     initial: () => ({ last: undefined }),
     entries,
     bindings: bindingMap(bindings, a.domainIds),
