@@ -1,0 +1,27 @@
+{
+  "name": "umari",
+  "owner": {
+    "name": "tqwewe",
+    "url": "https://github.com/tqwewe"
+  },
+  "metadata": {
+    "version": "0.1.0",
+    "description": "Marketplace for the Umari event-sourcing runtime plugin."
+  },
+  "plugins": [
+    {
+      "name": "umari",
+      "source": "./",
+      "description": "Teach Claude to write Umari modules (commands, projectors, effects) correctly. Covers DCB, folds, the fold-check → side effect → record idempotency pattern, and `umari` CLI scaffolding.",
+      "version": "0.1.0",
+      "category": "framework",
+      "tags": [
+        "umari",
+        "event-sourcing",
+        "rust",
+        "wasm",
+        "dcb"
+      ]
+    }
+  ]
+}

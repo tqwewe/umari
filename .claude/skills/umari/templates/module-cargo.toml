@@ -1,0 +1,25 @@
+# Verbatim output of `umari new <type> <name>` Cargo.toml (Rust mode).
+# Source: crates/cli/src/commands/new.rs (`cargo_toml_content`).
+#
+# Substitute:
+#   {name}           — kebab-case crate name (e.g. `create-warranty-plan`)
+#   {workspace_pkg} — shared crate name from workspace root [package].name
+#                      (e.g. `my-project`). OMIT THE WHOLE `{workspace_pkg}.workspace = true`
+#                      LINE if the workspace root has no [package].
+#   {serde}         — `serde.workspace = true` ONLY for commands; omit for projector/effect.
+
+[package]
+name = "{name}"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+{workspace_pkg}.workspace = true
+
+anyhow.workspace = true
+schemars.workspace = true
+{serde}
+umari.workspace = true

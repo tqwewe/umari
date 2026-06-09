@@ -1,0 +1,23 @@
+{
+  "name": "umari",
+  "version": "0.1.0",
+  "description": "Claude Code skill for the Umari event-sourcing runtime. Teaches Claude to write commands, projectors, effects, folds, and the fold-check → side effect → record idempotency pattern correctly the first time.",
+  "homepage": "https://umari.tqwewe.com",
+  "repository": "https://github.com/tqwewe/umari",
+  "license": "Apache-2.0",
+  "author": {
+    "name": "tqwewe",
+    "url": "https://github.com/tqwewe"
+  },
+  "keywords": [
+    "umari",
+    "event-sourcing",
+    "wasm",
+    "wasi",
+    "dcb",
+    "rust"
+  ],
+  "skills": [
+    "./.claude/skills/umari"
+  ]
+}
