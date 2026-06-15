@@ -43,9 +43,9 @@ libc = "0.2"
 maud = { version = "0.27", features = ["axum"] }
 proc-macro2 = "1.0"
 quote = "1.0"
-rand = "0.8"
+rand = "0.10"
 rustls = { version = "0.23", features = ["aws-lc-rs"] }
-rusqlite = "0.39"
+rusqlite = "0.40"
 schemars = "1.2"
 semver = "1.0"
 serde = { version = "1.0", features = ["derive"] }
@@ -68,7 +68,7 @@ utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
 uuid = { version = "1.22", features = ["serde", "v4", "v5"] }
 validator = "0.20"
 wasip2 = "1.0.2"
-wasmtime = { version = "44.0", default-features = false, features = [
+wasmtime = { version = "45.0", default-features = false, features = [
   "addr2line",
   "anyhow",
   "async",
@@ -93,6 +93,6 @@ wasmtime = { version = "44.0", default-features = false, features = [
   "threads",
   "wat",
 ] }
-wasmtime-wasi = "44.0"
-wasmtime-wasi-http = "44.0"
-wit-bindgen = "0.57"
+wasmtime-wasi = "45.0"
+wasmtime-wasi-http = "45.0"
+wit-bindgen = "0.58"
