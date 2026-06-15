@@ -1,6 +1,9 @@
 import { execute as witExecute } from "umari:command/executor@0.1.0";
 import { stringifyPayload } from "../util/bigint-json.js";
-import { lowerCommandContext, type CommandContext } from "../util/lift-lower.js";
+import {
+  lowerCommandContext,
+  type CommandContext,
+} from "../util/lift-lower.js";
 import { deriveCommandContext } from "./current-event-context.js";
 
 /**

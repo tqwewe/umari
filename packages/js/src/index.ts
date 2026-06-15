@@ -28,13 +28,24 @@ export {
 } from "./fold.js";
 
 // ── Module kinds
-export { defineCommand, type CommandDefinition, type InputSchema, type ExecuteArgs } from "./command.js";
+export {
+  defineCommand,
+  type CommandDefinition,
+  type InputSchema,
+  type ExecuteArgs,
+} from "./command.js";
 export { defineProjector, type ProjectorDefinition } from "./projector.js";
 export { defineEffect, type EffectDefinition } from "./effect.js";
 
 // ── WIT-export wrappers
-export { exportCommand, type CommandExports } from "./runtime/command-exports.js";
-export { exportProjector, type ProjectorResource } from "./runtime/projector-exports.js";
+export {
+  exportCommand,
+  type CommandExports,
+} from "./runtime/command-exports.js";
+export {
+  exportProjector,
+  type ProjectorResource,
+} from "./runtime/projector-exports.js";
 export { exportEffect, type EffectResource } from "./runtime/effect-exports.js";
 
 // ── WIT shapes (re-exported so consumer .d.ts files can name them when
@@ -69,7 +80,12 @@ export {
 // ── Host bindings (re-exported here for convenience; also available as
 //    `@umari/js/sqlite` etc.)
 export * as sqlite from "./sqlite.js";
-export { Row, PreparedStatement, type SqliteParam, type SqliteError } from "./sqlite.js";
+export {
+  Row,
+  PreparedStatement,
+  type SqliteParam,
+  type SqliteError,
+} from "./sqlite.js";
 export { deleteCryptoKey } from "./crypto.js";
 export { env, envOptional } from "./env.js";
 

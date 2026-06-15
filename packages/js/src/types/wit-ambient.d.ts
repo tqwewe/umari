@@ -64,7 +64,11 @@ declare module "umari:command/types@0.1.0" {
 
 declare module "umari:command/executor@0.1.0" {
   import type { CommandContext } from "umari:command/types@0.1.0";
-  export function execute(command: string, input: string, context: CommandContext): void;
+  export function execute(
+    command: string,
+    input: string,
+    context: CommandContext,
+  ): void;
 }
 
 declare module "umari:command/transaction@0.1.0" {
@@ -103,7 +107,10 @@ declare module "umari:sqlite/types@0.1.0" {
     kind: ConstraintViolationKind;
     message: string;
   }
-  export type SqliteError = { tag: "constraint-violation"; val: ConstraintViolation };
+  export type SqliteError = {
+    tag: "constraint-violation";
+    val: ConstraintViolation;
+  };
 }
 
 declare module "umari:sqlite/connection@0.1.0" {
