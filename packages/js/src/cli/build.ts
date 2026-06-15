@@ -60,6 +60,7 @@ export async function build(opts: BuildOptions): Promise<void> {
     worldName: world,
     out: outWasm,
     enable: enableFor(kind),
+    disable: disableFor(kind),
     verbose: false,
   });
 
@@ -77,6 +78,19 @@ function enableFor(kind: ModuleKind): string[] {
       // wasi p2 standard imports — jco's `--enable` flag toggles inclusion
       // of the corresponding StarlingMonkey wrappers in the guest bundle.
       return ["http", "clocks"];
+  }
+}
+
+function disableFor(kind: ModuleKind): string[] {
+  switch (kind) {
+    case "effect":
+      return [];
+    case "command":
+    case "projector":
+      // Commands and projectors are deterministic and network-free. jco enables
+      // `http` + `fetch-event` by default, which makes the guest import
+      // wasi:http; disable both so the component doesn't pull it in.
+      return ["http", "fetch-event"];
   }
 }
 

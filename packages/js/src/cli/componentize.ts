@@ -17,6 +17,8 @@ export interface ComponentizeOptions {
   out: string;
   /** Extra `--enable` features (e.g. `'http'`, `'clocks'`). */
   enable?: string[];
+  /** `--disable` features (e.g. `'http'`, `'fetch-event'`). */
+  disable?: string[];
   /** Print the underlying command before running. */
   verbose?: boolean;
 }
@@ -36,6 +38,9 @@ export async function componentize(opts: ComponentizeOptions): Promise<void> {
   ];
   for (const feature of opts.enable ?? []) {
     args.push("--enable", feature);
+  }
+  for (const feature of opts.disable ?? []) {
+    args.push("--disable", feature);
   }
   if (opts.verbose) {
     process.stderr.write(`+ ${jcoBin} ${args.join(" ")}\n`);
