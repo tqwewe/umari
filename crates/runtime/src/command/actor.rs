@@ -8,7 +8,7 @@ use schemars::Schema;
 use semver::Version;
 use slotmap::SlotMap;
 use tokio::task::JoinSet;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 use umadb_client::AsyncUmaDbClient;
 use umari_core::command::CommandContext;
 use uuid::Uuid;
@@ -17,7 +17,6 @@ use wasmtime::{
     component::{Component, HasSelf, Linker},
 };
 use wasmtime_wasi::{ResourceTable, WasiCtx, p2::pipe::ClosedInputStream};
-use wasmtime_wasi_http::WasiHttpCtx;
 
 use super::CommandError;
 use crate::{
@@ -69,7 +68,6 @@ impl Actor for CommandActor {
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         let mut linker = Linker::new(&args.engine);
         wasmtime_wasi::p2::add_to_linker_async(&mut linker)?;
-        wasmtime_wasi_http::p2::add_only_http_to_linker_async(&mut linker)?;
         wit::command::Command::add_to_linker::<_, HasSelf<_>>(&mut linker, |s| s)?;
 
         // Subscribe ourselves to module_pubsub in on_start so the subscription
@@ -176,16 +174,33 @@ impl CommandActor {
         ctx: &mut Context<CommandActor, DelegatedReply<Result<ExecuteResult, CommandError>>>,
     ) -> DelegatedReply<Result<ExecuteResult, CommandError>> {
         let timestamp = Utc::now();
+        trace!(
+            module_type = %ModuleType::Command,
+            %name,
+            "instantiating module"
+        );
         let (module_version, mut module) = match self.instantiate_module(&name, timestamp).await {
             Ok(module) => module,
             Err(err) => return ctx.reply(Err(err)),
         };
+        debug!(
+            module_type = %ModuleType::Command,
+            %name,
+            version = %module_version,
+            "instantiated module"
+        );
 
         ctx.spawn(async move {
             let mut context = command.context;
             if context.correlation_id.is_nil() {
                 context.correlation_id = Uuid::new_v4();
             }
+            trace!(
+                module_type = %ModuleType::Command,
+                %name,
+                version = %module_version,
+                "calling execute on module"
+            );
             let result = module.execute(&command.input, context).await?;
             let events = module.store.into_data().emitted_events;
 
@@ -234,7 +249,6 @@ impl CommandActor {
             .build();
         let state = CommandComponentState {
             wasi_ctx,
-            wasi_http_ctx: WasiHttpCtx::new(),
             resource_table: ResourceTable::new(),
             event_store: self.event_store.clone(),
             module_store_ref: self.module_store_ref.clone(),
@@ -300,7 +314,6 @@ impl CommandActor {
             .build();
         let state = CommandComponentState {
             wasi_ctx,
-            wasi_http_ctx: WasiHttpCtx::new(),
             resource_table: ResourceTable::new(),
             event_store: self.event_store.clone(),
             module_store_ref: self.module_store_ref.clone(),

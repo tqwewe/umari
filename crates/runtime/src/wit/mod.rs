@@ -25,7 +25,7 @@ pub mod effect;
 pub mod projector;
 pub mod sqlite;
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ExecuteResult {
     /// Event store position after command execution
@@ -34,7 +34,7 @@ pub struct ExecuteResult {
     pub events: Vec<EmittedEvent>,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct EmittedEvent {
     /// Event unique identifier
@@ -47,7 +47,6 @@ pub struct EmittedEvent {
 
 pub struct CommandComponentState {
     pub wasi_ctx: WasiCtx,
-    pub wasi_http_ctx: WasiHttpCtx,
     pub resource_table: ResourceTable,
     pub event_store: Arc<AsyncUmaDbClient>,
     pub module_store_ref: ActorRef<ModuleStoreActor>,
@@ -67,16 +66,6 @@ impl WasiView for CommandComponentState {
         WasiCtxView {
             ctx: &mut self.wasi_ctx,
             table: &mut self.resource_table,
-        }
-    }
-}
-
-impl WasiHttpView for CommandComponentState {
-    fn http(&mut self) -> WasiHttpCtxView<'_> {
-        WasiHttpCtxView {
-            ctx: &mut self.wasi_http_ctx,
-            table: &mut self.resource_table,
-            hooks: Default::default(),
         }
     }
 }
