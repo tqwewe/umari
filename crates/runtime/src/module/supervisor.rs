@@ -227,11 +227,9 @@ impl<A: EventHandlerModule> Actor for ModuleSupervisor<A> {
                 "module failed, retrying with backoff"
             );
 
-            module
-                .output
-                .push_system(format!(
-                    "restarting (attempt {attempt}, delay {delay:?}): {reason:?}"
-                ));
+            module.output.push_system(format!(
+                "restarting (attempt {attempt}, delay {delay:?}): {reason:?}"
+            ));
 
             if let Some(supervisor_ref) = actor_ref.upgrade() {
                 let name = name.clone();
