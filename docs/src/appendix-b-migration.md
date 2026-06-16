@@ -42,6 +42,9 @@ public class Widget : Aggregate
 
 Umari:
 
+{{#tabs global="lang" }}
+{{#tab name="Rust" }}
+
 ```rust
 // State — just data
 #[derive(Default)]
@@ -96,10 +99,48 @@ pub fn create_widget(input: Input, context: CommandContext) -> anyhow::Result<Ex
 }
 ```
 
+{{#endtab }}
+{{#tab name="TypeScript" }}
+
+```ts
+// Fold — binds to domain IDs, replays events into a mutable state object
+export const WidgetFold = defineFold({
+  domainIds: ["widgetId"] as const,
+  events: [WidgetCreated, WidgetArchived],
+  initial: () => ({ exists: false, name: undefined as string | undefined, archived: false }),
+  apply: (state, event) => {
+    switch (event.type) {
+      case "widget.created":
+        state.exists = true;
+        state.name = event.data.name;
+        break;
+      case "widget.archived":
+        state.archived = true;
+        break;
+    }
+  },
+});
+
+// Command — validates, checks invariants, emits events
+const CreateWidget = defineCommand<Input, { widget: ReturnType<typeof WidgetFold> }>({
+  domainIds: ["widgetId"] as const,
+  folds: ({ widgetId }) => ({ widget: WidgetFold({ widgetId }) }),
+  execute: ({ input, folds, emit, reject }) => {
+    if (folds.widget.exists) reject("widget already exists");
+    return emit(WidgetCreated({ widgetId: input.widgetId, name: input.name }));
+  },
+});
+
+export const { schema, execute } = exportCommand(CreateWidget);
+```
+
+{{#endtab }}
+{{#endtabs }}
+
 Key differences:
-- The fold struct is separate from the state — the fold holds domain ID bindings, the state holds the derived data
-- `apply()` takes `&self` (the fold bindings) and a mutable state reference
-- The command function is stateless — no aggregate instance, just pure logic
+- The derived state is separate from the binding — the fold holds the domain ID bindings, the state holds the derived data
+- `apply` updates a mutable state in place (in Rust via `&mut`, in TypeScript by mutating the state object)
+- The command is stateless — no aggregate instance, just pure logic
 - Consistency is per-domain-ID, not per-aggregate-stream
 
 ## Projection → Projector
@@ -118,6 +159,9 @@ public class WidgetProjection : Projection<WidgetReadModel>
 ```
 
 Umari:
+
+{{#tabs global="lang" }}
+{{#tab name="Rust" }}
 
 ```rust
 impl Projector for Widgets {
@@ -148,6 +192,41 @@ impl Projector for Widgets {
 }
 ```
 
+{{#endtab }}
+{{#tab name="TypeScript" }}
+
+```ts
+const Widgets = defineProjector({
+  events: [WidgetCreated, WidgetArchived],
+  init: () => {
+    sqlite.executeBatch(`
+      CREATE TABLE IF NOT EXISTS widgets (
+        widget_id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        archived INTEGER NOT NULL DEFAULT 0
+      )
+    `);
+  },
+  handle: (event) => {
+    switch (event.type) {
+      case "widget.created":
+        sqlite.execute("INSERT INTO widgets (widget_id, name) VALUES (?, ?)",
+          [event.data.widgetId, event.data.name]);
+        break;
+      case "widget.archived":
+        sqlite.execute("UPDATE widgets SET archived = 1 WHERE widget_id = ?",
+          [event.data.widgetId]);
+        break;
+    }
+  },
+});
+
+export const { projector } = exportProjector(Widgets);
+```
+
+{{#endtab }}
+{{#endtabs }}
+
 Key differences:
 - Projectors are WASM modules, not in-process projections
 - Each projector gets its own SQLite database
@@ -173,6 +252,9 @@ public class OrderSaga : Saga<OrderSagaState>,
 ```
 
 Umari:
+
+{{#tabs global="lang" }}
+{{#tab name="Rust" }}
 
 ```rust
 impl Effect for OrderProcessor {
@@ -213,11 +295,50 @@ impl Effect for OrderProcessor {
 }
 ```
 
+{{#endtab }}
+{{#tab name="TypeScript" }}
+
+```ts
+const OrderProcessor = defineEffect({
+  events: [OrderPlaced],
+  init: () => ({}),
+  partitionKey: (event) => event.data.orderId,
+  handle: async (event) => {
+    const { orderId, amount } = event.data;
+
+    // 1. Fold-check — has payment already been processed for this order?
+    const { processed } = foldQuery({
+      processed: EventFold(PaymentProcessed)({ orderId }),
+    }).run();
+    if (processed.length > 0) return; // already processed on a previous run
+
+    // 2. Side effect — call the payment gateway.
+    const res = await fetch("https://payment.example.com/process", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId, amount }),
+    });
+
+    // 3. Record outcome via a private command.
+    execute("record-payment-result", { orderId, success: res.ok }, {
+      correlationId: event.correlationId,
+      triggeringEventId: event.id,
+      idempotencyKey: event.id,
+    });
+  },
+});
+
+export const { effect } = exportEffect(OrderProcessor);
+```
+
+{{#endtab }}
+{{#endtabs }}
+
 Key differences:
 - Effects use the fold-check → side effect → record pattern for idempotency.
 - Effects have their own SQLite for internal state, but it's not the idempotency source — the event store is.
-- Effects call commands directly as Rust functions; no message bus.
-- HTTP is provided via WASI; no host-side bridging code.
+- Effects call commands directly (a function call in Rust; `execute(name, …)` in TypeScript); no message bus.
+- HTTP is provided via WASI (`wasi-http-client` in Rust, `fetch` in TypeScript); no host-side bridging code.
 
 ## EventStoreDB streams → UmaDB DCB
 
@@ -242,11 +363,14 @@ When command queries `widget_id=abc`: gets events at positions 1, 3, 4. No pre-p
 
 ### 1. Start with events
 
-Port your event definitions first:
+Port your event definitions first, adding domain IDs to identify the entity each event is about.
+
+{{#tabs global="lang" }}
+{{#tab name="Rust" }}
 
 ```rust
 // Old: AccountCreated { AccountId, OwnerName }
-#[derive(Event, Serialize, Deserialize)]
+#[derive(Event, DomainIds, Serialize, Deserialize)]
 #[event_type("account.created")]
 pub struct AccountCreated {
     #[domain_id]
@@ -255,26 +379,33 @@ pub struct AccountCreated {
 }
 ```
 
-Add domain IDs to all events. Choose which fields identify the entity.
+{{#endtab }}
+{{#tab name="TypeScript" }}
+
+```ts
+// Old: AccountCreated { AccountId, OwnerName }
+type AccountCreatedData = { accountId: string; ownerName: string };
+
+export const AccountCreated = defineEvent<AccountCreatedData>()("account.created", {
+  domainIds: ["accountId"],
+});
+```
+
+{{#endtab }}
+{{#endtabs }}
 
 ### 2. Port aggregates to folds
 
-For each aggregate, create:
-- A state struct with `#[derive(Default)]`
-- A fold struct with `#[derive(DomainIds, FromDomainIds)]`
-- An EventSet enum
-- Implement `Fold`
-
-The `apply()` method replaces your aggregate's `When()` handlers.
+For each aggregate, define a fold: the derived state shape, the events it reads, and an `apply` that updates the state. The `apply` body replaces your aggregate's `When()` handlers. (Rust: a `Fold` impl with state + `EventSet` enum; TypeScript: `defineFold({ domainIds, events, initial, apply })`.)
 
 ### 3. Port command handlers
 
-Replace aggregate method calls with the `Command::new().fold().execute()` pattern. Invariant checks go in the execute closure. Event emission uses `emit![]`.
+Replace aggregate method calls with a command. Invariant checks go in the body; event emission uses `emit`. (Rust: `Command::new().fold().execute()`; TypeScript: `defineCommand({ folds, execute })` + `exportCommand`.)
 
 ### 4. Port projections to projectors
 
-Port your projection SQL to `init()` and `handle()`. Each projector is a separate crate with its own SQLite database. Use `execute_batch()` for DDL, `execute()`/`params![]` for DML.
+Port your projection SQL to `init` (DDL) and `handle` (per-event DML). Each projector is its own module with its own SQLite database. (Rust: `execute_batch`/`execute` + `params!`; TypeScript: `sqlite.executeBatch`/`sqlite.execute` with a params array.)
 
 ### 5. Port sagas to effects
 
-Replace message bus interactions with direct command execution. Replace saga state stored in a database with SQLite (internal state) and the event store (idempotency anchor).
+Replace message-bus interactions with direct command execution, and saga state in a database with SQLite (internal state) plus the event store (idempotency anchor). (Rust: call the private command function; TypeScript: `execute(name, input, ctx)`.)

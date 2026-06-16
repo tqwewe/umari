@@ -6,6 +6,9 @@ This chapter establishes the foundational concepts that Umari is built on. Under
 
 An event represents something that **has already happened**. It is named in past tense and carries all the data needed to describe what occurred. Once written, an event is never modified or deleted — it is a permanent fact in the system's history.
 
+{{#tabs global="lang" }}
+{{#tab name="Rust" }}
+
 ```rust
 #[derive(Event, DomainIds, Serialize, Deserialize)]
 #[event_type("user.registered")]
@@ -13,10 +16,27 @@ pub struct UserRegistered {
     #[domain_id]
     pub user_id: u64,
     pub email: String,
-    pub user_name: String,
     pub name: String,
 }
 ```
+
+{{#endtab }}
+{{#tab name="TypeScript" }}
+
+```ts
+type UserRegisteredData = {
+  userId: bigint;
+  email: string;
+  name: string;
+};
+
+export const UserRegistered = defineEvent<UserRegisteredData>()("user.registered", {
+  domainIds: ["userId"],
+});
+```
+
+{{#endtab }}
+{{#endtabs }}
 
 Every event carries metadata in the event envelope:
 
@@ -47,19 +67,41 @@ This means:
 
 Domain IDs are the mechanism that makes DCB work. They are fields on events that identify what the event is "about." When a command queries events, it specifies domain ID values, and the event store returns only events tagged with those values.
 
+{{#tabs global="lang" }}
+{{#tab name="Rust" }}
+
 ```rust
 #[derive(Event, DomainIds, Serialize, Deserialize)]
-#[event_type("project.sold")]
+#[event_type("task.created")]
 pub struct TaskCreated {
     #[domain_id]
-    pub user_id: u64,        // tag: user_id:42
+    pub task_id: Uuid,      // tag: task_id:abc-def
     #[domain_id]
-    pub project_id: Uuid,   // tag: project_id:abc-def
+    pub project_id: Uuid,   // tag: project_id:11c-22d
     #[domain_id]
-    pub order_id: u64,       // tag: order_id:1001
-    pub plan_title: String,   // not a domain ID — just data
+    pub user_id: u64,       // tag: user_id:42
+    pub title: String,      // not a domain ID — just data
 }
 ```
+
+{{#endtab }}
+{{#tab name="TypeScript" }}
+
+```ts
+type TaskCreatedData = {
+  taskId: string;     // tag: taskId:abc-def
+  projectId: string;  // tag: projectId:11c-22d
+  userId: bigint;     // tag: userId:42
+  title: string;      // not a domain ID — just data
+};
+
+export const TaskCreated = defineEvent<TaskCreatedData>()("task.created", {
+  domainIds: ["taskId", "projectId", "userId"],
+});
+```
+
+{{#endtab }}
+{{#endtabs }}
 
 Events are stored in a single global log. Domain ID tags enable the runtime to efficiently fetch only the relevant subset.
 
@@ -77,7 +119,7 @@ The contract: delete every SQLite file, replay events from position 0, end up in
 
 ## Commands are the only writers
 
-Every event in the store comes from a command. Projectors never write events; effects don't either — when an effect needs to write, it calls a command function inline. A command is just a regular Rust function exported with `#[export_command]`, so any module can import and call one directly.
+Every event in the store comes from a command. Projectors never write events; effects don't either — when an effect needs to write, it calls a command inline. A command is just an exported function, so any module can call one directly through the runtime.
 
 That single rule keeps every write going through validation and invariant checks, and gives every event a clear causal chain.
 
@@ -89,9 +131,9 @@ Every event traces back to the user action that initiated it:
 User HTTP request
   └── Command "create-project"
         └── Event "project.created"  (correlation_id = req_id)
-              └── Effect "sync-external-variations"
-                    └── Command "create-master-product"  (triggering_event_id = above)
-                          └── Event "user.master_product.created"
+              └── Effect "register-webhooks"
+                    └── Command "record-webhook"  (triggering_event_id = above)
+                          └── Event "webhook.registered"
 ```
 
 The `correlation_id` flows through the entire chain. The `triggering_event_id` links each downstream command to the specific event that caused it.

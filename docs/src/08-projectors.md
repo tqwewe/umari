@@ -12,7 +12,14 @@ A projector:
 
 Projectors are **naturally idempotent** — deleting the SQLite database and replaying all events from the beginning produces the exact same result. There is no need for explicit idempotency logic.
 
-## The Projector trait
+## The projector contract
+
+A projector declares the events it subscribes to, an `init` that prepares the database, and a `handle` that updates it per event.
+
+{{#tabs global="lang" }}
+{{#tab name="Rust" }}
+
+Implement the `Projector` trait and export it with `export_projector!`:
 
 ```rust
 pub trait Projector: Sized {
@@ -24,12 +31,33 @@ pub trait Projector: Sized {
 }
 ```
 
+{{#endtab }}
+{{#tab name="TypeScript" }}
+
+Create one with `defineProjector` and export it with `exportProjector`:
+
+```ts
+const MyProjector = defineProjector({
+  events: [/* event defs */], // the event set this projector subscribes to
+  init: () => { /* CREATE TABLE IF NOT EXISTS … */ },
+  handle: (event) => { /* update SQLite, switching on event.type */ },
+});
+
+export const { projector } = exportProjector(MyProjector);
+```
+
+{{#endtab }}
+{{#endtabs }}
+
 ## A complete projector
+
+A projector that maintains `users` and `projects` read tables, counting tasks per project:
+
+{{#tabs global="lang" }}
+{{#tab name="Rust" }}
 
 ```rust
 use umari::prelude::*;
-use rust_decimal::Decimal;
-use std::str::FromStr;
 
 export_projector!(Projects);
 
@@ -41,10 +69,7 @@ enum Query {
     ProjectUpdated(ProjectUpdated),
     ProjectArchived(ProjectArchived),
     ProjectUnarchived(ProjectUnarchived),
-    ProjectActivated(ProjectActivated),
-    ProjectDeactivated(ProjectDeactivated),
     ProjectDeleted(ProjectDeleted),
-    ProjectVariantSynced(ProjectVariantSynced),
     TaskCreated(TaskCreated),
 }
 
@@ -66,13 +91,9 @@ impl Projector for Projects {
                     user_id TEXT NOT NULL,
                     title TEXT,
                     duration_months INTEGER,
-                    price TEXT NOT NULL,
-                    applicable_to TEXT NOT NULL,
-                    archived BOOLEAN NOT NULL DEFAULT FALSE,
-                    total_sold INTEGER NOT NULL DEFAULT 0,
-                    revenue TEXT NOT NULL DEFAULT '0.00',
                     status TEXT NOT NULL DEFAULT 'draft',
-                    external_variant_id TEXT,
+                    archived BOOLEAN NOT NULL DEFAULT FALSE,
+                    task_count INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL
                 );
             ",
@@ -96,61 +117,35 @@ impl Projector for Projects {
                 )?;
             }
             Query::ProjectCreated(ProjectCreated {
-                project_id, user_id, title, duration_months, price,
-                applicable_to, status,
+                project_id, user_id, title, duration_months, status,
             }) => {
                 execute(
-                    "INSERT INTO projects (project_id, user_id, title, duration_months, price, applicable_to, status, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    "INSERT INTO projects (project_id, user_id, title, duration_months, status, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                     params![project_id, user_id.to_string(), title, duration_months,
-                        price.to_string(), serde_json::to_string(&applicable_to)?,
-                        match status { PlanStatus::Active => "active", PlanStatus::Draft => "draft" },
+                        match status { ProjectStatus::Active => "active", ProjectStatus::Draft => "draft" },
                         event.timestamp.to_rfc3339(),
                     ],
                 )?;
             }
-            Query::ProjectUpdated(ProjectUpdated {
-                project_id, title, duration_months, price, applicable_to, status, ..
-            }) => {
+            Query::ProjectUpdated(ProjectUpdated { project_id, title, duration_months, .. }) => {
                 execute(
-                    "UPDATE projects SET title = ?2, duration_months = ?3, price = ?4, applicable_to = ?5, status = ?6 WHERE project_id = ?1",
-                    params![project_id, title, duration_months, price.to_string(),
-                        serde_json::to_string(&applicable_to)?,
-                        match status { PlanStatus::Active => "active", PlanStatus::Draft => "draft" },
-                    ],
+                    "UPDATE projects SET title = ?2, duration_months = ?3 WHERE project_id = ?1",
+                    params![project_id, title, duration_months],
                 )?;
             }
             Query::ProjectArchived(ProjectArchived { project_id, .. }) => {
-                execute("UPDATE projects SET archived = TRUE where project_id = ?1", params![project_id])?;
+                execute("UPDATE projects SET archived = TRUE WHERE project_id = ?1", params![project_id])?;
             }
             Query::ProjectUnarchived(ProjectUnarchived { project_id, .. }) => {
-                execute("UPDATE projects SET archived = FALSE where project_id = ?1", params![project_id])?;
-            }
-            Query::ProjectActivated(ProjectActivated { project_id, .. }) => {
-                execute("UPDATE projects SET status = 'active' WHERE project_id = ?1", params![project_id])?;
-            }
-            Query::ProjectDeactivated(ProjectDeactivated { project_id, .. }) => {
-                execute("UPDATE projects SET status = 'draft' WHERE project_id = ?1", params![project_id])?;
+                execute("UPDATE projects SET archived = FALSE WHERE project_id = ?1", params![project_id])?;
             }
             Query::ProjectDeleted(ProjectDeleted { project_id, .. }) => {
                 execute("DELETE FROM projects WHERE project_id = ?1", params![project_id])?;
             }
-            Query::ProjectVariantSynced(ProjectVariantSynced { project_id, variant_id, .. }) => {
+            Query::TaskCreated(TaskCreated { project_id, .. }) => {
                 execute(
-                    "UPDATE projects SET external_variant_id = ?2 WHERE project_id = ?1",
-                    params![project_id, variant_id.to_string()],
-                )?;
-            }
-            Query::TaskCreated(TaskCreated { project_id, price, .. }) => {
-                let current_revenue: String = query_row(
-                    "SELECT revenue FROM projects WHERE project_id = ?1",
+                    "UPDATE projects SET task_count = task_count + 1 WHERE project_id = ?1",
                     params![project_id],
-                )
-                .map(|row| row.get(0))
-                .unwrap_or_else(|| "0.00".to_string());
-                let new_revenue = Decimal::from_str(&current_revenue)? + price;
-                execute(
-                    "UPDATE projects SET total_sold = total_sold + 1, revenue = ?2 WHERE project_id = ?1",
-                    params![project_id, new_revenue.to_string()],
                 )?;
             }
         }
@@ -159,13 +154,121 @@ impl Projector for Projects {
 }
 ```
 
-## The `export_projector!` macro
+{{#endtab }}
+{{#tab name="TypeScript" }}
+
+```ts
+import { defineProjector, exportProjector, sqlite } from "@umari/js";
+import {
+  UserRegistered, UserReactivated,
+  ProjectCreated, ProjectUpdated, ProjectArchived,
+  ProjectUnarchived, ProjectDeleted, TaskCreated,
+} from "../shared/index.js";
+
+const Projects = defineProjector({
+  events: [
+    UserRegistered, UserReactivated,
+    ProjectCreated, ProjectUpdated, ProjectArchived,
+    ProjectUnarchived, ProjectDeleted, TaskCreated,
+  ],
+  init: () => {
+    sqlite.executeBatch(`
+      CREATE TABLE IF NOT EXISTS users (
+        user_id TEXT PRIMARY KEY,
+        name TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS projects (
+        project_id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        title TEXT,
+        duration_months INTEGER,
+        status TEXT NOT NULL DEFAULT 'draft',
+        archived INTEGER NOT NULL DEFAULT 0,
+        task_count INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+      );
+    `);
+  },
+  handle: (event) => {
+    switch (event.type) {
+      case "user.registered":
+        sqlite.execute(
+          "INSERT INTO users (user_id, name) VALUES (?, ?)",
+          [event.data.userId, event.data.name],
+        );
+        break;
+      case "user.reactivated":
+        sqlite.execute(
+          "UPDATE users SET name = ? WHERE user_id = ?",
+          [event.data.name, event.data.userId],
+        );
+        break;
+      case "project.created":
+        sqlite.execute(
+          "INSERT INTO projects (project_id, user_id, title, duration_months, status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+          [
+            event.data.projectId, event.data.userId, event.data.title,
+            event.data.durationMonths, event.data.status,
+            event.timestamp.toISOString(),
+          ],
+        );
+        break;
+      case "project.updated":
+        sqlite.execute(
+          "UPDATE projects SET title = ?, duration_months = ? WHERE project_id = ?",
+          [event.data.title, event.data.durationMonths, event.data.projectId],
+        );
+        break;
+      case "project.archived":
+        sqlite.execute("UPDATE projects SET archived = 1 WHERE project_id = ?", [event.data.projectId]);
+        break;
+      case "project.unarchived":
+        sqlite.execute("UPDATE projects SET archived = 0 WHERE project_id = ?", [event.data.projectId]);
+        break;
+      case "project.deleted":
+        sqlite.execute("DELETE FROM projects WHERE project_id = ?", [event.data.projectId]);
+        break;
+      case "task.created":
+        sqlite.execute(
+          "UPDATE projects SET task_count = task_count + 1 WHERE project_id = ?",
+          [event.data.projectId],
+        );
+        break;
+    }
+  },
+});
+
+export const { projector } = exportProjector(Projects);
+```
+
+`event.type` narrows `event.data` to the matching payload, so each branch is fully typed.
+
+{{#endtab }}
+{{#endtabs }}
+
+## Wiring the export
+
+{{#tabs global="lang" }}
+{{#tab name="Rust" }}
 
 ```rust
 export_projector!(Projects);
 ```
 
-This macro generates the WASM component interface glue — the `projector()` constructor, `handle()` entry point, and `query()` for declaring the event subscription. Your struct only needs to implement `Projector`.
+This macro generates the WASM component glue — the `projector()` constructor, the `handle()` entry point, and `query()` for declaring the event subscription. Your struct only needs to implement `Projector`.
+
+{{#endtab }}
+{{#tab name="TypeScript" }}
+
+```ts
+export const { projector } = exportProjector(Projects);
+```
+
+`exportProjector` produces the resource the runtime instantiates. The `events` array drives the subscription; `init` and `handle` become the lifecycle hooks.
+
+{{#endtab }}
+{{#endtabs }}
 
 ## Design guidelines
 
@@ -183,11 +286,14 @@ Always use `IF NOT EXISTS` in `init()`. Projectors may be replayed from scratch 
 
 ### Keep `handle()` fast
 
-Each event handler should be a single SQL statement or a small, bounded operation. Avoid complex computation or anything that could fail non-deterministically. If a handler fails, the projector stops and the error is logged. The runtime will retry (the event store subscription is persistent). Projectors don't have access to HTTP or other side effects — they're confined to their SQLite database — so this guidance is mostly about keeping per-event work tight.
+Each event handler should be a single SQL statement or a small, bounded operation. Avoid complex computation or anything that could fail non-deterministically. If a handler fails, the projector stops and the error is logged; the runtime retries (the event store subscription is persistent). Projectors have no access to HTTP or other side effects — they're confined to their SQLite database — so this is mostly about keeping per-event work tight.
 
 ### Use prepared statements
 
-For SQL that runs on every event, build a `Statement` once in `init()` and reuse it:
+For SQL that runs on every event, build a statement once in `init()` and reuse it:
+
+{{#tabs global="lang" }}
+{{#tab name="Rust" }}
 
 ```rust
 struct Widgets {
@@ -216,11 +322,42 @@ impl Projector for Widgets {
 }
 ```
 
+{{#endtab }}
+{{#tab name="TypeScript" }}
+
+Keep the prepared statements on the object returned from `init` — it becomes the state passed to `handle`:
+
+```ts
+const Widgets = defineProjector({
+  events: [WidgetCreated, WidgetArchived],
+  init: () => {
+    sqlite.executeBatch("CREATE TABLE IF NOT EXISTS widgets (...)");
+    return {
+      insert: sqlite.prepare("INSERT INTO widgets (id, name) VALUES (?, ?)"),
+      archive: sqlite.prepare("UPDATE widgets SET archived = 1 WHERE id = ?"),
+    };
+  },
+  handle: (event, stmts) => {
+    switch (event.type) {
+      case "widget.created":
+        stmts.insert.execute([event.data.id, event.data.name]);
+        break;
+      case "widget.archived":
+        stmts.archive.execute([event.data.id]);
+        break;
+    }
+  },
+});
+```
+
+{{#endtab }}
+{{#endtabs }}
+
 The statement is parsed once and reused across every event, avoiding the per-event compilation cost.
 
 ## Replaying projectors
 
-Projectors can be replayed at any time — the runtime will delete the projector's SQLite database and reprocess all events from position 0. This is done via the API:
+Projectors can be replayed at any time — the runtime deletes the projector's SQLite database and reprocesses all events from position 0. This works the same regardless of the SDK a projector was written in. Via the API:
 
 ```
 POST /projectors/{name}/replay
@@ -232,19 +369,19 @@ Or via the CLI:
 umari projector replay projects
 ```
 
-This is safe because projectors are naturally idempotent. Replaying is the standard way to fix schema changes or recover from corruption.
+This is safe because projectors are naturally idempotent. Replaying is the standard way to apply schema changes or recover from corruption.
 
 ## Scoping in projectors
 
-Projectors have no fold bindings, so dynamic `#[scope(field)]` is meaningless. Only hardcoded scopes are useful:
+Projectors have no fold bindings, so they receive every event of a subscribed type from the entire event log. To narrow that to a fixed value, use a hardcoded scope (Rust only):
 
 ```rust
 #[derive(EventSet)]
 enum Query {
-    ProjectCreated(ProjectCreated),  // All projects, all users
-    #[scope(topic = "orders/paid")]             // Only this topic
+    ProjectCreated(ProjectCreated),  // all projects, all users
+    #[scope(topic = "tasks.created")] // only this fixed tag value
     WebhookReceived(WebhookReceived),
 }
 ```
 
-Without `#[scope(...)]`, the projector receives every event of that type from the entire event log.
+The TypeScript SDK has no per-event hardcoded-scope attribute; a TypeScript projector subscribes to the full stream of each event type in its `events` array and filters in `handle` if needed.

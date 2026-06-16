@@ -23,7 +23,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install mdBook
-        run: cargo install mdbook
+        run: cargo install mdbook mdbook-tabs
+
+      - name: Install tabs theme assets
+        run: mdbook-tabs install docs
 
       - name: Build mdBook
         run: mdbook build docs

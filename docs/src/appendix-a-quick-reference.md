@@ -1,5 +1,26 @@
 # Appendix A: Quick Reference
 
+## Rust ↔ TypeScript at a glance
+
+| Concept | Rust (`umari`) | TypeScript (`@umari/js`) |
+|---------|----------------|--------------------------|
+| Define event | `#[derive(Event, DomainIds, …)]` struct + `#[event_type]` | `defineEvent<Data>()(type, { domainIds })` |
+| Event set | `#[derive(EventSet)] enum Query` | `events: [A, B]` array |
+| Define fold | `impl Fold for …` | `defineFold({ domainIds, events, initial, apply })` |
+| Bind a fold | `.fold::<T>()` (via `FromDomainIds`) | `T({ …bindings })` in the `folds` map |
+| Command | `#[export_command]` + `Command::new(…)` | `defineCommand({ … })` + `exportCommand(def)` |
+| Projector | `export_projector!(T)` + `impl Projector` | `defineProjector({ … })` + `exportProjector(def)` |
+| Effect | `export_effect!(T)` + `impl Effect` | `defineEffect({ … })` + `exportEffect(def)` |
+| Emit | `emit![Event { … }]` | `emit(Event({ … }))` |
+| Reject | `anyhow::ensure!` / `bail!` | `reject(msg)` / `invalidInput(msg)` |
+| Validate input | `validator` (`#[validate(…)]`) | `input:` zod schema |
+| Call a command | private fn call | `execute(name, input, ctx?)` |
+| Standalone folds | `FoldQuery::new()…run()` | `foldQuery({ … }).run()` |
+| SQLite | free fns + `Statement` | `sqlite.*` namespace |
+| Domain-ID casing | `snake_case` (`user_id`) | `camelCase` (`userId`) |
+
+The Rust tables below describe the derive/attribute/export macros. The TypeScript equivalents are the `define*` / `export*` functions shown in the tabbed sections.
+
 ## Derive macros
 
 | Macro | Applies to | Purpose |
@@ -30,88 +51,152 @@
 | `export_projector!(Name);` | Wire up projector WASM interface |
 | `export_effect!(Name);` | Wire up effect WASM interface |
 
-## Command builder API
+## Command / emit / reject
+
+{{#tabs global="lang" }}
+{{#tab name="Rust" }}
 
 ```rust
-Command::new(input, context)           // Create builder
-    .fold::<T>()                        // Register fold (no args)
-    .fold_args::<T>(args)               // Register fold with args
-    .fold_with(|input| MyFold { .. })   // Register fold manually
-    .execute(|input, states| { .. })    // Run with fold states
-```
+Command::new(input, context)           // create builder
+    .fold::<T>()                        // register fold (no args)
+    .fold_args::<T>(args)               // register fold with args
+    .fold_with(|input| MyFold { .. })   // register fold manually
+    .execute(|input, states| { .. })    // run with fold states
 
-## Emit and reject
+emit![]                                // no events
+emit![Event { field: val }]            // single event
+emit![EventA { .. }, EventB { .. }]    // multiple events
 
-```rust
-emit![]                                // No events
-emit![Event { field: val }]            // Single event
-emit![EventA { .. }, EventB { .. }]    // Multiple events
-
-// Business rejections — use anyhow::ensure! / bail!:
-anyhow::ensure!(balance >= amount, "insufficient funds");
+anyhow::ensure!(balance >= amount, "insufficient funds"); // business rejection
 anyhow::bail!("user not registered");
 ```
 
+{{#endtab }}
+{{#tab name="TypeScript" }}
+
+```ts
+defineCommand<Input, Folds>({
+  input,                                // optional zod schema
+  domainIds: ["userId"] as const,
+  folds: ({ userId }) => ({ t: T({ userId }) }), // named fold map
+  execute: ({ input, folds, context, emit, reject, invalidInput }) => {
+    if (balance < amount) reject("insufficient funds"); // business rejection
+    return emit(Event({ field: val }));                 // 0+ events
+  },
+});
+export const { schema, execute } = exportCommand(def);
+```
+
+{{#endtab }}
+{{#endtabs }}
+
 ## SQLite API
 
+{{#tabs global="lang" }}
+{{#tab name="Rust" }}
+
 ```rust
-// Connection-level
 execute(sql, params)       -> Result<usize, SqliteError>
 execute_batch(sql)         -> Result<(), SqliteError>
 query_one(sql, params)     -> Row              // traps on 0 or >1 rows
 query_row(sql, params)     -> Option<Row>
 last_insert_rowid()        -> Option<i64>
 
-// Prepared statements (built with prepare(sql) -> Statement)
+// Prepared (prepare(sql) -> Statement)
 stmt.execute(params)       -> Result<usize, SqliteError>
 stmt.query(params)         -> Vec<Row>
-stmt.query_one(params)     -> Row              // traps on 0 or >1 rows
+stmt.query_one(params)     -> Row
 stmt.query_row(params)     -> Option<Row>
 
-// Parameters
 params![]                        // no params
-params![val1, val2, val3]        // positional
-
-// Reading
+params![val1, val2, val3]        // positional ?1, ?2, ?3
 row.get::<&str, String>("column_name")
 row.get::<usize, i64>(0)
 row.tuple::<(String, String, i64)>()
 ```
 
+{{#endtab }}
+{{#tab name="TypeScript" }}
+
+```ts
+import { sqlite } from "@umari/js";
+
+sqlite.execute(sql, params?)      // -> bigint (rows affected)
+sqlite.executeBatch(sql)          // -> void
+sqlite.queryOne(sql, params?)     // -> Row (throws on 0 or >1 rows)
+sqlite.queryRow(sql, params?)     // -> Row | undefined
+sqlite.query(sql, params?)        // -> Row[]
+sqlite.lastInsertRowid()          // -> bigint | undefined
+
+// Prepared (sqlite.prepare(sql) -> PreparedStatement)
+stmt.execute(params?)             // -> bigint
+stmt.query(params?)               // -> Row[]
+stmt.queryOne(params?)            // -> Row
+stmt.queryRow(params?)            // -> Row | undefined
+
+[]                                // no params
+[val1, val2, val3]                // positional ?, ?, ?
+row.get("column_name", "string")
+row.get(0, "bigint")              // "bigint"|"number"|"string"|"boolean"|"uint8array"|"date"
+```
+
+{{#endtab }}
+{{#endtabs }}
+
 ## Built-in fold types
 
-| Type | State | Use for |
-|------|-------|---------|
-| `EventFold<E>` | `EventState<E>` (vec of all events) | Full history |
-| `LatestEvent<E>` | `Option<StoredEvent<E>>` | Most recent event |
-| `EventCounter<E>` | `u64` | Counting events |
-| `EventToggle<A, B>` | `ToggleState<A, B>` | Paired opposing events |
-| `SingleEvent<E>` | N/A (it's an EventSet) | Single event type queries |
+| Type | Rust state | TypeScript state | Use for |
+|------|-----------|------------------|---------|
+| `EventFold` | `EventState<E>` | `StoredEvent<E>[]` | Full history |
+| `LatestEvent` | `Option<StoredEvent<E>>` | `{ value?: StoredEvent<E> }` | Most recent event |
+| `EventCounter` | `u64` | `{ count: bigint }` | Counting events |
+| `EventToggle` | `ToggleState<A, B>` | `{ last?: { side, event } }` | Paired opposing events |
+| `SingleEvent` | N/A (an `EventSet`) | `events: [E]` | Single event type queries |
+
+In Rust: `cmd.fold::<EventFold<E>>()`. In TypeScript: `EventFold(E)({ …bindings })` in the `folds` map. See [Chapter 12](./12-fold-reference.md).
 
 ## Event envelope fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `Uuid` | Event unique ID |
-| `position` | `u64` | Global log position |
-| `event_type` | `String` | Event type identifier |
-| `tags` | `Vec<String>` | Domain ID tags |
-| `timestamp` | `DateTime<Utc>` | When written |
-| `correlation_id` | `Uuid` | Originating action |
-| `causation_id` | `Uuid` | Command execution |
-| `triggering_event_id` | `Option<Uuid>` | Causal event |
-| `idempotency_key` | `Option<Uuid>` | Deduplication |
-| `encryption_scope` | `Option<String>` | Encryption scope |
-| `encryption_key_id` | `Option<Uuid>` | Key identifier |
+| Rust field | TypeScript field | Type (Rust / TS) | Description |
+|------------|------------------|------------------|-------------|
+| `id` | `id` | `Uuid` / `string` | Event unique ID |
+| `position` | `position` | `u64` / `bigint` | Global log position |
+| `event_type` | `type` | `String` / `string` | Event type identifier |
+| `tags` | `tags` | `Vec<String>` / `string[]` | Domain ID tags |
+| `timestamp` | `timestamp` | `DateTime<Utc>` / `Date` | When written |
+| `correlation_id` | `correlationId` | `Uuid` / `string` | Originating action |
+| `causation_id` | `causationId` | `Uuid` / `string` | Command execution |
+| `triggering_event_id` | `triggeringEventId` | `Option<Uuid>` / `string?` | Causal event |
+| `idempotency_key` | `idempotencyKey` | `Option<Uuid>` / `string?` | Deduplication |
+| `encryption_scope` | `encryptionScope` | `Option<String>` / `string?` | Encryption scope |
+| `encryption_key_id` | `encryptionKeyId` | `Option<Uuid>` / `string?` | Key identifier |
 
 ## CommandContext
 
+{{#tabs global="lang" }}
+{{#tab name="Rust" }}
+
 ```rust
-CommandContext::new()                           // Auto-detect (effect or external)
-    .with_correlation_id(id)                    // Set correlation ID
-    .with_triggering_event_id(id)               // Set triggering event
-    .with_idempotency_key(key)                  // Set idempotency key
+CommandContext::new()                           // auto-detect (effect or external)
+    .with_correlation_id(id)
+    .with_triggering_event_id(id)
+    .with_idempotency_key(key)
 ```
+
+{{#endtab }}
+{{#tab name="TypeScript" }}
+
+```ts
+// Available as `context` in execute args; pass a Partial to execute(...):
+execute("create-project", input, {
+  correlationId,
+  triggeringEventId,
+  idempotencyKey,
+}); // omitted fields are derived from the current event
+```
+
+{{#endtab }}
+{{#endtabs }}
 
 ## Environment variables
 
@@ -137,23 +222,44 @@ CommandContext::new()                           // Auto-detect (effect or extern
 
 ## Essential imports
 
+{{#tabs global="lang" }}
+{{#tab name="Rust" }}
+
 ```rust
-use umari::prelude::*;           // Everything you need
+use umari::prelude::*;           // everything you need
 use serde::{Serialize, Deserialize};
 use validator::Validate;
-use schemars::JsonSchema;        // Optional, for OpenAPI docs
+use schemars::JsonSchema;        // optional, for OpenAPI docs
 ```
+
+{{#endtab }}
+{{#tab name="TypeScript" }}
+
+```ts
+import {
+  defineEvent, defineFold, defineCommand, defineProjector, defineEffect,
+  exportCommand, exportProjector, exportEffect,
+  emit, reject, invalidInput, execute, foldQuery,
+  EventFold, LatestEvent, EventCounter, EventToggle,
+  sqlite, env, envOptional,
+} from "@umari/js";
+import { z } from "zod";          // optional, for command input validation
+```
+
+{{#endtab }}
+{{#endtabs }}
 
 ## Naming conventions
 
 | Item | Convention |
 |------|-----------|
-| Event struct | `PascalCase` past tense |
+| Event payload | `PascalCase` past tense |
 | Event type string | `"object.verb"` |
-| Command crate | `kebab-case` imperative |
-| Command input struct | `Input` |
-| Projector crate | `kebab-case` plural noun |
-| Effect crate | `kebab-case` verb phrase |
-| Fold struct | `PascalCase` + `Fold` |
+| Command package | `kebab-case` imperative |
+| Command input | `Input` (Rust struct) / inferred from schema (TS) |
+| Projector package | `kebab-case` plural noun |
+| Effect package | `kebab-case` verb phrase |
+| Fold | `PascalCase` + `Fold` |
 | Fold state | `PascalCase` + `State` |
-| EventSet enum | `Query` |
+| Event set | Rust enum `Query` / TS `events: [...]` array |
+| Domain-ID field | `snake_case` (Rust) / `camelCase` (TS) |

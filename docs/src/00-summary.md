@@ -6,7 +6,7 @@ This book is the official guide to building event-sourced systems with Umari. It
 
 ## Who this book is for
 
-You should be comfortable with Rust. Prior event sourcing experience helps but is not required — the first part explains the concepts from scratch.
+You should be comfortable with either **Rust** or **TypeScript** — Umari modules can be written in both, and every code example in this book is shown in both. Prior event sourcing experience helps but is not required; the first part explains the concepts from scratch.
 
 ## How to read this book
 
@@ -16,8 +16,9 @@ You should be comfortable with Rust. Prior event sourcing experience helps but i
 - **Part 4 — Working with Umari**: Practical patterns, project structure, and API reference.
 - **Part 5 — Runtime & Operations**: Read when deploying or debugging.
 
-Code examples follow current API conventions.
+Code examples follow current API conventions and appear in language tabs — pick Rust or TypeScript once and every snippet in the book follows your choice.
 
 ## Conventions
 
-- **Crate names**: `umari` refers to the SDK crate (`crates/umari`). `umari-runtime` refers to the runtime. Module crates use kebab-case names.
+- **SDKs**: `umari` refers to the Rust SDK crate (`crates/umari`); `@umari/js` is the TypeScript SDK. `umari-runtime` refers to the runtime. Module crates/packages use kebab-case names.
+- **Language tabs**: Snippets that differ by language are shown in **Rust** / **TypeScript** tabs. The two SDKs share one WIT contract and produce interchangeable WASM modules.

@@ -3,9 +3,13 @@ title = "The Umari Book"
 authors = ["Ari Seyhun"]
 language = "en"
 
+[preprocessor.tabs]
+
 [output.html]
 mathjax-support = false
 smart-punctuation = true
+additional-css = ["theme/tabs.css"]
+additional-js = ["theme/tabs.js"]
 
 [output.html.fold]
 enable = true

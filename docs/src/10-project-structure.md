@@ -1,46 +1,98 @@
 # 10. Project Structure
 
-This chapter describes how to organize an Umari project workspace. The structure is opinionated but flexible — you can adapt it to your needs.
+This chapter describes how to organize an Umari project workspace. The structure is opinionated but flexible — and `umari init` scaffolds it for you in either language.
 
 ## Workspace layout
+
+A project is a workspace with a shared package of events and folds, plus one package/crate per command, projector, and effect.
+
+{{#tabs global="lang" }}
+{{#tab name="Rust" }}
+
+A Cargo workspace whose root crate is also the shared library:
 
 ```
 my-project/
 ├── Cargo.toml                 # Workspace root + shared library crate
+├── rust-toolchain.toml        # Pins the wasm32-wasip2 target
 ├── src/                       # Shared library: events, folds
 │   ├── lib.rs
 │   ├── events/
 │   │   ├── mod.rs
-│   │   ├── user.rs            # User events
-│   │   ├── product.rs         # Product events
-│   │   └── order.rs           # Order events
-│   ├── folds/
-│   │   └── mod.rs             # Fold definitions
-│   └── helpers.rs             # Utility functions
+│   │   ├── user.rs
+│   │   ├── project.rs
+│   │   └── task.rs
+│   └── folds/
+│       └── mod.rs
 ├── commands/
-│   ├── create-product/        # crate: create-product
+│   ├── create-project/        # crate: create-project
 │   │   ├── Cargo.toml
 │   │   └── src/lib.rs
-│   ├── update-product/
-│   └── archive-product/
+│   ├── update-project/
+│   └── archive-project/
 ├── projectors/
-│   ├── products/              # crate: products
-│   │   ├── Cargo.toml
-│   │   └── src/lib.rs
+│   ├── projects/              # crate: projects
 │   ├── users/
-│   └── orders/
+│   └── tasks/
 ├── effects/
-│   ├── notify-external-service/
-│   │   ├── Cargo.toml
-│   │   └── src/
-│   │       ├── lib.rs         # Effect + export_effect!
-│   │       ├── commands.rs    # Private commands
-│   │       └── events.rs      # Effect-private events
-│   └── sync-inventory/
+│   └── register-webhooks/
+│       ├── Cargo.toml
+│       └── src/
+│           ├── lib.rs         # Effect + export_effect!
+│           ├── commands.rs    # Private commands
+│           └── events.rs      # Effect-private events
 └── .gitignore
 ```
 
-## Root Cargo.toml
+{{#endtab }}
+{{#tab name="TypeScript" }}
+
+An npm-workspaces project with a dedicated `shared` package:
+
+```
+my-project/
+├── package.json               # npm workspace root + dev tooling
+├── tsconfig.json              # Base TS config, extended by each package
+├── shared/                    # Shared package: @my-project/shared
+│   ├── package.json
+│   └── src/
+│       ├── index.ts
+│       ├── events/
+│       │   ├── user.ts
+│       │   ├── project.ts
+│       │   └── task.ts
+│       └── folds/
+│           └── index.ts
+├── commands/
+│   ├── create-project/        # package: create-project
+│   │   ├── package.json
+│   │   ├── tsconfig.json
+│   │   └── src/index.ts
+│   ├── update-project/
+│   └── archive-project/
+├── projectors/
+│   ├── projects/              # package: projects
+│   ├── users/
+│   └── tasks/
+├── effects/
+│   └── register-webhooks/
+│       ├── package.json
+│       └── src/
+│           ├── index.ts       # Effect + exportEffect
+│           ├── record-webhook.ts  # Private command(s)
+│           └── events.ts      # Effect-private events
+└── .gitignore
+```
+
+{{#endtab }}
+{{#endtabs }}
+
+## Root manifest
+
+The root ties the workspace together and pins shared tooling.
+
+{{#tabs global="lang" }}
+{{#tab name="Rust" }}
 
 The root is both the workspace definition and the shared library crate:
 
@@ -52,97 +104,135 @@ edition = "2024"
 
 [dependencies]
 anyhow.workspace = true
+schemars.workspace = true
 serde.workspace = true
-serde_json.workspace = true
 umari.workspace = true
-uuid.workspace = true
-validator.workspace = true
 
 [workspace]
 resolver = "2"
-members = [
-    ".",
-    "commands/create-product",
-    "commands/update-product",
-    "projectors/products",
-    "projectors/users",
-    "effects/notify-external-service",
-    # ... etc
-]
+members = ["."]
 
 [workspace.dependencies]
 my-project = { path = "." }
-umari = { path = "/path/to/umari/crates/umari" }
+umari = "0.2"
 anyhow = "1.0"
+schemars = "1.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-uuid = { version = "1.22", features = ["v4"] }
+uuid = { version = "1.22", features = ["serde", "v4", "v5"] }
 validator = { version = "0.20", features = ["derive"] }
-wasi-http-client = { version = "0.2.1", features = ["json"] }
+wasi-http-client = { version = "0.2", features = ["json"] }
 ```
 
-Key points:
-- The root package (`.`) is listed as a workspace member — it's the shared library
-- `my-project = { path = "." }` lets command/projector/effect crates depend on `my-project.workspace = true`
-- `umari` path points to the SDK crate (not the runtime workspace)
-- Each module crate uses `crate-type = ["cdylib", "rlib"]`
+- The root package (`.`) is a workspace member — it's the shared library.
+- `my-project = { path = "." }` lets module crates depend on `my-project.workspace = true`.
+- `umari` is the SDK crate from crates.io.
+- `umari new` appends each new module's path to `members`.
 
-## Module crate Cargo.toml
+{{#endtab }}
+{{#tab name="TypeScript" }}
 
-Each module is a minimal crate:
+The root declares the npm workspaces and the shared build tooling (hoisted to every package):
+
+```json
+{
+  "name": "my-project",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "commands/*",
+    "projectors/*",
+    "effects/*"
+  ],
+  "devDependencies": {
+    "@umari/js": "^0.1.0",
+    "@bytecodealliance/jco": "^1.24.1",
+    "@types/node": "^25.9.3",
+    "esbuild": "^0.28.1",
+    "typescript": "^6.0.3"
+  }
+}
+```
+
+- `@bytecodealliance/jco` and `esbuild` power `umari-js build` (bundle → componentize → wasm).
+- Build tooling lives at the root and is hoisted; modules only declare what they import.
+- The `commands/*`, `projectors/*`, `effects/*` globs pick up new modules automatically — run `npm install` from the root after `umari new` to link them.
+
+{{#endtab }}
+{{#endtabs }}
+
+## Module manifest
+
+Each module is a minimal package/crate that depends on the shared library and the SDK.
+
+{{#tabs global="lang" }}
+{{#tab name="Rust" }}
 
 ```toml
-# commands/create-product/Cargo.toml
+# commands/create-project/Cargo.toml
 [package]
-name = "create-product"
-version = "1.0.0"
+name = "create-project"
+version = "0.1.0"
 edition = "2024"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-my-project.workspace = true     # Shared library
-umari.workspace = true           # SDK
+my-project.workspace = true     # shared library
+umari.workspace = true          # SDK
 anyhow.workspace = true
+schemars.workspace = true
 serde.workspace = true
-validator.workspace = true
 ```
 
-`crate-type = ["cdylib", "rlib"]` is required. `cdylib` produces the `.wasm` file; `rlib` enables Rust-level linking for tests.
+`crate-type = ["cdylib", "rlib"]` is required — `cdylib` produces the `.wasm`, `rlib` enables Rust-level linking for tests. Effects that make HTTP calls add `wasi-http-client.workspace = true`.
 
-For effects with HTTP:
+{{#endtab }}
+{{#tab name="TypeScript" }}
 
-```toml
-[dependencies]
-wasi-http-client.workspace = true
+```json
+{
+  "name": "create-project",
+  "version": "0.1.0",
+  "type": "module",
+  "umari": { "wasm": "dist/module.wasm" },
+  "scripts": {
+    "build": "umari-js build src/index.ts --out dist/module.wasm"
+  },
+  "devDependencies": {
+    "@umari/js": "^0.1.0",
+    "@my-project/shared": "*"
+  }
+}
 ```
 
-For projectors with additional dependencies:
+The `umari` field points at the built wasm so `umari deploy` can find it. The module depends on `@my-project/shared` (the workspace's shared package — resolved locally via npm workspaces) and `@umari/js`. Commands that validate input also add `zod`. The matching `tsconfig.json` extends the root: `{ "extends": "../../tsconfig.json", "include": ["src"] }`.
 
-```toml
-[dependencies]
-rust_decimal.workspace = true
-```
+{{#endtab }}
+{{#endtabs }}
 
 ## The shared library
 
-The shared library crate (root `src/`) contains:
+Events and folds live in one place that every module imports.
 
-### Events (`src/events/`)
+{{#tabs global="lang" }}
+{{#tab name="Rust" }}
+
+Group events by entity and re-export them:
 
 ```rust
 // src/events/mod.rs
 pub mod user;
-pub mod product;
-pub mod order;
+pub mod project;
+pub mod task;
 
 pub use user::*;
-pub use product::*;
-pub use order::*;
+pub use project::*;
+pub use task::*;
 ```
-
-Each event module groups related events:
 
 ```rust
 // src/events/user.rs
@@ -158,8 +248,6 @@ pub struct UserRegistered {
     pub name: String,
 }
 ```
-
-### Folds (`src/folds/`)
 
 ```rust
 // src/folds/mod.rs
@@ -182,36 +270,76 @@ impl Fold for UserExistsFold {
 }
 ```
 
-### Library root (`src/lib.rs`)
+`src/lib.rs` declares the modules: `pub mod events; pub mod folds;`.
 
-```rust
-// src/lib.rs
-pub mod events;
-pub mod folds;
-pub mod helpers;
+{{#endtab }}
+{{#tab name="TypeScript" }}
+
+The `@my-project/shared` package re-exports everything from `src/index.ts`:
+
+```ts
+// shared/src/index.ts
+export * from "./events/user.js";
+export * from "./events/project.js";
+export * from "./events/task.js";
+export * from "./folds/index.js";
 ```
+
+```ts
+// shared/src/events/user.ts
+import { defineEvent } from "@umari/js";
+
+export type UserRegisteredData = {
+  userId: bigint;
+  email: string;
+  name: string;
+};
+
+export const UserRegistered = defineEvent<UserRegisteredData>()("user.registered", {
+  domainIds: ["userId"],
+  cryptoScope: (data) => `user_id:${data.userId}`,
+});
+```
+
+```ts
+// shared/src/folds/index.ts
+import { defineFold } from "@umari/js";
+import { UserRegistered } from "../events/user.js";
+
+export const UserExistsFold = defineFold({
+  domainIds: ["userId"] as const,
+  events: [UserRegistered],
+  initial: () => false,
+  apply: () => true, // return the next state, reduce-style
+});
+```
+
+The shared package's `exports` point directly at `src/index.ts`, so modules import TypeScript source — `umari-js build` bundles it per module via esbuild.
+
+{{#endtab }}
+{{#endtabs }}
 
 ## Naming conventions
 
 | Item | Convention | Example |
 |------|-----------|---------|
-| Event struct | PascalCase, past tense | `UserRegistered`, `ProductCreated` |
-| Event type string | `object.verb` dot notation | `"user.registered"`, `"product.created"` |
-| Command crate | kebab-case, imperative | `create-product`, `update-product` |
-| Command function | snake_case | `pub fn execute(...)` |
-| Command input struct | Always `Input` | `pub struct Input` |
-| Projector crate | kebab-case, plural noun | `products`, `users` |
-| Projector struct | PascalCase, plural | `Products`, `Users` |
-| Effect crate | kebab-case, verb phrase | `notify-external-service` |
-| Effect struct | PascalCase | `NotifyExternalService` |
-| Fold struct | PascalCase noun + `Fold` | `UserExistsFold`, `ProductStateFold` |
-| Fold state | PascalCase noun + `State` | `ProductState`, `WidgetState` |
-| EventSet enum | Always `Query` | `enum Query { ... }` |
+| Event payload | PascalCase, past tense | `UserRegistered`, `ProjectCreated` |
+| Event type string | `object.verb` dot notation | `"user.registered"`, `"project.created"` |
+| Command package | kebab-case, imperative | `create-project`, `update-project` |
+| Command input | `Input` (Rust struct) / inferred from schema (TS) | `pub struct Input` / `type Input` |
+| Projector package | kebab-case, plural noun | `projects`, `users` |
+| Projector | PascalCase, plural | `Projects`, `Users` |
+| Effect package | kebab-case, verb phrase | `register-webhooks` |
+| Effect | PascalCase | `RegisterWebhooks` |
+| Fold | PascalCase noun + `Fold` | `UserExistsFold`, `ProjectStateFold` |
+| Event set | Rust enum `Query` / TS `events: [...]` array | `enum Query { ... }` / `events: [UserRegistered]` |
+
+Rust domain-ID fields are `snake_case` (`user_id`); TypeScript ones are `camelCase` (`userId`). The tag name follows the field name — keep them consistent if you mix languages over the same events (see [Chapter 4](./04-events.md#domain-ids)).
 
 ## Dependencies between module types
 
 ```
-shared library (events, folds)
+shared library / package (events, folds)
     ↑                    ↑                    ↑
     |                    |                    |
  commands/          projectors/           effects/
@@ -221,73 +349,77 @@ shared library (events, folds)
                                             events + commands)
 ```
 
-- Commands import events and folds from the shared library
-- Projectors import events from the shared library
-- Effects import events and folds from the shared library; may define their own events and commands locally
+- Commands import events and folds from the shared library.
+- Projectors import events from the shared library.
+- Effects import events and folds from the shared library; they may also define their own events and commands locally.
 
 ## Working with modules
 
-The `umari` CLI is the intended way to scaffold, build, and deploy modules — it understands the workspace layout above, picks up env vars from `[package.metadata.umari.env]`, and handles the `wasm32-wasip2` build for you.
+The `umari` CLI is the intended way to scaffold, build, and deploy — it understands the workspace layout above (in either language), picks up env config, and handles the `wasm32-wasip2` / componentize build for you.
+
+### `umari init`
+
+Scaffold a new workspace in the current directory (or a given path), much like `cargo init`:
+
+```sh
+umari init                  # scaffold in the current directory
+umari init my-project       # scaffold into ./my-project
+umari init --lang js        # choose the language explicitly
+```
+
+If `--lang` is omitted, `umari init` prompts for the language. It generates the root manifest, the shared library/package, a `.gitignore`, and (for Rust) `rust-toolchain.toml`, then initializes a git repository if one doesn't already exist. It's non-destructive — existing files are left untouched.
 
 ### `umari new`
 
-Scaffold a new module crate, wire it into the workspace `Cargo.toml`, and drop in starter `lib.rs` content:
+Scaffold a new module, wire it into the workspace, and drop in starter code:
 
 ```sh
-umari new command create-product
-umari new projector products
-umari new effect notify-external-service
+umari new command create-project
+umari new projector projects
+umari new effect register-webhooks
 ```
 
-The default language is Rust; pass `--lang js` to scaffold a JS module instead.
+`umari new` infers the language from the workspace it's run in (Cargo vs npm), so you don't repeat `--lang`. For a Rust module it appends the crate to the workspace `members`; for a TypeScript module it wires in the `@<project>/shared` dependency — run `npm install` from the root afterward to link it.
 
 ### `umari build`
 
-Build every module crate in the workspace (Rust → `wasm32-wasip2`, JS → componentized wasm) in release mode. Pass paths to scope the build to a subset of crates:
+Build every module in the workspace (Rust → `wasm32-wasip2`, TypeScript → bundled + componentized wasm) in release mode. Pass paths to scope the build:
 
 ```sh
 umari build                                # build everything
-umari build commands/create-product        # build a single crate
-umari build commands/ projectors/products  # multiple paths
+umari build commands/create-project        # a single module
+umari build commands/ projectors/projects  # multiple paths
 umari build --debug                        # debug profile
-umari build -j 4                           # cap parallelism
 ```
-
-Outputs land in the usual `target/wasm32-wasip2/{release,debug}/<name>.wasm` paths.
 
 ### `umari deploy`
 
-Build everything (same flags as `umari build`) and upload + activate each module against the server configured for your client:
+Build everything (same flags as `umari build`) and upload + activate each module against your configured server:
 
 ```sh
 umari deploy                       # build + upload + activate all modules
 umari deploy --no-activate         # upload but don't activate
 umari deploy --bump-patch          # auto-bump patch version on conflict
-umari deploy commands/create-product
+umari deploy commands/create-project
 ```
 
-Env vars declared under `[package.metadata.umari.env]` in each module's `Cargo.toml` are sent along with the upload.
+For Rust modules, env vars declared under `[package.metadata.umari.env]` in the module's `Cargo.toml` are sent with the upload. TypeScript modules pass env vars via the lower-level upload commands (`--env KEY=VALUE`).
 
-### Manual cargo / lower-level CLI
+### Manual / lower-level CLI
 
-If you want to bypass the workspace tooling — e.g. one-off uploads, custom build flags, or wiring this into your own scripts — you can still build with plain cargo and upload through the typed subcommands:
+To bypass the workspace tooling — one-off uploads, custom flags, or your own scripts — build directly and upload through the typed subcommands:
 
 ```sh
-cargo build --target wasm32-wasip2 --release -p create-product
-
-umari commands upload create-product 1.0.0 \
-    target/wasm32-wasip2/release/create_product.wasm \
+# Rust
+cargo build --target wasm32-wasip2 --release -p create-project
+umari commands upload create-project 0.1.0 \
+    target/wasm32-wasip2/release/create_project.wasm \
     --env API_KEY=... --activate
+
+# TypeScript
+umari-js build commands/create-project/src/index.ts --out commands/create-project/dist/module.wasm
+umari commands upload create-project 0.1.0 \
+    commands/create-project/dist/module.wasm --activate
 ```
 
 For production, always build in release mode — debug builds can be 10× larger and slower.
-
-## Adding a new module by hand
-
-If you don't want to use `umari new`:
-
-1. Create the crate directory with `Cargo.toml` and `src/lib.rs`
-2. Add it to the workspace `members` list in the root `Cargo.toml`
-3. Implement the trait (`Command` via `#[export_command]`, `Projector`, or `Effect`)
-4. `umari build` (or `cargo build --target wasm32-wasip2 --release -p <name>`)
-5. `umari deploy` (or upload manually via the lower-level CLI / API)

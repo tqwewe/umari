@@ -1,6 +1,8 @@
 # 1. Introduction
 
-Umari is a **WASM-native event sourcing runtime**. You write business logic in Rust, compile it to WebAssembly, and the runtime handles event persistence, module lifecycle, and state derivation.
+Umari is a **WASM-native event sourcing runtime**. You write business logic in Rust or TypeScript, compile it to WebAssembly, and the runtime handles event persistence, module lifecycle, and state derivation.
+
+> **Two SDKs, one runtime.** Modules can be authored with the Rust SDK (`umari`) or the TypeScript SDK (`@umari/js`). Both compile to the same WASM component contract and produce interchangeable modules — a project can even mix languages. Throughout this book, code examples are shown in tabs; pick your language once and every snippet follows.
 
 ## What is event sourcing?
 
@@ -50,29 +52,46 @@ Command ──► emits events ──► Event Store (UmaDB)
 
 ## Prerequisites
 
-- **Rust** — you write modules in Rust using the `umari` SDK crate
 - **UmaDB** — the event store. Must be running before starting the Umari server
+- **A toolchain for your SDK** of choice:
+
+{{#tabs global="lang" }}
+{{#tab name="Rust" }}
+
+- **Rust** — modules are written with the `umari` SDK crate
 - **wasm32-wasip2 target** — `rustup target add wasm32-wasip2`
+
+{{#endtab }}
+{{#tab name="TypeScript" }}
+
+- **Node.js** — modules are written with the `@umari/js` SDK
+- **`@bytecodealliance/jco` + `esbuild`** — used by `umari-js build` to bundle and componentize your TypeScript to WASM (installed as dev dependencies)
+
+{{#endtab }}
+{{#endtabs }}
 
 ## What you'll build
 
 A typical Umari application looks like this:
 
+{{#tabs global="lang" }}
+{{#tab name="Rust" }}
+
 ```
 my-project/
-├── src/                     # Shared library: events, folds
+├── src/                     # Shared library crate: events, folds
 │   ├── events/
 │   │   ├── user.rs
 │   │   ├── project.rs
-│   │   └── claim.rs
+│   │   └── task.rs
 │   └── folds/
 │       └── mod.rs
 ├── commands/
-│   ├── register-user/        # Crate: register-user
+│   ├── register-user/       # Crate: register-user
 │   ├── create-project/
 │   └── cancel-project/
 ├── projectors/
-│   ├── projects/               # Crate: projects
+│   ├── projects/            # Crate: projects
 │   ├── users/
 │   └── tasks/
 ├── effects/
@@ -81,7 +100,40 @@ my-project/
 └── Cargo.toml               # Workspace root
 ```
 
-Each command, projector, and effect is its own crate, compiled as a WASM component. They all depend on the shared library for event and fold definitions.
+Each command, projector, and effect is its own crate, compiled as a WASM component. They all depend on the shared library crate for event and fold definitions.
+
+{{#endtab }}
+{{#tab name="TypeScript" }}
+
+```
+my-project/
+├── shared/                  # Shared workspace package: @my-project/shared
+│   └── src/
+│       ├── events/
+│       │   ├── user.ts
+│       │   ├── project.ts
+│       │   └── task.ts
+│       └── index.ts
+├── commands/
+│   ├── register-user/       # Package: register-user
+│   ├── create-project/
+│   └── cancel-project/
+├── projectors/
+│   ├── projects/            # Package: projects
+│   ├── users/
+│   └── tasks/
+├── effects/
+│   ├── register-webhooks/
+│   └── create-project/
+└── package.json             # npm workspace root
+```
+
+Each command, projector, and effect is its own npm workspace package, compiled as a WASM component. They all depend on the shared package for event and fold definitions.
+
+{{#endtab }}
+{{#endtabs }}
+
+> Both layouts are generated for you by `umari init` — see [Project Structure](./10-project-structure.md).
 
 ## About this book
 

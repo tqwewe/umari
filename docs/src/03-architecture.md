@@ -77,7 +77,7 @@ Commands are different from projectors/effects — they don't subscribe to event
 
 ## WASM runtime
 
-Each module runs as a WASM component using the **component model**. The WIT interfaces define the contract between the guest (your Rust code) and the host (the Umari runtime):
+Each module runs as a WASM component using the **component model**. The WIT interfaces define the contract between the guest (your module, in Rust or TypeScript) and the host (the Umari runtime):
 
 | WIT interface | Provided to | Purpose |
 |---------------|-------------|---------|
@@ -112,7 +112,7 @@ Commands have a simpler interface — they only need the transaction interface. 
 9. Worker handles event, may execute commands or make HTTP calls
 ```
 
-Input validation (e.g. the `validator` crate) is a guest-side convention used by the Rust SDK — it isn't part of the runtime contract. Other SDKs may handle validation differently or not at all.
+Input validation is a guest-side convention, not part of the runtime contract: the Rust SDK pairs well with crates like `validator`, and the TypeScript SDK accepts an optional [zod](https://zod.dev) schema on `defineCommand`. Each SDK validates before the user logic runs and surfaces failures as an invalid-input error.
 
 ## Data directory layout
 
