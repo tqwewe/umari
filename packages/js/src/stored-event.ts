@@ -2,7 +2,7 @@
  * Envelope wrapped around every event read from the event store. Mirrors
  * Rust `StoredEvent<T>` in `crates/umari/src/event.rs`.
  *
- * `type` is the event-type string (e.g. `"shop.connected"`). When `events`
+ * `type` is the event-type string (e.g. `"user.registered"`). When `events`
  * on a fold/projector/effect contains multiple event definitions, this field
  * is the discriminator narrowing TS into the right `data` shape.
  */
@@ -27,8 +27,8 @@ export interface StoredEvent<TData = unknown> {
  *
  * ```ts
  * matchEvent(event, {
- *   'shop.connected': (e) => sqlite.execute(...),
- *   'shop.reconnected': (e) => sqlite.execute(...),
+ *   'user.registered': (e) => sqlite.execute(...),
+ *   'user.reactivated': (e) => sqlite.execute(...),
  * });
  * ```
  */

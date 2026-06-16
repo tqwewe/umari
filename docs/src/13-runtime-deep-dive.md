@@ -15,13 +15,13 @@ RuntimeSupervisor
 ├── CommandActor
 │   └── On-demand WASM compilation + command execution
 ├── ModuleSupervisor<ProjectorWorld>
-│   ├── ModuleActor("plans")         ── sequential event processing
-│   └── ModuleActor("shops")         ── sequential event processing
+│   ├── ModuleActor("projects")         ── sequential event processing
+│   └── ModuleActor("users")         ── sequential event processing
 └── ModuleSupervisor<EffectWorld>
-    ├── ModuleActor("register-shopify-webhooks")
+    ├── ModuleActor("register-webhooks")
     │   ├── WorkerActor (global)
     │   └── WorkerActor (keyed × 8)
-    └── ModuleActor("record-warranty-sale")
+    └── ModuleActor("create-project")
         ├── WorkerActor (global)
         └── WorkerActor (keyed × 8)
 ```
@@ -145,7 +145,7 @@ The module store (`umari.sqlite`) has this schema:
 ```sql
 -- WASM bytecode and metadata
 CREATE TABLE modules (
-    id TEXT PRIMARY KEY,          -- "type:name:version" (e.g., "command:create-plan:1.0.0")
+    id TEXT PRIMARY KEY,          -- "type:name:version" (e.g., "command:create-project:1.0.0")
     name TEXT NOT NULL,
     version TEXT NOT NULL,
     module_type TEXT NOT NULL,    -- "command", "projector", "effect"

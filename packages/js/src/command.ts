@@ -57,15 +57,15 @@ export interface CommandDefinition<TInput extends object, TFolds extends FoldsMa
  *
  * ```ts
  * export default defineCommand<Input>({
- *   domainIds: ['shopId', 'planId'] as const,
- *   folds: ({ shopId, planId }) => ({
- *     shopExists: ShopExistsFold({ shopId }),
- *     plan: EventFold(WarrantyPlanCreated)({ planId, shopId }),
+ *   domainIds: ['userId', 'projectId'] as const,
+ *   folds: ({ userId, projectId }) => ({
+ *     userExists: UserExistsFold({ userId }),
+ *     project: EventFold(ProjectCreated)({ projectId, userId }),
  *   }),
  *   execute: ({ input, folds, emit, reject }) => {
- *     if (!folds.shopExists) reject('shop does not exist');
- *     if (folds.plan.length > 0) return emit();
- *     return emit(WarrantyPlanCreated({ ... }));
+ *     if (!folds.userExists) reject('user does not exist');
+ *     if (folds.project.length > 0) return emit();
+ *     return emit(ProjectCreated({ ... }));
  *   },
  * });
  * ```

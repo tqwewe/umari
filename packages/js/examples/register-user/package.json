@@ -1,5 +1,5 @@
 {
-  "name": "connect-shop",
+  "name": "register-user",
   "version": "0.1.0",
   "type": "module",
   "private": true,
@@ -9,8 +9,8 @@
   },
   "devDependencies": {
     "@umari/js": "file:../..",
-    "@bytecodealliance/jco": "^1.17.0",
-    "esbuild": "^0.25.0",
-    "typescript": "^5.6.0"
+    "@bytecodealliance/jco": "^1.24.1",
+    "esbuild": "^0.28.1",
+    "typescript": "^6.0.3"
   }
 }

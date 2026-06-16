@@ -88,6 +88,13 @@ enum Commands {
         #[arg(long, short = 'j', default_value_t = 0)]
         jobs: usize,
     },
+    /// scaffold a new umari workspace
+    Init {
+        /// directory to create (defaults to the current directory)
+        path: Option<String>,
+        #[arg(long)]
+        lang: Option<Lang>,
+    },
     /// scaffold a new module in the workspace
     New {
         #[command(subcommand)]
@@ -313,12 +320,46 @@ enum NewSubcommand {
     },
 }
 
-/// resolve the language, prompting interactively when not passed via --lang.
+/// resolve the language for `init`, prompting interactively when not passed
+/// via --lang. init creates a fresh workspace, so there is nothing to infer.
 fn resolve_lang(lang: Option<Lang>) -> Result<Lang> {
     match lang {
         Some(lang) => Ok(lang),
         None => prompt_lang(),
     }
+}
+
+/// resolve the language for `new`: an explicit --lang wins, otherwise infer it
+/// from the surrounding workspace, and only prompt when there is no workspace.
+fn resolve_lang_for_new(lang: Option<Lang>) -> Result<Lang> {
+    if let Some(lang) = lang {
+        return Ok(lang);
+    }
+    if let Some(lang) = detect_workspace_lang() {
+        return Ok(lang);
+    }
+    prompt_lang()
+}
+
+/// Walk up from the current directory looking for a workspace marker: a Rust
+/// `[workspace]` Cargo.toml or a `package.json` with a `workspaces` field.
+fn detect_workspace_lang() -> Option<Lang> {
+    let cwd = std::env::current_dir().ok()?;
+    for dir in cwd.ancestors() {
+        if let Ok(content) = std::fs::read_to_string(dir.join("Cargo.toml")) {
+            if content.contains("[workspace]") {
+                return Some(Lang::Rust);
+            }
+        }
+        if let Ok(content) = std::fs::read_to_string(dir.join("package.json")) {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                if json.get("workspaces").is_some() {
+                    return Some(Lang::Js);
+                }
+            }
+        }
+    }
+    None
 }
 
 fn prompt_lang() -> Result<Lang> {
@@ -490,9 +531,16 @@ fn main() -> Result<()> {
                 NewSubcommand::Projector { name, lang } => ("projector", name, lang),
                 NewSubcommand::Effect { name, lang } => ("effect", name, lang),
             };
-            match resolve_lang(lang)? {
+            match resolve_lang_for_new(lang)? {
                 Lang::Js => commands::new::generate_js(module_type, &name),
                 Lang::Rust => commands::new::generate(module_type, &name),
+            }
+        }
+        Commands::Init { path, lang } => {
+            let path = path.as_deref();
+            match resolve_lang(lang)? {
+                Lang::Js => commands::init::init_js(path),
+                Lang::Rust => commands::init::init_rust(path),
             }
         }
     }

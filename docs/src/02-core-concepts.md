@@ -8,13 +8,13 @@ An event represents something that **has already happened**. It is named in past
 
 ```rust
 #[derive(Event, DomainIds, Serialize, Deserialize)]
-#[event_type("shop.connected")]
-pub struct ShopConnected {
+#[event_type("user.registered")]
+pub struct UserRegistered {
     #[domain_id]
-    pub shop_id: u64,
-    pub shop_domain: String,
-    pub shop_name: String,
-    pub access_token: String,
+    pub user_id: u64,
+    pub email: String,
+    pub user_name: String,
+    pub name: String,
 }
 ```
 
@@ -24,8 +24,8 @@ Every event carries metadata in the event envelope:
 |-------|---------|
 | `id` | Unique UUID for this event |
 | `position` | Global position in the event log (monotonic) |
-| `event_type` | String identifier (`"shop.connected"`) |
-| `tags` | Domain ID key-value pairs used to query events by domain ID (`["shop_id:42"]`) |
+| `event_type` | String identifier (`"user.registered"`) |
+| `tags` | Domain ID key-value pairs used to query events by domain ID (`["user_id:42"]`) |
 | `timestamp` | When the event was written |
 | `correlation_id` | Traces back to the originating user action |
 | `causation_id` | The specific command execution that produced this event |
@@ -49,12 +49,12 @@ Domain IDs are the mechanism that makes DCB work. They are fields on events that
 
 ```rust
 #[derive(Event, DomainIds, Serialize, Deserialize)]
-#[event_type("warranty.sold")]
-pub struct WarrantySold {
+#[event_type("project.sold")]
+pub struct TaskCreated {
     #[domain_id]
-    pub shop_id: u64,        // tag: shop_id:42
+    pub user_id: u64,        // tag: user_id:42
     #[domain_id]
-    pub warranty_id: Uuid,   // tag: warranty_id:abc-def
+    pub project_id: Uuid,   // tag: project_id:abc-def
     #[domain_id]
     pub order_id: u64,       // tag: order_id:1001
     pub plan_title: String,   // not a domain ID — just data
@@ -87,11 +87,11 @@ Every event traces back to the user action that initiated it:
 
 ```
 User HTTP request
-  └── Command "create-warranty-plan"
-        └── Event "warranty.plan.created"  (correlation_id = req_id)
-              └── Effect "sync-warranty-plan-product-variations"
+  └── Command "create-project"
+        └── Event "project.created"  (correlation_id = req_id)
+              └── Effect "sync-external-variations"
                     └── Command "create-master-product"  (triggering_event_id = above)
-                          └── Event "shop.master_product.created"
+                          └── Event "user.master_product.created"
 ```
 
 The `correlation_id` flows through the entire chain. The `triggering_event_id` links each downstream command to the specific event that caused it.

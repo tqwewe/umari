@@ -49,7 +49,7 @@ emit![EventA { .. }, EventB { .. }]    // Multiple events
 
 // Business rejections — use anyhow::ensure! / bail!:
 anyhow::ensure!(balance >= amount, "insufficient funds");
-anyhow::bail!("shop not connected");
+anyhow::bail!("user not registered");
 ```
 
 ## SQLite API

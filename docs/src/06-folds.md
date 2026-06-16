@@ -35,22 +35,22 @@ pub trait Fold: DomainIds + 'static {
 use umari::prelude::*;
 
 #[derive(DomainIds, FromDomainIds)]
-pub struct ShopExistsFold {
+pub struct UserExistsFold {
     #[domain_id]
-    pub shop_id: u64,
+    pub user_id: u64,
 }
 
-impl Fold for ShopExistsFold {
-    type Events = SingleEvent<ShopConnected>;
+impl Fold for UserExistsFold {
+    type Events = SingleEvent<UserRegistered>;
     type State = bool;
 
-    fn apply(&self, exists: &mut bool, _event: StoredEvent<ShopConnected>) {
+    fn apply(&self, exists: &mut bool, _event: StoredEvent<UserRegistered>) {
         *exists = true;
     }
 }
 ```
 
-This fold subscribes to `ShopConnected` events scoped by `shop_id`. The state starts as `false` (the `Default` for `bool`). When a `ShopConnected` event is encountered during replay, the state becomes `true`. The command can then check `if !exists { ... }`.
+This fold subscribes to `UserRegistered` events scoped by `user_id`. The state starts as `false` (the `Default` for `bool`). When a `UserRegistered` event is encountered during replay, the state becomes `true`. The command can then check `if !exists { ... }`.
 
 ## Fold with an EventSet enum
 
@@ -58,25 +58,25 @@ For folds that need multiple event types:
 
 ```rust
 #[derive(EventSet)]
-pub enum ShopDomainQuery {
-    ShopConnected(ShopConnected),
-    ShopReconnected(ShopReconnected),
+pub enum UserEmailQuery {
+    UserRegistered(UserRegistered),
+    UserReactivated(UserReactivated),
 }
 
 #[derive(DomainIds, FromDomainIds)]
-pub struct ShopDomainFold {
+pub struct UserDomainFold {
     #[domain_id]
-    pub shop_id: u64,
+    pub user_id: u64,
 }
 
-impl Fold for ShopDomainFold {
-    type Events = ShopDomainQuery;
+impl Fold for UserDomainFold {
+    type Events = UserEmailQuery;
     type State = Option<String>;
 
-    fn apply(&self, domain: &mut Option<String>, event: StoredEvent<ShopDomainQuery>) {
+    fn apply(&self, domain: &mut Option<String>, event: StoredEvent<UserEmailQuery>) {
         match event.data {
-            ShopDomainQuery::ShopConnected(ev) => *domain = Some(ev.shop_domain),
-            ShopDomainQuery::ShopReconnected(ev) => *domain = Some(ev.shop_domain),
+            UserEmailQuery::UserRegistered(ev) => *domain = Some(ev.email),
+            UserEmailQuery::UserReactivated(ev) => *domain = Some(ev.email),
         }
     }
 }
@@ -93,8 +93,8 @@ Umari provides several generic folds for common patterns:
 Collects ALL occurrences of event `E` into a `Vec`. Use when you need the full history.
 
 ```rust
-let connected = cmd.fold::<EventFold<ShopConnected>>();
-// State: EventState<ShopConnected> { events: Vec<StoredEvent<ShopConnected>> }
+let connected = cmd.fold::<EventFold<UserRegistered>>();
+// State: EventState<UserRegistered> { events: Vec<StoredEvent<UserRegistered>> }
 // connected.exists() → true if at least one event exists
 ```
 
@@ -103,8 +103,8 @@ let connected = cmd.fold::<EventFold<ShopConnected>>();
 Keeps only the most recent occurrence of event `E`. More efficient than `EventFold` when you only need the current value.
 
 ```rust
-let latest_connected = cmd.fold::<LatestEvent<ShopConnected>>();
-// State: Option<StoredEvent<ShopConnected>>
+let latest_connected = cmd.fold::<LatestEvent<UserRegistered>>();
+// State: Option<StoredEvent<UserRegistered>>
 ```
 
 ### EventCounter
@@ -112,7 +112,7 @@ let latest_connected = cmd.fold::<LatestEvent<ShopConnected>>();
 Counts occurrences of event `E`. Efficient — doesn't store events.
 
 ```rust
-let sale_count = cmd.fold::<EventCounter<WarrantySold>>();
+let task_count = cmd.fold::<EventCounter<TaskCreated>>();
 // State: u64
 ```
 
@@ -121,7 +121,7 @@ let sale_count = cmd.fold::<EventCounter<WarrantySold>>();
 Tracks which of two opposing events occurred last. Ideal for created/deleted, activated/deactivated, archived/unarchived pairs.
 
 ```rust
-let toggle = cmd.fold::<EventToggle<WarrantyPlanArchived, WarrantyPlanUnarchived>>();
+let toggle = cmd.fold::<EventToggle<ProjectArchived, ProjectUnarchived>>();
 // State: ToggleState<A, B> {
 //     last: Option<ToggleSide<A, B>>  // None, Some(ToggleSide::A(...)), or Some(ToggleSide::B(...))
 // }
@@ -133,7 +133,7 @@ For anything beyond the built-in types, implement `Fold` directly:
 
 ```rust
 #[derive(Default)]
-pub struct WarrantyPlanState {
+pub struct ProjectState {
     pub exists: bool,
     pub title: Option<String>,
     pub status: PlanStatus,
@@ -141,46 +141,46 @@ pub struct WarrantyPlanState {
 }
 
 #[derive(EventSet)]
-pub enum WarrantyPlanEvents {
-    #[scope(plan_id)]
-    WarrantyPlanCreated(WarrantyPlanCreated),
-    #[scope(plan_id)]
-    WarrantyPlanUpdated(WarrantyPlanUpdated),
-    #[scope(plan_id)]
-    WarrantyPlanArchived(WarrantyPlanArchived),
-    #[scope(plan_id)]
-    WarrantyPlanUnarchived(WarrantyPlanUnarchived),
+pub enum ProjectEvents {
+    #[scope(project_id)]
+    ProjectCreated(ProjectCreated),
+    #[scope(project_id)]
+    ProjectUpdated(ProjectUpdated),
+    #[scope(project_id)]
+    ProjectArchived(ProjectArchived),
+    #[scope(project_id)]
+    ProjectUnarchived(ProjectUnarchived),
 }
 
 #[derive(DomainIds, FromDomainIds)]
-pub struct WarrantyPlanFold {
+pub struct ProjectFold {
     #[domain_id]
-    pub plan_id: Uuid,
+    pub project_id: Uuid,
 }
 
-impl Fold for WarrantyPlanFold {
-    type Events = WarrantyPlanEvents;
-    type State = WarrantyPlanState;
+impl Fold for ProjectFold {
+    type Events = ProjectEvents;
+    type State = ProjectState;
 
-    fn apply(&self, state: &mut WarrantyPlanState, event: StoredEvent<WarrantyPlanEvents>) {
+    fn apply(&self, state: &mut ProjectState, event: StoredEvent<ProjectEvents>) {
         match event.data {
-            WarrantyPlanEvents::WarrantyPlanCreated(ev) => {
+            ProjectEvents::ProjectCreated(ev) => {
                 state.exists = true;
                 state.title = Some(ev.title);
                 state.status = ev.status;
             }
-            WarrantyPlanEvents::WarrantyPlanUpdated(ev) => {
+            ProjectEvents::ProjectUpdated(ev) => {
                 state.title = Some(ev.title);
                 state.status = ev.status;
             }
-            WarrantyPlanEvents::WarrantyPlanArchived(_) => state.archived = true,
-            WarrantyPlanEvents::WarrantyPlanUnarchived(_) => state.archived = false,
+            ProjectEvents::ProjectArchived(_) => state.archived = true,
+            ProjectEvents::ProjectUnarchived(_) => state.archived = false,
         }
     }
 }
 ```
 
-Note that `#[scope(plan_id)]` ensures we only see events for the specific plan being queried. Without the scope attribute, the fold would filter by all domain ID bindings from the command input — which may be too narrow.
+Note that `#[scope(project_id)]` ensures we only see events for the specific project being queried. Without the scope attribute, the fold would filter by all domain ID bindings from the command input — which may be too narrow.
 
 ## How folds are registered in commands
 
@@ -188,11 +188,11 @@ Commands register folds through the builder pattern:
 
 ```rust
 Command::new(input, context)
-    .fold::<ShopExistsFold>()           // No extra args
-    .fold::<WarrantyPlanFold>()         // No extra args
+    .fold::<UserExistsFold>()           // No extra args
+    .fold::<ProjectFold>()         // No extra args
     .fold_args::<CustomFold>(args)      // With additional constructor args
     .fold_with(|input| MyFold { ... })  // Manual construction from input
-    .execute(|input, (shop_exists, plan_state)| {
+    .execute(|input, (user_exists, project_state)| {
         // ...
     })
 ```
@@ -224,7 +224,7 @@ use umari::prelude::FoldQuery;
 
 let topics_registered = FoldQuery::new()
     .fold_iter(topics.iter().map(|topic| AlreadyRegisteredFold {
-        shop_id,
+        user_id,
         topic: topic.to_string(),
         current_event_id: event.id,
     }))

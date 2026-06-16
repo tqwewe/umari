@@ -55,6 +55,13 @@ fn js_workspace_root() -> Result<String> {
     }
 }
 
+/// The `@umari/js` dependency spec written into generated package.json files.
+/// Defaults to the published version; override with UMARI_JS_DEP for local
+/// development against an unpublished SDK (e.g. a `file:` path).
+pub fn umari_js_dep() -> String {
+    std::env::var("UMARI_JS_DEP").unwrap_or_else(|_| "^0.1.0".to_string())
+}
+
 fn kebab_to_pascal(name: &str) -> String {
     name.split('-')
         .map(|part| {
@@ -190,13 +197,24 @@ fn lib_rs_content(module_type: &str, type_name: &str) -> String {
     }
 }
 
-fn package_json_content(module_type: &str, name: &str) -> String {
+fn shared_package_name(root: &str) -> Option<String> {
+    let content = fs::read_to_string(Path::new(root).join("shared").join("package.json")).ok()?;
+    let json: serde_json::Value = serde_json::from_str(&content).ok()?;
+    json.get("name")?.as_str().map(|s| s.to_string())
+}
+
+fn package_json_content(module_type: &str, name: &str, shared_pkg: Option<&str>) -> String {
+    let umari_js = umari_js_dep();
+    // Build tooling (jco, esbuild, typescript) is hoisted from the workspace
+    // root created by `umari init`; modules only declare what they import.
+    let shared_dep = shared_pkg
+        .map(|pkg| format!(",\n    \"{pkg}\": \"*\""))
+        .unwrap_or_default();
     let extra_deps = if module_type == "command" {
         ",\n    \"zod\": \"^3.0.0\""
     } else {
         ""
     };
-    let _ = module_type;
     formatdoc! {r#"
         {{
           "name": "{name}",
@@ -209,16 +227,14 @@ fn package_json_content(module_type: &str, name: &str) -> String {
             "build": "umari-js build src/index.ts --out dist/module.wasm"
           }},
           "devDependencies": {{
-            "@bytecodealliance/jco": "^1.17.0",
-            "@umari/js": "../../packages/js",
-            "esbuild": "^0.25.0"{extra_deps}
+            "@umari/js": "{umari_js}"{shared_dep}{extra_deps}
           }}
         }}
     "#}
 }
 
 fn tsconfig_json_content() -> &'static str {
-    "{\n  \"extends\": \"../../packages/js/tsconfig.json\",\n  \"include\": [\"src\"]\n}\n"
+    "{\n  \"extends\": \"../../tsconfig.json\",\n  \"include\": [\"src\"]\n}\n"
 }
 
 fn index_ts_content(module_type: &str, type_name: &str) -> String {
@@ -237,7 +253,7 @@ fn index_ts_content(module_type: &str, type_name: &str) -> String {
               input: InputSchema,
               domainIds: [] as const,
               folds: (_input) => ({{
-                // TODO: declare bound folds, e.g. exists: ShopExistsFold({{ shopId: input.shopId }})
+                // TODO: declare bound folds, e.g. exists: UserExistsFold({{ userId: input.userId }})
               }}),
               execute: ({{ input: _input, folds: _folds }}) => {{
                 return emit();
@@ -302,10 +318,11 @@ pub fn generate_js(module_type: &str, name: &str) -> Result<()> {
     fs::create_dir_all(&src_dir)?;
 
     let type_name = kebab_to_pascal(name);
+    let shared_pkg = shared_package_name(&root);
 
     fs::write(
         module_dir.join("package.json"),
-        package_json_content(module_type, name),
+        package_json_content(module_type, name, shared_pkg.as_deref()),
     )?;
     fs::write(module_dir.join("tsconfig.json"), tsconfig_json_content())?;
     fs::write(
@@ -319,7 +336,7 @@ pub fn generate_js(module_type: &str, name: &str) -> Result<()> {
     println!("  {plural}/{name}/src/index.ts");
     println!();
     println!("next steps:");
-    println!("  cd {plural}/{name} && npm install");
+    println!("  npm install        # from the workspace root, to link the new module");
 
     Ok(())
 }

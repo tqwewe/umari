@@ -15,9 +15,9 @@ use validator::Validate;
 #[derive(DomainIds, Validate, JsonSchema, Serialize, Deserialize)]
 pub struct Input {
     #[domain_id]
-    pub shop_id: u64,
+    pub user_id: u64,
     #[domain_id]
-    pub plan_id: Uuid,
+    pub project_id: Uuid,
     #[validate(length(min = 1, max = 200))]
     pub title: String,
     #[validate(range(min = 1, max = 120))]
@@ -32,21 +32,21 @@ pub fn execute(input: Input, context: CommandContext) -> anyhow::Result<ExecuteO
 
     // 2. Build command with folds, execute
     Command::new(input, context)
-        .fold::<ShopExistsFold>()
-        .fold::<WarrantyPlanFold>()
-        .execute(|input, (shop_exists, plan_state)| {
+        .fold::<UserExistsFold>()
+        .fold::<ProjectFold>()
+        .execute(|input, (user_exists, project_state)| {
             // 3. Check invariants
-            anyhow::ensure!(shop_exists, "shop does not exist");
-            anyhow::ensure!(!plan_state.exists, "plan already exists with this ID");
+            anyhow::ensure!(user_exists, "user does not exist");
+            anyhow::ensure!(!project_state.exists, "project already exists with this ID");
             anyhow::ensure!(
-                !plan_state.archived,
-                "a plan with this ID was previously archived"
+                !project_state.archived,
+                "a project with this ID was previously archived"
             );
 
             // 4. Emit events
-            Ok(emit![WarrantyPlanCreated {
-                plan_id: input.plan_id,
-                shop_id: input.shop_id,
+            Ok(emit![ProjectCreated {
+                project_id: input.project_id,
+                user_id: input.user_id,
                 title: input.title,
                 duration_months: input.duration_months,
                 price: input.price,
@@ -115,11 +115,11 @@ This deduplication happens at the event store level, so it survives crashes and 
 You can also implement **domain-level idempotency** inside the execute closure:
 
 ```rust
-.execute(|input, plan_state| {
-    if plan_state.exists && plan_state.title.as_deref() == Some(&input.title) {
-        return Ok(emit![]);  // Plan already exists with same data — idempotent
+.execute(|input, project_state| {
+    if project_state.exists && project_state.title.as_deref() == Some(&input.title) {
+        return Ok(emit![]);  // Project already exists with same data — idempotent
     }
-    // ... emit WarrantyPlanCreated
+    // ... emit ProjectCreated
 })
 ```
 
@@ -159,13 +159,13 @@ Commands fall into two categories by convention, not by type:
 - **Private commands** — implementation details of effect idempotency. Only called from within effects. These are often defined as plain Rust functions (not `#[export_command]`) inside the effect crate itself, or as separate modules within the effect.
 
 ```rust
-// In effects/register-shopify-webhooks/src/commands.rs
+// In effects/register-webhooks/src/commands.rs
 
 use umari::prelude::*;
 
 #[derive(DomainIds)]
 pub struct RecordWebhookRegistrationCompletedInput {
-    #[domain_id] pub shop_id: u64,
+    #[domain_id] pub user_id: u64,
     #[domain_id] pub topic: String,
 }
 
@@ -174,11 +174,11 @@ pub fn record_webhook_registration_completed(
     context: CommandContext,
 ) -> anyhow::Result<ExecuteOutput> {
     Command::new(input, context)
-        .fold::<ShopExistsFold>()
-        .execute(|input, shop_exists| {
-            anyhow::ensure!(shop_exists, "shop does not exist");
-            Ok(emit![ShopWebhookRegistrationCompleted {
-                shop_id: input.shop_id,
+        .fold::<UserExistsFold>()
+        .execute(|input, user_exists| {
+            anyhow::ensure!(user_exists, "user does not exist");
+            Ok(emit![UserWebhookRegistrationCompleted {
+                user_id: input.user_id,
                 topic: input.topic,
             }])
         })
@@ -221,7 +221,7 @@ fn non_nil_uuid(value: &Uuid) -> Result<(), validator::ValidationError> {
 #[derive(DomainIds, Validate, Serialize, Deserialize)]
 pub struct Input {
     #[validate(custom(function = "non_nil_uuid"))]
-    pub plan_id: Uuid,
+    pub project_id: Uuid,
 }
 ```
 
@@ -246,7 +246,7 @@ Effects use `ExecuteOutput` to ask "did this idempotency-guard command actually 
 
 ```rust
 let receipt = ScheduleWebhookRegistration::execute(&input)?;
-if !receipt.has_event::<ShopWebhooksRegistrationScheduled>() {
+if !receipt.has_event::<UserWebhooksRegistrationScheduled>() {
     return Ok(());  // already scheduled — skip the side effect
 }
 ```
@@ -259,10 +259,10 @@ if !receipt.has_event::<ShopWebhooksRegistrationScheduled>() {
 #[derive(DomainIds, Validate, JsonSchema, Serialize, Deserialize)]
 pub struct Input {
     #[domain_id]
-    pub shop_id: u64,
-    pub shop_domain: String,
-    pub shop_name: String,
-    pub access_token: String,
+    pub user_id: u64,
+    pub email: String,
+    pub user_name: String,
+    pub name: String,
     #[validate(length(min = 1))]
     pub owner_email: String,
 }
@@ -272,22 +272,22 @@ pub fn execute(input: Input, context: CommandContext) -> anyhow::Result<ExecuteO
     input.validate()?;
 
     Command::new(input, context)
-        .fold::<EventFold<ShopConnected>>()
+        .fold::<EventFold<UserRegistered>>()
         .execute(|input, connected| {
             if connected.exists() {
-                Ok(emit![ShopReconnected {
-                    shop_id: input.shop_id,
-                    shop_domain: input.shop_domain,
-                    shop_name: input.shop_name,
-                    access_token: input.access_token,
+                Ok(emit![UserReactivated {
+                    user_id: input.user_id,
+                    email: input.email,
+                    user_name: input.user_name,
+                    name: input.name,
                     owner_email: input.owner_email,
                 }])
             } else {
-                Ok(emit![ShopConnected {
-                    shop_id: input.shop_id,
-                    shop_domain: input.shop_domain,
-                    shop_name: input.shop_name,
-                    access_token: input.access_token,
+                Ok(emit![UserRegistered {
+                    user_id: input.user_id,
+                    email: input.email,
+                    user_name: input.user_name,
+                    name: input.name,
                     owner_email: input.owner_email,
                 }])
             }
@@ -295,4 +295,4 @@ pub fn execute(input: Input, context: CommandContext) -> anyhow::Result<ExecuteO
 }
 ```
 
-This command uses `EventFold<ShopConnected>` to determine whether the shop has been connected before. If yes, it emits `ShopReconnected`; if no, it emits `ShopConnected`. Both events carry the same data but have different semantics downstream.
+This command uses `EventFold<UserRegistered>` to determine whether the user has been registered before. If yes, it emits `UserReactivated`; if no, it emits `UserRegistered`. Both events carry the same data but have different semantics downstream.

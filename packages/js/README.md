@@ -17,7 +17,7 @@ npm install --save-dev @umari/js @bytecodealliance/jco esbuild
 ## Write a command
 
 ```ts
-// commands/connect-shop/src/index.ts
+// commands/register-user/src/index.ts
 import {
   defineEvent,
   defineFold,
@@ -26,73 +26,73 @@ import {
   EventFold,
 } from "@umari/js";
 
-type ShopConnectedData = {
-  shopId: bigint;
-  shopDomain: string;
-  accessToken: string;
+type UserRegisteredData = {
+  userId: bigint;
+  email: string;
+  name: string;
 };
 
-export const ShopConnected = defineEvent<ShopConnectedData>()("shop.connected", {
-  domainIds: ["shopId"],
+export const UserRegistered = defineEvent<UserRegisteredData>()("user.registered", {
+  domainIds: ["userId"],
 });
 
 type Input = {
-  shopId: bigint;
-  shopDomain: string;
-  accessToken: string;
+  userId: bigint;
+  email: string;
+  name: string;
 };
 
-const ConnectShop = defineCommand<Input, Record<string, never>>({
-  domainIds: ["shopId"] as const,
-  folds: ({ shopId }) => ({
-    connected: EventFold(ShopConnected)({ shopId }),
+const RegisterUser = defineCommand<Input, Record<string, never>>({
+  domainIds: ["userId"] as const,
+  folds: ({ userId }) => ({
+    connected: EventFold(UserRegistered)({ userId }),
   }),
   execute: ({ input, folds, emit }) => {
     if (folds.connected.length > 0) return emit(); // idempotent no-op
     return emit(
-      ShopConnected({
-        shopId: input.shopId,
-        shopDomain: input.shopDomain,
-        accessToken: input.accessToken,
+      UserRegistered({
+        userId: input.userId,
+        email: input.email,
+        name: input.name,
       }),
     );
   },
 });
 
-export const { schema, execute } = exportCommand(ConnectShop);
+export const { schema, execute } = exportCommand(RegisterUser);
 ```
 
 ## Write a projector
 
 ```ts
-// projectors/shops/src/index.ts
+// projectors/users/src/index.ts
 import { defineProjector, exportProjector, sqlite } from "@umari/js";
-import { ShopConnected } from "../events.js";
+import { UserRegistered } from "../events.js";
 
-const ShopsProjector = defineProjector({
-  events: [ShopConnected],
+const UsersProjector = defineProjector({
+  events: [UserRegistered],
   init: () => {
     sqlite.executeBatch(`
-      CREATE TABLE IF NOT EXISTS shops (
-        shop_id TEXT PRIMARY KEY,
-        shop_domain TEXT NOT NULL,
-        access_token TEXT NOT NULL
+      CREATE TABLE IF NOT EXISTS users (
+        user_id TEXT PRIMARY KEY,
+        email TEXT NOT NULL,
+        name TEXT NOT NULL
       );
     `);
   },
   handle: (event) => {
     switch (event.type) {
-      case "shop.connected":
+      case "user.registered":
         sqlite.execute(
-          "INSERT INTO shops (shop_id, shop_domain, access_token) VALUES (?, ?, ?)",
-          [event.data.shopId, event.data.shopDomain, event.data.accessToken],
+          "INSERT INTO users (user_id, email, name) VALUES (?, ?, ?)",
+          [event.data.userId, event.data.email, event.data.name],
         );
         break;
     }
   },
 });
 
-export const { projector } = exportProjector(ShopsProjector);
+export const { projector } = exportProjector(UsersProjector);
 ```
 
 ## Write an effect
@@ -100,16 +100,16 @@ export const { projector } = exportProjector(ShopsProjector);
 ```ts
 // effects/notify-owner/src/index.ts
 import { defineEffect, exportEffect, env } from "@umari/js";
-import { ShopConnected } from "../events.js";
+import { UserRegistered } from "../events.js";
 
 const NotifyOwner = defineEffect({
-  events: [ShopConnected],
+  events: [UserRegistered],
   init: () => ({ endpoint: env("NOTIFY_ENDPOINT") }),
-  partitionKey: (event) => event.data.shopId.toString(),
+  partitionKey: (event) => event.data.userId.toString(),
   handle: async (event, state) => {
     const r = await fetch(state.endpoint, {
       method: "POST",
-      body: JSON.stringify({ shopId: event.data.shopId.toString() }),
+      body: JSON.stringify({ userId: event.data.userId.toString() }),
     });
     if (!r.ok) throw new Error(`status ${r.status}`);
   },

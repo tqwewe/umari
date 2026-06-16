@@ -12,13 +12,13 @@ export interface EventTypeBrand<TType extends string> {
  */
 export interface EmittedEventPayload<TType extends string = string> {
   readonly __umariEventPayload: true;
-  /** Event type string, e.g. `"shop.connected"`. */
+  /** Event type string, e.g. `"user.registered"`. */
   readonly type: TType;
   /** Raw payload — encoded with bigint-as-string by the runtime. */
   readonly data: unknown;
   /** Field name → string id, built from the payload at emit time. */
   readonly domainIds: ReadonlyMap<string, string>;
-  /** Optional encryption scope (`"shop:42"` etc.). */
+  /** Optional encryption scope (`"user:42"` etc.). */
   readonly encryptionScope?: string;
 }
 
@@ -38,7 +38,7 @@ export interface DefineEventOptions<
  * factory that turns `TData` into an `EmittedEventPayload`, ready for `emit`.
  *
  * The phantom `__umariEventType` brand makes arrays like
- * `events: [ShopConnected, ShopReconnected]` produce a discriminated union
+ * `events: [UserRegistered, UserReactivated]` produce a discriminated union
  * over `.type` in handler signatures.
  */
 export interface EventDef<
@@ -67,9 +67,9 @@ export interface EventDef<
  * `TDomainIds` from the runtime arguments.
  *
  * ```ts
- * type ShopConnectedData = { shopId: bigint; shopDomain: string };
- * const ShopConnected = defineEvent<ShopConnectedData>()('shop.connected', {
- *   domainIds: ['shopId'],
+ * type UserRegisteredData = { userId: bigint; email: string };
+ * const UserRegistered = defineEvent<UserRegisteredData>()('user.registered', {
+ *   domainIds: ['userId'],
  * });
  * ```
  */

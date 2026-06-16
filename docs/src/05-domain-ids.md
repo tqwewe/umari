@@ -8,23 +8,23 @@ A domain ID is a field on an event that identifies the entity the event is about
 
 ```rust
 #[derive(Event, DomainIds, Serialize, Deserialize)]
-#[event_type("warranty.sold")]
-pub struct WarrantySold {
-    #[domain_id] pub shop_id: u64,       // tag: shop_id:42
-    #[domain_id] pub warranty_id: Uuid,  // tag: warranty_id:abc-def-123
+#[event_type("project.sold")]
+pub struct TaskCreated {
+    #[domain_id] pub user_id: u64,       // tag: user_id:42
+    #[domain_id] pub project_id: Uuid,  // tag: project_id:abc-def-123
     #[domain_id] pub order_id: u64,      // tag: order_id:1001
 }
 ```
 
-These tags are used by the event store (UmaDB) for DCB queries. When a command requests events with `shop_id=42`, only events tagged `shop_id:42` are returned.
+These tags are used by the event store (UmaDB) for DCB queries. When a command requests events with `user_id=42`, only events tagged `user_id:42` are returned.
 
 ## Choosing domain IDs
 
 Ask yourself: **"If this field changes, does it identify a different entity's consistency boundary?"**
 
-- `shop_id` on `WarrantySold` — yes, the warranty belongs to a specific shop. Domain ID.
-- `customer_email` on `WarrantySold` — no, it's just data about the warranty. Not a domain ID.
-- `line_item_id` on `WarrantySold` — yes, a single line item can only be sold once. Adding it as a domain ID lets a fold ask "has this line ever been sold?" and reject duplicates. Domain ID.
+- `user_id` on `TaskCreated` — yes, the project belongs to a specific user. Domain ID.
+- `customer_email` on `TaskCreated` — no, it's just data about the project. Not a domain ID.
+- `line_item_id` on `TaskCreated` — yes, a single line item can only be sold once. Adding it as a domain ID lets a fold ask "has this line ever been sold?" and reject duplicates. Domain ID.
 
 If you're unsure, err on the side of fewer domain IDs. Adding one later is backwards-compatible — existing events just won't have the new tag. Removing one is not — you'd have to backfill every existing event.
 
@@ -53,13 +53,13 @@ Fold structs implement `FromDomainIds` to be constructed from command input bind
 
 ```rust
 #[derive(DomainIds, FromDomainIds)]
-pub struct ShopExistsFold {
+pub struct UserExistsFold {
     #[domain_id]
-    pub shop_id: u64,
+    pub user_id: u64,
 }
 ```
 
-`FromDomainIds` generates a constructor that takes domain ID bindings and creates the fold struct. Only fields matching the fold's `#[domain_id]` fields are copied from the bindings. This is how a command that declares `shop_id=42` and `plan_id=abc` on its input automatically passes just `shop_id=42` to the `ShopExistsFold`.
+`FromDomainIds` generates a constructor that takes domain ID bindings and creates the fold struct. Only fields matching the fold's `#[domain_id]` fields are copied from the bindings. This is how a command that declares `user_id=42` and `project_id=abc` on its input automatically passes just `user_id=42` to the `UserExistsFold`.
 
 **Where it's used**: `FromDomainIds` is used by the `Command` builder's `.fold::<T>()` and `.fold_args::<T>(args)` methods — those are the call sites that take a fold type by name and construct it from the command's input bindings. Derive it on your fold structs to make them usable with `.fold::<T>()`.
 
@@ -73,14 +73,14 @@ When a command has registered folds, the runtime builds a DCB query by:
 2. For each entry, looking up the dynamic field values from the input's domain ID bindings
 3. Grouping by tag sets — events that share the same tag combination are requested together
 
-For example, a command with `input { shop_id: 42, plan_id: abc }` and two folds:
+For example, a command with `input { user_id: 42, project_id: abc }` and two folds:
 
 ```
-ShopExistsFold: reads SingleEvent<ShopConnected>, dynamic_fields: [shop_id]
-  → DCB item: type="shop.connected", tags=["shop_id:42"]
+UserExistsFold: reads SingleEvent<UserRegistered>, dynamic_fields: [user_id]
+  → DCB item: type="user.registered", tags=["user_id:42"]
 
-PlanExistsFold: reads SingleEvent<WarrantyPlanCreated>, dynamic_fields: [shop_id, plan_id]
-  → DCB item: type="warranty.plan.created", tags=["shop_id:42", "plan_id:abc"]
+PlanExistsFold: reads SingleEvent<ProjectCreated>, dynamic_fields: [user_id, project_id]
+  → DCB item: type="project.created", tags=["user_id:42", "project_id:abc"]
 ```
 
 The event store returns events matching either query, deduplicated and in position order.

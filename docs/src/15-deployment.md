@@ -14,10 +14,10 @@ cargo install cargo-make  # Optional, for convenience tasks
 ### Building a single module
 
 ```sh
-cargo build --target wasm32-wasip2 --release -p connect-shop
+cargo build --target wasm32-wasip2 --release -p register-user
 ```
 
-The output is at `target/wasm32-wasip2/release/connect_shop.wasm`.
+The output is at `target/wasm32-wasip2/release/register_user.wasm`.
 
 ### Building all modules
 
@@ -37,7 +37,7 @@ Each module crate has a version in its `Cargo.toml`. This version is used by the
 
 ```toml
 [package]
-name = "connect-shop"
+name = "register-user"
 version = "1.0.18"
 ```
 
@@ -82,28 +82,28 @@ The API requires `Authorization: Bearer your-secret-key` on all requests. The We
 
 ```sh
 # Upload a module
-umari command upload connect-shop ./connect_shop.wasm
+umari command upload register-user ./register_user.wasm
 
 # Activate a version
-umari command activate connect-shop 1.0.18
+umari command activate register-user 1.0.18
 
 # List active modules
 umari module list-active
 
 # Execute a command
-umari execute connect-shop '{"shop_id": 42, "shop_domain": "example.com", ...}'
+umari execute register-user '{"user_id": 42, "email": "example.com", ...}'
 ```
 
 ### Via API
 
 ```sh
 # Upload
-curl -X POST http://localhost:3000/commands/connect-shop/upload \
+curl -X POST http://localhost:3000/commands/register-user/upload \
   -H "Authorization: Bearer $UMARI_API_KEY" \
-  -F "wasm=@connect_shop.wasm"
+  -F "wasm=@register_user.wasm"
 
 # Activate
-curl -X POST http://localhost:3000/commands/connect-shop/activate \
+curl -X POST http://localhost:3000/commands/register-user/activate \
   -H "Authorization: Bearer $UMARI_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"version": "1.0.18"}'
@@ -112,7 +112,7 @@ curl -X POST http://localhost:3000/commands/connect-shop/activate \
 curl -X POST http://localhost:3000/execute \
   -H "Authorization: Bearer $UMARI_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"command": "connect-shop", "input": {"shop_id": 42, ...}}'
+  -d '{"command": "register-user", "input": {"user_id": 42, ...}}'
 ```
 
 ## Environment variables for modules
@@ -121,10 +121,10 @@ Modules can access environment variables via `env::var()`. Set them per-module:
 
 ```sh
 # Via CLI
-umari effect env set register-shopify-webhooks WEBHOOK_ADDRESS "https://webhook.example.com"
+umari effect env set register-webhooks WEBHOOK_ADDRESS "https://webhook.example.com"
 
 # Via API
-curl -X PUT http://localhost:3000/effects/register-shopify-webhooks/env \
+curl -X PUT http://localhost:3000/effects/register-webhooks/env \
   -H "Authorization: Bearer $UMARI_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"key": "WEBHOOK_ADDRESS", "value": "https://webhook.example.com"}'

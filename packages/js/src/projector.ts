@@ -29,9 +29,9 @@ export interface ProjectorDefinition<
  *
  * ```ts
  * export default defineProjector({
- *   events: [ShopConnected, ShopReconnected],
+ *   events: [UserRegistered, UserReactivated],
  *   init: () => {
- *     sqlite.executeBatch('CREATE TABLE IF NOT EXISTS shops (...);');
+ *     sqlite.executeBatch('CREATE TABLE IF NOT EXISTS users (...);');
  *   },
  *   handle: (event) => {
  *     switch (event.type) { ... }

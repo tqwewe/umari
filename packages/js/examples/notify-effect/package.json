@@ -7,8 +7,8 @@
   "scripts": { "build": "umari-js build src/index.ts --out dist/module.wasm" },
   "devDependencies": {
     "@umari/js": "file:../..",
-    "@bytecodealliance/jco": "^1.17.0",
-    "esbuild": "^0.25.0",
-    "typescript": "^5.6.0"
+    "@bytecodealliance/jco": "^1.24.1",
+    "esbuild": "^0.28.1",
+    "typescript": "^6.0.3"
   }
 }

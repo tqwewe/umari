@@ -10,25 +10,25 @@ Add `#[crypto_scope]` to any field that is also annotated with `#[domain_id]`:
 
 ```rust
 #[derive(Clone, Debug, Event, Serialize, Deserialize)]
-#[event_type("warranty.sold")]
-pub struct WarrantySold {
+#[event_type("project.sold")]
+pub struct TaskCreated {
     #[domain_id]
-    pub shop_id: u64,
+    pub user_id: u64,
     #[domain_id]
-    pub warranty_id: Uuid,
+    pub project_id: Uuid,
     #[crypto_scope]
     pub customer_id: u64,      // Encrypted at rest
     pub customer_name: String,  // Not encrypted
 }
 ```
 
-The `#[crypto_scope]` attribute must appear on a `#[domain_id]` field. The domain ID value becomes the encryption scope — e.g., `shop_id:42` or `customer_id:12345`. Each unique scope value gets its own AES-256 key.
+The `#[crypto_scope]` attribute must appear on a `#[domain_id]` field. The domain ID value becomes the encryption scope — e.g., `user_id:42` or `customer_id:12345`. Each unique scope value gets its own AES-256 key.
 
 ### Writing encrypted events
 
 When a command emits an event with a `#[crypto_scope]` field:
 
-1. The runtime checks whether a key exists for the scope (e.g., `shop_id:42`)
+1. The runtime checks whether a key exists for the scope (e.g., `user_id:42`)
 2. If not, a new AES-256-GCM key is generated and stored in the module store
 3. The entire event data (the JSON) is encrypted with this key using the event ID as the nonce
 4. The encrypted ciphertext (hex-encoded) is stored in the event, along with the key ID
@@ -54,7 +54,7 @@ To permanently delete all encrypted data for a scope, delete the key:
 // From within an effect:
 use umari::prelude::delete_crypto_key;
 
-delete_crypto_key("shop_id:42")?;
+delete_crypto_key("user_id:42")?;
 ```
 
 Or via the API:
@@ -67,7 +67,7 @@ This deletes the key from the module store. All events encrypted with that key b
 
 ### Key rotation
 
-Key rotation happens automatically. When a new event is written for a scope that already has a key, the existing key is reused. The scope is tied to the domain ID value — `shop_id:42` always uses the same key.
+Key rotation happens automatically. When a new event is written for a scope that already has a key, the existing key is reused. The scope is tied to the domain ID value — `user_id:42` always uses the same key.
 
 If you want to rotate a key (e.g., after a security incident):
 

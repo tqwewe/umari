@@ -20,8 +20,8 @@ Run a single statement, returning rows affected.
 
 ```rust
 execute(
-    "INSERT INTO plans (plan_id, shop_id, title) VALUES (?1, ?2, ?3)",
-    params![plan_id, shop_id.to_string(), title],
+    "INSERT INTO projects (project_id, user_id, title) VALUES (?1, ?2, ?3)",
+    params![project_id, user_id.to_string(), title],
 )?;
 ```
 
@@ -47,8 +47,8 @@ Return exactly one row. **Traps** if zero or multiple rows match.
 
 ```rust
 let row = query_one(
-    "SELECT name, price FROM plans WHERE plan_id = ?1",
-    params![plan_id],
+    "SELECT name, price FROM projects WHERE project_id = ?1",
+    params![project_id],
 );
 let name: String = row.get("name");
 let price: String = row.get(1);  // by column index
@@ -60,7 +60,7 @@ Return at most one row. Extra rows are silently dropped — the first match wins
 
 ```rust
 if let Some(row) = query_row(
-    "SELECT access_token FROM shops WHERE shop_id = ?1",
+    "SELECT name FROM users WHERE user_id = ?1",
     params![id],
 ) {
     let token: String = row.get(0);
@@ -115,7 +115,7 @@ impl Projector for MyProjector {
 ```rust
 self.insert_widget.execute(params![id.to_string(), name])?;
 
-let rows = self.list_widgets.query(params![shop_id]);
+let rows = self.list_widgets.query(params![user_id]);
 for row in rows {
     let name: String = row.get("name");
 }

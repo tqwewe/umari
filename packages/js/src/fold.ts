@@ -99,15 +99,15 @@ export interface DefineFoldOptions<
  * Define a user fold.
  *
  * ```ts
- * const ShopExistsFold = defineFold({
- *   domainIds: ['shopId'] as const,
- *   events: [ShopConnected, ShopReconnected],
+ * const UserExistsFold = defineFold({
+ *   domainIds: ['userId'] as const,
+ *   events: [UserRegistered, UserReactivated],
  *   initial: () => false,
  *   apply: (state, event) => true,
  * });
  *
  * // bound:
- * ShopExistsFold({ shopId: 42n })
+ * UserExistsFold({ userId: 42n })
  * ```
  */
 export function defineFold<
@@ -153,7 +153,7 @@ export function defineFold<
  * `EventState<E>`.
  *
  * ```ts
- * const plans = EventFold(WarrantyPlanCreated)({ shopId, planId });
+ * const projects = EventFold(ProjectCreated)({ userId, projectId });
  * ```
  */
 export function EventFold<E extends EventDef>(event: E) {

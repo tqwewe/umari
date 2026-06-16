@@ -23,8 +23,8 @@ export type FoldQueryResult<T extends Readonly<Record<string, BoundFold<unknown>
  *
  * ```ts
  * const states = foldQuery({
- *   exists: ShopExistsFold({ shopId }),
- *   plan: EventFold(WarrantyPlanCreated)({ planId, shopId }),
+ *   exists: UserExistsFold({ userId }),
+ *   project: EventFold(ProjectCreated)({ projectId, userId }),
  * }).run();
  * ```
  */

@@ -37,9 +37,9 @@ export interface EffectDefinition<
  *
  * ```ts
  * export default defineEffect({
- *   events: [ShopConnected],
+ *   events: [UserRegistered],
  *   init: () => ({ endpoint: env('NOTIFY_ENDPOINT') }),
- *   partitionKey: (event) => event.data.shopId.toString(),
+ *   partitionKey: (event) => event.data.userId.toString(),
  *   handle: async (event, state) => {
  *     await fetch(state.endpoint, { method: 'POST', body: JSON.stringify({...}) });
  *   },

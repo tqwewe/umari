@@ -28,14 +28,14 @@ RuntimeSupervisor
 ├── CommandActor                 # Handles command execution requests
 │   └── subscribes to module_pubsub for command modules
 ├── ModuleSupervisor<ProjectorWorld>
-│   ├── ModuleActor (plans)      # One per active projector
-│   └── ModuleActor (shops)
+│   ├── ModuleActor (projects)      # One per active projector
+│   └── ModuleActor (users)
 └── ModuleSupervisor<EffectWorld>
-    ├── ModuleActor (register-shopify-webhooks)
+    ├── ModuleActor (register-webhooks)
     │   ├── Worker (global)      # Pool of workers for parallel processing
     │   ├── Worker (keyed, 0)    # 8 keyed workers by default
     │   └── Worker (keyed, 7)
-    └── ModuleActor (record-warranty-sale)
+    └── ModuleActor (create-project)
         └── Worker (global)      # Workers run on dedicated OS threads
 ```
 
@@ -120,14 +120,14 @@ Input validation (e.g. the `validator` crate) is a guest-side convention used by
 umari-data/
 ├── umari.sqlite              # Module store: WASM bytes, metadata, crypto keys
 ├── projector/
-│   ├── plans.sqlite           # Per-projector read model
-│   ├── plans.log              # Captured stdout/stderr from the projector
-│   ├── shops.sqlite
-│   └── warranties.sqlite
+│   ├── projects.sqlite           # Per-projector read model
+│   ├── projects.log              # Captured stdout/stderr from the projector
+│   ├── users.sqlite
+│   └── tasks.sqlite
 ├── effect/
-│   ├── register-shopify-webhooks.sqlite  # Per-effect internal state
-│   ├── register-shopify-webhooks.log     # Captured stdout/stderr from the effect
-│   └── record-warranty-sale.sqlite
+│   ├── register-webhooks.sqlite  # Per-effect internal state
+│   ├── register-webhooks.log     # Captured stdout/stderr from the effect
+│   └── create-project.sqlite
 └── cache/
     └── *.cwasm                # Compiled WASM component cache
 ```

@@ -62,22 +62,22 @@ A typical Umari application looks like this:
 my-project/
 ├── src/                     # Shared library: events, folds
 │   ├── events/
-│   │   ├── shop.rs
-│   │   ├── warranty.rs
+│   │   ├── user.rs
+│   │   ├── project.rs
 │   │   └── claim.rs
 │   └── folds/
 │       └── mod.rs
 ├── commands/
-│   ├── connect-shop/        # Crate: connect-shop
-│   ├── create-warranty-plan/
-│   └── cancel-warranty/
+│   ├── register-user/        # Crate: register-user
+│   ├── create-project/
+│   └── cancel-project/
 ├── projectors/
-│   ├── plans/               # Crate: plans
-│   ├── shops/
-│   └── warranties/
+│   ├── projects/               # Crate: projects
+│   ├── users/
+│   └── tasks/
 ├── effects/
-│   ├── register-shopify-webhooks/
-│   └── record-warranty-sale/
+│   ├── register-webhooks/
+│   └── create-project/
 └── Cargo.toml               # Workspace root
 ```
 

@@ -39,8 +39,8 @@ The whole system is designed around a single invariant: **the event store is the
 
 ## Use Cases
 
-- **Domain-rich backends**: Order processing, billing, warranties, claims, inventory — anywhere causal history and audit trails matter.
-- **Multi-tenant SaaS**: Domain IDs map naturally to tenants, shops, projects, or accounts; each command queries its own slice.
+- **Domain-rich backends**: Order processing, billing, tasks, claims, inventory — anywhere causal history and audit trails matter.
+- **Multi-tenant SaaS**: Domain IDs map naturally to tenants, users, projects, or accounts; each command queries its own slice.
 - **Workflow and saga orchestration**: Effects react to events, call commands, and form long-running causal chains automatically.
 - **Compliance-sensitive systems**: Full audit trail by construction, plus per-scope crypto-shredding for right-to-be-forgotten requests.
 - **Integration backbones**: Effects sync state out to webhooks, third-party APIs, or downstream services without leaking concerns into command logic.
@@ -73,9 +73,9 @@ cargo add umari
 The `umari` CLI scaffolds new modules and wires them into your workspace:
 
 ```bash
-umari new command create-warranty-plan
-umari new projector plans
-umari new effect notify-merchant
+umari new command create-project
+umari new projector projects
+umari new effect notify-user
 ```
 
 ## Basic Example
@@ -88,12 +88,12 @@ use serde::{Serialize, Deserialize};
 use uuid::Uuid;
 
 #[derive(Event, DomainIds, Serialize, Deserialize)]
-#[event_type("warranty.plan.created")]
-pub struct WarrantyPlanCreated {
+#[event_type("project.created")]
+pub struct ProjectCreated {
     #[domain_id]
-    pub plan_id: Uuid,
+    pub project_id: Uuid,
     #[domain_id]
-    pub shop_id: u64,
+    pub user_id: u64,
     pub title: String,
     pub price: String,
 }
@@ -111,9 +111,9 @@ use validator::Validate;
 #[derive(DomainIds, Validate, Serialize, Deserialize)]
 pub struct Input {
     #[domain_id]
-    pub shop_id: u64,
+    pub user_id: u64,
     #[domain_id]
-    pub plan_id: Uuid,
+    pub project_id: Uuid,
     #[validate(length(min = 1, max = 200))]
     pub title: String,
     pub price: String,
@@ -124,15 +124,15 @@ pub fn execute(input: Input, context: CommandContext) -> anyhow::Result<ExecuteO
     input.validate()?;
 
     Command::new(input, context)
-        .fold::<ShopExistsFold>()
-        .fold::<WarrantyPlanFold>()
-        .execute(|input, (shop_exists, plan)| {
-            anyhow::ensure!(shop_exists, "shop does not exist");
-            anyhow::ensure!(!plan.exists, "plan already exists");
+        .fold::<UserExistsFold>()
+        .fold::<ProjectFold>()
+        .execute(|input, (user_exists, project)| {
+            anyhow::ensure!(user_exists, "user does not exist");
+            anyhow::ensure!(!project.exists, "project already exists");
 
-            Ok(emit![WarrantyPlanCreated {
-                plan_id: input.plan_id,
-                shop_id: input.shop_id,
+            Ok(emit![ProjectCreated {
+                project_id: input.project_id,
+                user_id: input.user_id,
                 title: input.title,
                 price: input.price,
             }])
@@ -147,36 +147,36 @@ A projector consumes events and writes to its own SQLite database:
 ```rust,ignore
 use umari::prelude::*;
 
-export_projector!(Plans);
+export_projector!(Projects);
 
 #[derive(EventSet)]
 enum Query {
-    WarrantyPlanCreated(WarrantyPlanCreated),
+    ProjectCreated(ProjectCreated),
 }
 
-struct Plans {}
+struct Projects {}
 
-impl Projector for Plans {
+impl Projector for Projects {
     type Query = Query;
 
     fn init() -> anyhow::Result<Self> {
         execute_batch(
-            "CREATE TABLE IF NOT EXISTS plans (
-                plan_id TEXT PRIMARY KEY,
-                shop_id TEXT NOT NULL,
+            "CREATE TABLE IF NOT EXISTS projects (
+                project_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
                 title TEXT NOT NULL,
                 price TEXT NOT NULL
             )",
         )?;
-        Ok(Plans {})
+        Ok(Projects {})
     }
 
     fn handle(&mut self, event: StoredEvent<Self::Query>) -> anyhow::Result<()> {
         match event.data {
-            Query::WarrantyPlanCreated(ev) => {
+            Query::ProjectCreated(ev) => {
                 execute(
-                    "INSERT INTO plans (plan_id, shop_id, title, price) VALUES (?1, ?2, ?3, ?4)",
-                    params![ev.plan_id, ev.shop_id.to_string(), ev.title, ev.price],
+                    "INSERT INTO projects (project_id, user_id, title, price) VALUES (?1, ?2, ?3, ?4)",
+                    params![ev.project_id, ev.user_id.to_string(), ev.title, ev.price],
                 )?;
             }
         }
@@ -193,18 +193,18 @@ Effects react to events with external work — HTTP calls, third-party APIs, sen
 use umari::prelude::*;
 use wasi_http_client::Client;
 
-export_effect!(NotifyMerchant);
+export_effect!(NotifyUser);
 
 #[derive(EventSet)]
 enum Query {
-    WarrantyPlanCreated(WarrantyPlanCreated),
+    ProjectCreated(ProjectCreated),
 }
 
-struct NotifyMerchant {
+struct NotifyUser {
     client: Client,
 }
 
-impl Effect for NotifyMerchant {
+impl Effect for NotifyUser {
     type Query = Query;
 
     fn init() -> anyhow::Result<Self> {
@@ -212,14 +212,14 @@ impl Effect for NotifyMerchant {
     }
 
     fn handle(&mut self, event: StoredEvent<Self::Query>) -> anyhow::Result<()> {
-        let Query::WarrantyPlanCreated(ev) = event.data;
+        let Query::ProjectCreated(ev) = event.data;
 
         // 1. Fold-check: ask a private command whether we already notified.
         let receipt = record_notified(
-            RecordNotifiedInput { plan_id: ev.plan_id },
+            RecordNotifiedInput { project_id: ev.project_id },
             CommandContext::new(),
         )?;
-        if !receipt.has_event::<MerchantNotified>() {
+        if !receipt.has_event::<UserNotified>() {
             return Ok(()); // already notified on a previous run
         }
 
@@ -285,7 +285,7 @@ Commands are the only writers. Projectors and effects subscribe to the event str
 
 ## Examples
 
-The [`packages/js/examples`](packages/js/examples) directory contains TypeScript examples that exercise the HTTP API end-to-end (connecting a shop, creating a warranty plan, etc.). Rust module examples live throughout [The Umari Book](https://umari.tqwewe.com).
+The [`packages/js/examples`](packages/js/examples) directory contains TypeScript examples that exercise the HTTP API end-to-end (registering a user, creating a project, etc.). Rust module examples live throughout [The Umari Book](https://umari.tqwewe.com).
 
 ## Contributing
 

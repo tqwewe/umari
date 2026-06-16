@@ -17,7 +17,7 @@ Collects **every** occurrence of event type `E` into a `Vec`.
 **State**: `EventState<E>`
 
 ```rust
-.fold::<EventFold<ShopConnected>>()
+.fold::<EventFold<UserRegistered>>()
 .execute(|input, connected| {
     if connected.exists() {
         let first = &connected.events[0];
@@ -44,10 +44,10 @@ Keeps only the **most recent** `E`. Each new event replaces the previous.
 **State**: `Option<StoredEvent<E>>`
 
 ```rust
-.fold::<LatestEvent<WarrantyPlanUpdated>>()
+.fold::<LatestEvent<ProjectUpdated>>()
 .execute(|input, latest| {
     if let Some(event) = latest {
-        // event.data is the most recent WarrantyPlanUpdated
+        // event.data is the most recent ProjectUpdated
     }
     Ok(emit![])
 })
@@ -63,11 +63,11 @@ Counts occurrences of `E` without storing event data.
 **State**: `u64`
 
 ```rust
-.fold::<EventCounter<WarrantySold>>()
-.execute(|input, sale_count| {
+.fold::<EventCounter<TaskCreated>>()
+.execute(|input, task_count| {
     anyhow::ensure!(
-        sale_count < MAX_WARRANTIES,
-        "shop has reached the maximum number of warranties"
+        task_count < MAX_TASKS,
+        "user has reached the maximum number of tasks"
     );
     Ok(emit![/* ... */])
 })
@@ -83,7 +83,7 @@ Tracks which of **two opposing events** occurred last. Designed for created/dele
 **State**: `ToggleState<A, B>`
 
 ```rust
-.fold::<EventToggle<WarrantyPlanArchived, WarrantyPlanUnarchived>>()
+.fold::<EventToggle<ProjectArchived, ProjectUnarchived>>()
 .execute(|input, toggle| {
     if toggle.is_a() {
         // currently archived
@@ -115,16 +115,16 @@ Not a fold — an `EventSet` shorthand for custom folds that only read a single 
 
 ```rust
 #[derive(DomainIds, FromDomainIds)]
-pub struct ShopExistsFold {
+pub struct UserExistsFold {
     #[domain_id]
-    pub shop_id: u64,
+    pub user_id: u64,
 }
 
-impl Fold for ShopExistsFold {
-    type Events = SingleEvent<ShopConnected>;
+impl Fold for UserExistsFold {
+    type Events = SingleEvent<UserRegistered>;
     type State = bool;
 
-    fn apply(&self, exists: &mut bool, _event: StoredEvent<ShopConnected>) {
+    fn apply(&self, exists: &mut bool, _event: StoredEvent<UserRegistered>) {
         *exists = true;
     }
 }
@@ -137,14 +137,14 @@ When none of the built-ins fit, implement `Fold` yourself:
 ```rust
 #[derive(DomainIds, FromDomainIds)]
 pub struct MyFold {
-    #[domain_id] pub shop_id: u64,
+    #[domain_id] pub user_id: u64,
     #[from_domain_id(default)]
     pub custom_field: String,
 }
 
 #[derive(EventSet)]
 pub enum MyFoldEvents {
-    #[scope(shop_id)]
+    #[scope(user_id)]
     EventA(EventA),
     EventB(EventB),
 }

@@ -11,7 +11,7 @@ my-project/
 │   ├── lib.rs
 │   ├── events/
 │   │   ├── mod.rs
-│   │   ├── shop.rs            # Shop events
+│   │   ├── user.rs            # User events
 │   │   ├── product.rs         # Product events
 │   │   └── order.rs           # Order events
 │   ├── folds/
@@ -27,7 +27,7 @@ my-project/
 │   ├── products/              # crate: products
 │   │   ├── Cargo.toml
 │   │   └── src/lib.rs
-│   ├── shops/
+│   ├── users/
 │   └── orders/
 ├── effects/
 │   ├── notify-external-service/
@@ -65,7 +65,7 @@ members = [
     "commands/create-product",
     "commands/update-product",
     "projectors/products",
-    "projectors/shops",
+    "projectors/users",
     "effects/notify-external-service",
     # ... etc
 ]
@@ -133,11 +133,11 @@ The shared library crate (root `src/`) contains:
 
 ```rust
 // src/events/mod.rs
-pub mod shop;
+pub mod user;
 pub mod product;
 pub mod order;
 
-pub use shop::*;
+pub use user::*;
 pub use product::*;
 pub use order::*;
 ```
@@ -145,17 +145,17 @@ pub use order::*;
 Each event module groups related events:
 
 ```rust
-// src/events/shop.rs
+// src/events/user.rs
 use umari::prelude::*;
 
 #[derive(Event, DomainIds, Serialize, Deserialize)]
-#[event_type("shop.connected")]
-pub struct ShopConnected {
+#[event_type("user.registered")]
+pub struct UserRegistered {
     #[domain_id]
     #[crypto_scope]
-    pub shop_id: u64,
-    pub shop_domain: String,
-    pub access_token: String,
+    pub user_id: u64,
+    pub email: String,
+    pub name: String,
 }
 ```
 
@@ -167,16 +167,16 @@ use umari::prelude::*;
 use crate::events::*;
 
 #[derive(DomainIds, FromDomainIds)]
-pub struct ShopExistsFold {
+pub struct UserExistsFold {
     #[domain_id]
-    pub shop_id: u64,
+    pub user_id: u64,
 }
 
-impl Fold for ShopExistsFold {
-    type Events = SingleEvent<ShopConnected>;
+impl Fold for UserExistsFold {
+    type Events = SingleEvent<UserRegistered>;
     type State = bool;
 
-    fn apply(&self, exists: &mut bool, _event: StoredEvent<ShopConnected>) {
+    fn apply(&self, exists: &mut bool, _event: StoredEvent<UserRegistered>) {
         *exists = true;
     }
 }
@@ -195,16 +195,16 @@ pub mod helpers;
 
 | Item | Convention | Example |
 |------|-----------|---------|
-| Event struct | PascalCase, past tense | `ShopConnected`, `ProductCreated` |
-| Event type string | `object.verb` dot notation | `"shop.connected"`, `"product.created"` |
+| Event struct | PascalCase, past tense | `UserRegistered`, `ProductCreated` |
+| Event type string | `object.verb` dot notation | `"user.registered"`, `"product.created"` |
 | Command crate | kebab-case, imperative | `create-product`, `update-product` |
 | Command function | snake_case | `pub fn execute(...)` |
 | Command input struct | Always `Input` | `pub struct Input` |
-| Projector crate | kebab-case, plural noun | `products`, `shops` |
-| Projector struct | PascalCase, plural | `Products`, `Shops` |
+| Projector crate | kebab-case, plural noun | `products`, `users` |
+| Projector struct | PascalCase, plural | `Products`, `Users` |
 | Effect crate | kebab-case, verb phrase | `notify-external-service` |
 | Effect struct | PascalCase | `NotifyExternalService` |
-| Fold struct | PascalCase noun + `Fold` | `ShopExistsFold`, `ProductStateFold` |
+| Fold struct | PascalCase noun + `Fold` | `UserExistsFold`, `ProductStateFold` |
 | Fold state | PascalCase noun + `State` | `ProductState`, `WidgetState` |
 | EventSet enum | Always `Query` | `enum Query { ... }` |
 

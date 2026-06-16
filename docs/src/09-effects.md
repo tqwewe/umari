@@ -45,8 +45,8 @@ export_effect!(RegisterWebhooks);
 
 #[derive(EventSet)]
 enum Query {
-    ShopConnected(ShopConnected),
-    ShopReconnected(ShopReconnected),
+    UserRegistered(UserRegistered),
+    UserReactivated(UserReactivated),
 }
 
 struct RegisterWebhooks {
@@ -68,16 +68,16 @@ impl Effect for RegisterWebhooks {
 
     fn partition_key(&self, event: StoredEvent<Self::Query>) -> Option<String> {
         match event.data {
-            Query::ShopConnected(ShopConnected { shop_id, .. })
-            | Query::ShopReconnected(ShopReconnected { shop_id, .. }) => Some(shop_id.to_string()),
+            Query::UserRegistered(UserRegistered { user_id, .. })
+            | Query::UserReactivated(UserReactivated { user_id, .. }) => Some(user_id.to_string()),
         }
     }
 
     fn handle(&mut self, event: StoredEvent<Self::Query>) -> anyhow::Result<()> {
-        let (shop_id, shop_domain, access_token) = match event.data {
-            Query::ShopConnected(ShopConnected { shop_id, shop_domain, access_token, .. })
-            | Query::ShopReconnected(ShopReconnected { shop_id, shop_domain, access_token, .. }) => {
-                (shop_id, shop_domain, access_token)
+        let (user_id, email, name) = match event.data {
+            Query::UserRegistered(UserRegistered { user_id, email, name, .. })
+            | Query::UserReactivated(UserReactivated { user_id, email, name, .. }) => {
+                (user_id, email, name)
             }
         };
 
@@ -86,7 +86,7 @@ impl Effect for RegisterWebhooks {
         // 1. FOLD-CHECK — use a fold to check which topics are already registered
         let topics_registered = FoldQuery::new()
             .fold_iter(topics.iter().map(|topic| AlreadyRegisteredFold {
-                shop_id,
+                user_id,
                 topic: topic.to_string(),
                 current_event_id: event.id,
             }))
@@ -99,13 +99,13 @@ impl Effect for RegisterWebhooks {
             }
 
             // 2. SIDE EFFECT — make the HTTP call
-            let result = self.register_webhook(shop_id, &shop_domain, &access_token, topic)?;
+            let result = self.register_webhook(user_id, &email, &name, topic)?;
             match result {
                 Ok(()) => {
                     // 3. RECORD — persist completion in the event store
                     record_webhook_registration_completed(
                         RecordWebhookRegistrationCompletedInput {
-                            shop_id,
+                            user_id,
                             topic: topic.to_string(),
                         },
                         CommandContext::new(),
@@ -124,7 +124,7 @@ impl Effect for RegisterWebhooks {
 }
 ```
 
-The fold (`AlreadyRegisteredFold`) checks whether a `WebhookRegistrationCompleted` event already exists for this shop and topic, scoped to the current triggering event. If it exists, the webhook was already registered in a previous run — skip. If not, perform the HTTP call and record completion.
+The fold (`AlreadyRegisteredFold`) checks whether a `WebhookRegistrationCompleted` event already exists for this user and topic, scoped to the current triggering event. If it exists, the webhook was already registered in a previous run — skip. If not, perform the HTTP call and record completion.
 
 ## partition_key and parallel processing
 
@@ -133,11 +133,11 @@ The fold (`AlreadyRegisteredFold`) checks whether a `WebhookRegistrationComplete
 - `None` → global worker (sequential for this effect)
 - `Some(key)` → hashed to one of 8 keyed workers, enabling parallelism across independent streams
 
-In the webhook example, `partition_key` returns `shop_id` — events for different shops are processed in parallel, but events for the same shop are serialized (same worker). This prevents race conditions within a shop while maximizing throughput across shops.
+In the webhook example, `partition_key` returns `user_id` — events for different users are processed in parallel, but events for the same user are serialized (same worker). This prevents race conditions within a user while maximizing throughput across users.
 
 When to use partition keys:
 - **Use `None`** when events must be processed strictly in order
-- **Use `Some(entity_id)`** when events for different entities are independent (different shops, different users)
+- **Use `Some(entity_id)`** when events for different entities are independent (different users, different users)
 - **Use `Some(event_id)`** with care — this parallelizes everything but may cause out-of-order processing within an entity
 
 ## HTTP requests
@@ -170,7 +170,7 @@ Effects execute private commands directly as function calls:
 use crate::commands::record_webhook_registration_completed;
 
 record_webhook_registration_completed(
-    RecordWebhookRegistrationCompletedInput { shop_id, topic },
+    RecordWebhookRegistrationCompletedInput { user_id, topic },
     CommandContext::new(),  // Inherits correlation context automatically
 )?;
 ```
@@ -189,7 +189,7 @@ Effects can use `FoldQuery` to check event store state without executing a full 
 ```rust
 let registered = FoldQuery::new()
     .fold(AlreadyRegisteredFold {
-        shop_id,
+        user_id,
         topic: "orders/paid".into(),
         current_event_id: event.id,
     })

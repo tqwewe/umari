@@ -12,12 +12,12 @@ use serde::{Serialize, Deserialize};
 use uuid::Uuid;
 
 #[derive(Event, DomainIds, Serialize, Deserialize)]
-#[event_type("warranty.plan.created")]
-pub struct WarrantyPlanCreated {
+#[event_type("project.created")]
+pub struct ProjectCreated {
     #[domain_id]
-    pub plan_id: Uuid,
+    pub project_id: Uuid,
     #[domain_id]
-    pub shop_id: u64,
+    pub user_id: u64,
     pub title: String,
     pub duration_months: u32,
     pub price: Decimal,
@@ -27,9 +27,9 @@ pub struct WarrantyPlanCreated {
 
 `Event` and `DomainIds` are independent derives — `Event` does **not** include `DomainIds`, so you need to add both. `Clone` and `Debug` are optional; add them if you want them on a particular event.
 
-The `#[event_type("warranty.plan.created")]` attribute sets the `EVENT_TYPE` constant. This string is what the event store uses to identify the event, what projectors and effects filter on, and what appears in the `event_type` field of `StoredEvent`. The attribute is optional — if omitted, `EVENT_TYPE` defaults to the struct name.
+The `#[event_type("project.created")]` attribute sets the `EVENT_TYPE` constant. This string is what the event store uses to identify the event, what projectors and effects filter on, and what appears in the `event_type` field of `StoredEvent`. The attribute is optional — if omitted, `EVENT_TYPE` defaults to the struct name.
 
-**Naming convention**: A common convention is dot-separated past-tense verb phrases like `shop.connected`, `warranty.plan.created`, `order.paid` — the first segment is the domain entity and the second is the action. Umari doesn't enforce this; use whatever naming scheme fits your project.
+**Naming convention**: A common convention is dot-separated past-tense verb phrases like `user.registered`, `project.created`, `order.paid` — the first segment is the domain entity and the second is the action. Umari doesn't enforce this; use whatever naming scheme fits your project.
 
 ## Domain IDs
 
@@ -40,10 +40,10 @@ Fields annotated with `#[domain_id]` become tags on the stored event. Commands q
 
 ```rust
 #[derive(Event, DomainIds, Serialize, Deserialize)]
-#[event_type("warranty.sold")]
-pub struct WarrantySold {
-    #[domain_id] pub shop_id: u64,       // ✓ — identifies the shop
-    #[domain_id] pub warranty_id: Uuid,  // ✓ — identifies the warranty
+#[event_type("project.sold")]
+pub struct TaskCreated {
+    #[domain_id] pub user_id: u64,       // ✓ — identifies the user
+    #[domain_id] pub project_id: Uuid,  // ✓ — identifies the project
     #[domain_id] pub order_id: u64,      // ✓ — identifies the order
     #[domain_id] pub line_item_id: u64,  // ✓ — identifies the order line
     pub plan_title: String,              // ✗ — just data
@@ -52,18 +52,18 @@ pub struct WarrantySold {
 }
 ```
 
-Each domain ID becomes a tag like `shop_id:42`. When a command queries for events with `shop_id=42`, the event store returns only events carrying that tag.
+Each domain ID becomes a tag like `user_id:42`. When a command queries for events with `user_id=42`, the event store returns only events carrying that tag.
 
 ### Renaming domain IDs
 
 You can override the tag name — useful when the Rust field name differs from the domain concept:
 
 ```rust
-#[domain_id("plan_id")]
-pub warranty_plan_id: Uuid,
+#[domain_id("project_id")]
+pub project_project_id: Uuid,
 ```
 
-This produces a tag like `plan_id:abc-def` rather than `warranty_plan_id:abc-def`.
+This produces a tag like `project_id:abc-def` rather than `project_project_id:abc-def`.
 
 ### The DomainIds derive
 
@@ -75,20 +75,20 @@ Events that contain sensitive data (PII, access tokens, etc.) can be encrypted a
 
 ```rust
 #[derive(Event, DomainIds, Serialize, Deserialize)]
-#[event_type("shop.connected")]
-pub struct ShopConnected {
+#[event_type("user.registered")]
+pub struct UserRegistered {
     #[domain_id]
     #[crypto_scope]
-    pub shop_id: u64,
-    pub shop_domain: String,
-    pub access_token: String,
+    pub user_id: u64,
+    pub email: String,
+    pub name: String,
 }
 ```
 
-The field marked `#[crypto_scope]` does **not** mean "encrypt this field." Instead, its value (combined with the field name as `field_name:value`, e.g. `shop_id:42`) becomes a **lookup key for an encryption key**, and the runtime then encrypts the **entire event payload** with that key. The event envelope (id, position, tags, timestamps, etc.) is never encrypted.
+The field marked `#[crypto_scope]` does **not** mean "encrypt this field." Instead, its value (combined with the field name as `field_name:value`, e.g. `user_id:42`) becomes a **lookup key for an encryption key**, and the runtime then encrypts the **entire event payload** with that key. The event envelope (id, position, tags, timestamps, etc.) is never encrypted.
 
 - **No `#[crypto_scope]`** on any field → the event is stored in plaintext.
-- **One field with `#[crypto_scope]`** → the whole payload is encrypted under a per-scope AES-256-GCM key. Each unique scope value (e.g. each `shop_id`) gets its own key.
+- **One field with `#[crypto_scope]`** → the whole payload is encrypted under a per-scope AES-256-GCM key. Each unique scope value (e.g. each `user_id`) gets its own key.
 
 Encryption is transparent:
 - **Writing**: the runtime serializes the event, fetches/creates the key for the scope, and encrypts the payload before appending.
@@ -122,7 +122,7 @@ pub struct StoredEvent<T> {
     pub id: Uuid,
     pub position: u64,
     pub event_type: String,
-    pub tags: Vec<String>,               // ["shop_id:42", "plan_id:abc"]
+    pub tags: Vec<String>,               // ["user_id:42", "project_id:abc"]
     pub timestamp: DateTime<Utc>,
     pub correlation_id: Uuid,
     pub causation_id: Uuid,
@@ -143,8 +143,8 @@ An **event set** is an enum that groups multiple event types together. It's used
 ```rust
 #[derive(EventSet)]
 enum Query {
-    ShopConnected(ShopConnected),
-    ShopReconnected(ShopReconnected),
+    UserRegistered(UserRegistered),
+    UserReactivated(UserReactivated),
 }
 ```
 
@@ -154,7 +154,7 @@ The `#[derive(EventSet)]` macro generates the `EventSet` trait implementation:
 pub trait EventSet: Sized {
     type Item;
 
-    fn event_types() -> Vec<&'static str>;      // ["shop.connected", "shop.reconnected"]
+    fn event_types() -> Vec<&'static str>;      // ["user.registered", "user.reactivated"]
     fn event_domain_ids() -> Vec<EventDomainId>; // Domain ID requirements per event type
     fn from_event(event_type: &str, data: &Value)
         -> Option<Result<Self::Item, SerializationError>>;
@@ -166,11 +166,11 @@ pub trait EventSet: Sized {
 For folds that only care about one event type, use `SingleEvent<E>`:
 
 ```rust
-impl Fold for ShopExistsFold {
-    type Events = SingleEvent<ShopConnected>;
+impl Fold for UserExistsFold {
+    type Events = SingleEvent<UserRegistered>;
     type State = bool;
 
-    fn apply(&self, exists: &mut bool, event: StoredEvent<ShopConnected>) {
+    fn apply(&self, exists: &mut bool, event: StoredEvent<UserRegistered>) {
         *exists = true;
     }
 }
@@ -192,8 +192,8 @@ pub enum WidgetFoldEvents {
     // Receive WidgetArchived events — uses all domain ID bindings from the fold
     WidgetArchived(WidgetArchived),
 
-    // Always match events where shop_id = "acme", regardless of fold bindings
-    #[scope(shop_id = "acme")]
+    // Always match events where user_id = "acme", regardless of fold bindings
+    #[scope(user_id = "acme")]
     GlobalSettingsChanged(GlobalSettingsChanged),
 }
 ```
@@ -203,7 +203,7 @@ Three forms:
 - **`#[scope(field_name)]`**: Filter only by the named domain ID — restricts scope to fewer IDs
 - **`#[scope(field_name = "literal")]`**: Hardcoded tag value — matches events with that fixed value
 
-> **Scoping matters.** A fold that checks whether a widget name is unique within a shop should be scoped by `shop_id` only. Without `#[scope(shop_id)]`, the fold would also filter by `widget_id` and only see events for that specific widget — missing other widgets in the shop.
+> **Scoping matters.** A fold that checks whether a widget name is unique within a user should be scoped by `user_id` only. Without `#[scope(user_id)]`, the fold would also filter by `widget_id` and only see events for that specific widget — missing other widgets in the user.
 
 For projectors and effects (which have no fold bindings), only the hardcoded form is meaningful:
 
@@ -219,6 +219,6 @@ enum Query {
 
 ## Naming conventions
 
-- Event struct: `PascalCase` past-tense verb phrase: `WidgetCreated`, `ShopConnected`, `WarrantyClaimFiled`
-- Event type string: `object.verb` dot notation: `"widget.created"`, `"shop.connected"`
+- Event struct: `PascalCase` past-tense verb phrase: `WidgetCreated`, `UserRegistered`, `ProjectArchived`
+- Event type string: `object.verb` dot notation: `"widget.created"`, `"user.registered"`
 - Event set enum: Always named `Query`

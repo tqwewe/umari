@@ -11,7 +11,7 @@ import { deriveCommandContext } from "./current-event-context.js";
  * import `umari:command/executor` (commands and effects).
  *
  * ```ts
- * execute('record-warranty-sale', { shopId, ... }, {
+ * execute('create-project', { userId, ... }, {
  *   correlationId: event.correlationId,
  *   triggeringEventId: event.id,
  *   idempotencyKey: event.id,

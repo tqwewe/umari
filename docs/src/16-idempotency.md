@@ -37,18 +37,18 @@ Commands can also check fold state to decide whether the operation already occur
 
 ```rust
 Command::new(input, context)
-    .fold::<EventFold<ShopConnected>>()
+    .fold::<EventFold<UserRegistered>>()
     .execute(|input, connected| {
         if connected.exists() {
-            return Ok(emit![]);  // Already connected
+            return Ok(emit![]);  // Already registered
         }
-        Ok(emit![ShopConnected { .. }])
+        Ok(emit![UserRegistered { .. }])
     })
 ```
 
-This is domain-level idempotency — the command understands its own business rules and can determine that "connecting a shop that's already connected" is a no-op.
+This is domain-level idempotency — the command understands its own business rules and can determine that "registering a user that's already registered" is a no-op.
 
-**When to use**: When the idempotency logic depends on business state (e.g., "if the plan already has this title, don't create a duplicate").
+**When to use**: When the idempotency logic depends on business state (e.g., "if the project already has this title, don't create a duplicate").
 
 ## Projector idempotency
 
@@ -63,11 +63,11 @@ A projector's `handle()` function should be a pure function from `(current_db_st
 **Best practice**: Use `INSERT OR REPLACE` / `INSERT ... ON CONFLICT ... DO UPDATE` for upserts rather than separate INSERT/UPDATE logic. This makes each event handler idempotent at the row level:
 
 ```sql
-INSERT INTO plans (plan_id, shop_id, title)
+INSERT INTO projects (project_id, user_id, title)
 VALUES (?1, ?2, ?3)
-ON CONFLICT(plan_id) DO UPDATE SET
+ON CONFLICT(project_id) DO UPDATE SET
     title = excluded.title,
-    shop_id = excluded.shop_id;
+    user_id = excluded.user_id;
 ```
 
 ## Effect idempotency
@@ -78,7 +78,7 @@ Effect idempotency is the most complex because effects perform external side eff
 
 ```
 ┌────────────┐
-│  Trigger    │  ShopConnected event arrives
+│  Trigger    │  UserRegistered event arrives
 │  Event      │
 └─────┬──────┘
       │
@@ -118,7 +118,7 @@ Unlike the older "scheduled event" pattern, the recommended approach uses `FoldQ
 
 ```rust
 let already_done = FoldQuery::new()
-    .fold(AlreadyRegisteredFold { shop_id, topic, current_event_id })
+    .fold(AlreadyRegisteredFold { user_id, topic, current_event_id })
     .run()?;
 
 if already_done {
@@ -164,7 +164,7 @@ static mut PROCESSED: HashSet<Uuid> = HashSet::new();
 
 ```rust
 // WRONG — external systems aren't part of the event log
-let exists = shopify_api.check_webhook_exists(topic)?;
+let exists = external_api.check_webhook_exists(topic)?;
 if exists { return Ok(()); }
 ```
 
