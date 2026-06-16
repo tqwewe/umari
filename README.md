@@ -292,7 +292,7 @@ The [`packages/js/examples`](packages/js/examples) directory contains TypeScript
 Contributions are welcome! Here are ways you can help:
 
 - **Report issues**: Found a bug or have a feature request? [Open an issue](https://github.com/tqwewe/umari/issues).
-- **Improve documentation**: PRs against the book in [`docs/src`](docs/src) are especially appreciated. To build it locally: `cargo install mdbook mdbook-tabs`, then `mdbook-tabs install docs` (once, to drop the tab theme assets) and `mdbook serve docs`.
+- **Improve documentation**: PRs against the book in [`docs/src`](docs/src) are especially appreciated. To build it locally: `cargo install mdbook mdbook-tabs`, then `mdbook serve docs` (the tab theme assets are checked in under `docs/theme/`).
 - **Contribute code**: Pick up an open issue or propose new functionality.
 - **Join the discussion**: Talk through ideas on [Discord](https://discord.gg/GMX4DV9fbk).
 
