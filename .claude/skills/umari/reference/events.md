@@ -2,6 +2,12 @@
 
 An **event** is an immutable fact stored in UmaDB. It has a `event_type` string (used for routing/filtering), a JSON payload, and a set of **domain ID tags** (used by DCB queries).
 
+> **TypeScript** (`@umari/js`): an event is `defineEvent<Data>()(type, { domainIds })` — no derives. `domainIds` lists the payload fields that become tags (camelCase, e.g. `userId`); `cryptoScope: (data) => "prefix:value"` replaces `#[crypto_scope]`. Full reference: [`javascript.md`](javascript.md#events).
+> ```ts
+> export const ProjectCreated = defineEvent<{ projectId: string; userId: bigint; title: string }>()(
+>   "project.created", { domainIds: ["projectId", "userId"] });
+> ```
+
 ## Required derives
 
 ```rust
@@ -10,14 +16,14 @@ use serde::{Serialize, Deserialize};
 use uuid::Uuid;
 
 #[derive(Event, DomainIds, Serialize, Deserialize)]
-#[event_type("warranty.plan.created")]
-pub struct WarrantyPlanCreated {
+#[event_type("project.created")]
+pub struct ProjectCreated {
     #[domain_id]
-    pub plan_id: Uuid,
+    pub project_id: Uuid,
     #[domain_id]
-    pub shop_id: u64,
+    pub user_id: u64,
     pub title: String,
-    pub price: String,
+    pub description: String,
 }
 ```
 
@@ -27,8 +33,8 @@ pub struct WarrantyPlanCreated {
 
 ## `#[event_type("...")]`
 
-- Optional — defaults to the struct ident (`WarrantyPlanCreated` would be `"WarrantyPlanCreated"`).
-- **Convention**: dot-delimited, lowercase, past tense — `object.verb`: `shop.connected`, `warranty.plan.created`, `order.line_item.shipped`. Not enforced.
+- Optional — defaults to the struct ident (`ProjectCreated` would be `"ProjectCreated"`).
+- **Convention**: dot-delimited, lowercase, past tense — `object.verb`: `user.registered`, `project.created`, `order.line_item.shipped`. Not enforced.
 - Once an event is in production, treat the type string as a stable identifier — changing it orphans existing events from new code.
 
 ## `#[domain_id]`
@@ -39,19 +45,19 @@ Three forms:
 
 ```rust
 #[domain_id]
-pub plan_id: Uuid,                  // Tag name = field name → "plan_id:<uuid>"
+pub project_id: Uuid,                  // Tag name = field name → "project_id:<uuid>"
 
-#[domain_id = "plan_id"]
-pub warranty_plan_id: Uuid,         // Override tag name → "plan_id:<uuid>"
+#[domain_id = "project_id"]
+pub project_id: Uuid,         // Override tag name → "project_id:<uuid>"
 ```
 
 ### The domain-ID test
 
 > *"If this field changes, does it identify a different entity's consistency boundary?"*
 
-- `plan_id` on `WarrantyPlanUpdated` → YES, it identifies which plan → domain ID.
+- `project_id` on `ProjectUpdated` → YES, it identifies which project → domain ID.
 - `recipient_id` on `MessageSent` → it's a reference to another entity, but the consistency boundary of THIS event is the sender — usually NOT a domain ID. Add a separate `MessageReceived` event for the recipient's boundary.
-- `title` on `WarrantyPlanCreated` → NO, plain data.
+- `title` on `ProjectCreated` → NO, plain data.
 
 ### Multi-domain-ID events
 
@@ -59,17 +65,17 @@ Events can carry multiple domain IDs when they straddle boundaries:
 
 ```rust
 #[derive(Event, DomainIds, Serialize, Deserialize)]
-#[event_type("warranty.sold")]
-pub struct WarrantySold {
-    #[domain_id] pub shop_id: u64,
-    #[domain_id] pub warranty_id: Uuid,
+#[event_type("task.created")]
+pub struct TaskCreated {
+    #[domain_id] pub user_id: u64,
+    #[domain_id] pub task_id: Uuid,
     #[domain_id] pub order_id: u64,
     #[domain_id] pub line_item_id: Uuid,
-    pub price: String,
+    pub description: String,
 }
 ```
 
-This event will match consistency boundaries for the shop, the specific warranty, the order, and the line item — any of those can replay it.
+This event will match consistency boundaries for the user, the specific task, the order, and the line item — any of those can replay it.
 
 ### Backward compatibility rules
 
@@ -111,9 +117,9 @@ An EventSet is an enum that wraps the events a fold/projector/effect cares about
 ```rust
 #[derive(EventSet)]
 enum Query {
-    WarrantyPlanCreated(WarrantyPlanCreated),
-    WarrantyPlanUpdated(WarrantyPlanUpdated),
-    WarrantyPlanArchived(WarrantyPlanArchived),
+    ProjectCreated(ProjectCreated),
+    ProjectUpdated(ProjectUpdated),
+    ProjectArchived(ProjectArchived),
 }
 ```
 
@@ -127,21 +133,21 @@ Controls which subset of each event type the runtime returns.
 #[derive(EventSet)]
 enum Query {
     // No scope: dynamic_fields = event's DOMAIN_ID_FIELDS — narrowest filter.
-    Created(WarrantyPlanCreated),
+    Created(ProjectCreated),
 
-    // #[scope(plan_id)] — only filter by plan_id binding, ignore others.
-    #[scope(plan_id)]
-    Updated(WarrantyPlanUpdated),
+    // #[scope(project_id)] — only filter by project_id binding, ignore others.
+    #[scope(project_id)]
+    Updated(ProjectUpdated),
 
     // #[scope(field = "value")] — hardcoded tag, no binding needed.
-    #[scope(shop_id = "shop-42")]
-    Archived(WarrantyPlanArchived),
+    #[scope(user_id = "user-42")]
+    Archived(ProjectArchived),
 }
 ```
 
 Behavior:
 - **No `#[scope]`**: the variant filters by ALL the event's `#[domain_id]` fields against the fold's bindings. Use when the fold's domain IDs perfectly match the event's.
-- **`#[scope(field)]` (bare)**: only filter by that one binding. Useful when a fold cares about all shop-level events even if individual events have a narrower `widget_id`.
+- **`#[scope(field)]` (bare)**: only filter by that one binding. Useful when a fold cares about all user-level events even if individual events have a narrower `widget_id`.
 - **`#[scope(field = "literal")]`**: hardcoded tag — no runtime binding needed. The compile-time check enforces the field exists in the event's `DOMAIN_ID_FIELDS`. Mostly used in projectors and effects (which have no fold bindings).
 
 The macro **validates at compile time** that scoped field names appear in the event's `DOMAIN_ID_FIELDS`, so typos fail to compile.
@@ -149,20 +155,20 @@ The macro **validates at compile time** that scoped field names appear in the ev
 ### Compile-time check the macro emits
 
 ```
-Domain ID 'plan_id' not found in WarrantyPlanCreated::DOMAIN_ID_FIELDS
+Domain ID 'project_id' not found in ProjectCreated::DOMAIN_ID_FIELDS
 ```
 
-Means you wrote `#[scope(plan_id)]` on a variant whose event type doesn't have `#[domain_id] pub plan_id`. Fix the event, not the EventSet.
+Means you wrote `#[scope(project_id)]` on a variant whose event type doesn't have `#[domain_id] pub project_id`. Fix the event, not the EventSet.
 
 ## When to split events vs. add fields
 
-Add a field when the data is just attached to the same fact (e.g., `WarrantyPlanCreated` gains a `category` field).
+Add a field when the data is just attached to the same fact (e.g., `ProjectCreated` gains a `category` field).
 
 Split into two events when the fact itself is different:
 
 | Same fact, more data → field | Different fact → new event |
 |---|---|
-| `WarrantyPlanCreated { title, price, category }` | `WarrantyPlanCreated` vs `WarrantyPlanArchived` |
+| `ProjectCreated { title, description, category }` | `ProjectCreated` vs `ProjectArchived` |
 | `OrderPaid { amount, currency, method }` | `OrderPaid` vs `OrderRefunded` |
 
 Downstream consumers (projectors, effects) discriminate on `event_type`. New event types are additive — they don't break existing consumers; just unhandled.

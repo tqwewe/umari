@@ -2,9 +2,11 @@
 
 Umari replaces aggregates/streams with **Dynamic Consistency Boundaries (DCB)**: each command declares which events it cares about, and the runtime forms a boundary on the fly. Domain IDs are how events and queries find each other.
 
+> **TypeScript** (`@umari/js`): domain IDs are a `domainIds: [...]` array on each event, command, and fold (camelCase keys; no `DomainIds`/`FromDomainIds` trait). A command binds a fold by passing the fields explicitly: `folds: ({ userId }) => ({ exists: UserExistsFold({ userId }) })`. The tag is `field:value` using the field name as written — keep names aligned with Rust modules if mixing. See [`javascript.md`](javascript.md#domain-ids).
+
 ## The model
 
-Every event carries zero or more domain ID tags, stored as `field_name:value` strings (e.g., `shop_id:42`, `plan_id:<uuid>`). A query is a set of `(event_types, tags)` items — the event store returns events matching ANY of the items.
+Every event carries zero or more domain ID tags, stored as `field_name:value` strings (e.g., `user_id:42`, `project_id:<uuid>`). A query is a set of `(event_types, tags)` items — the event store returns events matching ANY of the items.
 
 You declare domain IDs on event structs (`#[domain_id]`) and on command input structs (`#[domain_id]`). The runtime extracts bindings from the input, joins them with the EventSet's declared `dynamic_fields`, and builds the DCB query.
 
@@ -39,21 +41,21 @@ Rule of thumb:
 ```rust
 #[derive(DomainIds, Serialize, Deserialize)]
 struct Input {
-    #[domain_id] shop_id: u64,
-    #[domain_id] plan_id: Uuid,
+    #[domain_id] user_id: u64,
+    #[domain_id] project_id: Uuid,
 }
 
 #[derive(EventSet)]
 enum Query {
-    Created(WarrantyPlanCreated),       // domain_ids: plan_id, shop_id
-    Archived(WarrantyPlanArchived),     // domain_ids: plan_id
+    Created(ProjectCreated),       // domain_ids: project_id, user_id
+    Archived(ProjectArchived),     // domain_ids: project_id
 }
 ```
 
-The runtime extracts bindings `{shop_id: "42", plan_id: "abc"}` from input, then for each EventSet variant looks up the event's `DOMAIN_ID_FIELDS`, and builds tags by intersecting with the bindings:
+The runtime extracts bindings `{user_id: "42", project_id: "abc"}` from input, then for each EventSet variant looks up the event's `DOMAIN_ID_FIELDS`, and builds tags by intersecting with the bindings:
 
-- `Created` → tags `["shop_id:42", "plan_id:abc"]`
-- `Archived` → tags `["plan_id:abc"]`
+- `Created` → tags `["user_id:42", "project_id:abc"]`
+- `Archived` → tags `["project_id:abc"]`
 
 The store returns any event matching one of those `(type, tags)` items.
 
@@ -82,8 +84,8 @@ Reverses the direction: given bindings, construct the struct.
 
 ```rust
 #[derive(DomainIds, FromDomainIds)]
-pub struct WarrantyPlanFold {
-    #[domain_id] pub plan_id: Uuid,
+pub struct ProjectFold {
+    #[domain_id] pub project_id: Uuid,
 }
 ```
 
@@ -97,7 +99,7 @@ Folds sometimes carry extra context that isn't a domain ID — e.g., a topic nam
 #[derive(DomainIds, FromDomainIds)]
 pub struct AlreadyNotifiedFold {
     #[domain_id]
-    pub plan_id: Uuid,
+    pub project_id: Uuid,
     #[from_domain_id(default)]
     pub current_event_id: Uuid,   // Default::default(); set later via fold_args
 }
@@ -113,5 +115,5 @@ Or use `fold_args` to supply non-default values at construction time — see `fo
 ## Anti-patterns
 
 - **Using IDs as domain IDs on every event**: bloats tag tables and slows queries. If a field is purely referential and never queried as a boundary, leave it un-tagged.
-- **Stringly-typed compound domain IDs**: `#[domain_id] composite_id: String = "shop:42/plan:abc"`. Use separate fields instead — DCB tags are key/value already.
+- **Stringly-typed compound domain IDs**: `#[domain_id] composite_id: String = "user:42/project:abc"`. Use separate fields instead — DCB tags are key/value already.
 - **Mutable domain IDs**: an event's domain IDs reflect the entity it identifies at the time of the event. Don't rewrite events to change tags.

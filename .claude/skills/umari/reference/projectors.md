@@ -2,13 +2,15 @@
 
 A projector reads events and writes to its own SQLite database. It serves queries — it does NOT emit events or call external systems. Projectors must be deterministic and idempotent: dropping the DB and replaying from position 0 must produce the same state.
 
+> **TypeScript** (`@umari/js`): a projector is `defineProjector({ events, init, handle })` + `exportProjector`. `handle(event, state)` switches on `event.type` (which narrows `event.data`); SQLite via the `sqlite` namespace (`sqlite.execute(sql, [params])`, `?` placeholders, `sqlite.executeBatch` for DDL in `init`). Whatever `init` returns (e.g. prepared statements) is passed back to `handle`. See [`javascript.md`](javascript.md#projectors).
+
 ## Crate setup
 
-`projectors/plans/Cargo.toml`:
+`projectors/projects/Cargo.toml`:
 
 ```toml
 [package]
-name = "plans"
+name = "projects"
 version = "0.1.0"
 edition = "2024"
 
@@ -29,59 +31,59 @@ umari.workspace = true
 ```rust
 use umari::prelude::*;
 
-use my_project::events::{WarrantyPlanCreated, WarrantyPlanUpdated, WarrantyPlanArchived};
+use my_project::events::{ProjectCreated, ProjectUpdated, ProjectArchived};
 
-export_projector!(Plans);
+export_projector!(Projects);
 
 #[derive(EventSet)]
 enum Query {
-    Created(WarrantyPlanCreated),
-    Updated(WarrantyPlanUpdated),
-    Archived(WarrantyPlanArchived),
+    Created(ProjectCreated),
+    Updated(ProjectUpdated),
+    Archived(ProjectArchived),
 }
 
-struct Plans {}
+struct Projects {}
 
-impl Projector for Plans {
+impl Projector for Projects {
     type Query = Query;
 
     fn init() -> anyhow::Result<Self> {
         execute_batch(
-            "CREATE TABLE IF NOT EXISTS plans (
-                plan_id TEXT PRIMARY KEY,
-                shop_id TEXT NOT NULL,
+            "CREATE TABLE IF NOT EXISTS projects (
+                project_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
                 title TEXT NOT NULL,
-                price TEXT NOT NULL,
+                description TEXT NOT NULL,
                 archived INTEGER NOT NULL DEFAULT 0
             );
-            CREATE INDEX IF NOT EXISTS plans_shop_id ON plans(shop_id);",
+            CREATE INDEX IF NOT EXISTS projects_user_id ON projects(user_id);",
         )?;
-        Ok(Plans {})
+        Ok(Projects {})
     }
 
     fn handle(&mut self, event: StoredEvent<Self::Query>) -> anyhow::Result<()> {
         match event.data {
             Query::Created(ev) => {
                 execute(
-                    "INSERT INTO plans (plan_id, shop_id, title, price)
+                    "INSERT INTO projects (project_id, user_id, title, description)
                      VALUES (?1, ?2, ?3, ?4)
-                     ON CONFLICT(plan_id) DO UPDATE SET
-                       shop_id = excluded.shop_id,
+                     ON CONFLICT(project_id) DO UPDATE SET
+                       user_id = excluded.user_id,
                        title = excluded.title,
-                       price = excluded.price",
-                    params![ev.plan_id, ev.shop_id.to_string(), ev.title, ev.price],
+                       description = excluded.description",
+                    params![ev.project_id, ev.user_id.to_string(), ev.title, ev.description],
                 )?;
             }
             Query::Updated(ev) => {
                 execute(
-                    "UPDATE plans SET title = ?1, price = ?2 WHERE plan_id = ?3",
-                    params![ev.title, ev.price, ev.plan_id],
+                    "UPDATE projects SET title = ?1, description = ?2 WHERE project_id = ?3",
+                    params![ev.title, ev.description, ev.project_id],
                 )?;
             }
             Query::Archived(ev) => {
                 execute(
-                    "UPDATE plans SET archived = 1 WHERE plan_id = ?1",
-                    params![ev.plan_id],
+                    "UPDATE projects SET archived = 1 WHERE project_id = ?1",
+                    params![ev.project_id],
                 )?;
             }
         }
@@ -117,15 +119,15 @@ The argument must be the type name implementing `Projector`. The macro generates
 The default `query()` returns all event types in `Self::Query` with no tag filters — every matching event in the store. Override to narrow:
 
 ```rust
-impl Projector for Plans {
+impl Projector for Projects {
     type Query = Query;
 
     fn query(&self) -> DcbQuery {
-        // Only events tagged shop_id:42
+        // Only events tagged user_id:42
         DcbQuery::new().item(
             DcbQueryItem::new()
                 .types(Self::Query::event_types())
-                .tags(vec!["shop_id:42".to_string()])
+                .tags(vec!["user_id:42".to_string()])
         )
     }
     // ...
@@ -151,7 +153,7 @@ last_insert_rowid() -> Option<i64>
 ### Prepared statements (faster on hot paths)
 
 ```rust
-let stmt = prepare("UPDATE plans SET title = ?1 WHERE plan_id = ?2");
+let stmt = prepare("UPDATE projects SET title = ?1 WHERE project_id = ?2");
 stmt.execute(params![title, id])?;
 stmt.query(params![/*...*/]);             // -> Vec<Row>
 stmt.query_one(params![/*...*/]);         // -> Row
@@ -161,21 +163,21 @@ stmt.query_row(params![/*...*/]);         // -> Option<Row>
 `prepare` returns a `Statement` directly (no `Result`) — bad SQL traps the module. Prepare in `init()`, store in the projector struct:
 
 ```rust
-struct Plans {
-    insert_plan: Statement,
+struct Projects {
+    insert_project: Statement,
 }
 
-impl Projector for Plans {
+impl Projector for Projects {
     type Query = Query;
     fn init() -> anyhow::Result<Self> {
-        execute_batch("CREATE TABLE IF NOT EXISTS plans (...)")?;
-        Ok(Plans {
-            insert_plan: prepare("INSERT INTO plans (...) VALUES (...)"),
+        execute_batch("CREATE TABLE IF NOT EXISTS projects (...)")?;
+        Ok(Projects {
+            insert_project: prepare("INSERT INTO projects (...) VALUES (...)"),
         })
     }
     fn handle(&mut self, event: StoredEvent<Self::Query>) -> anyhow::Result<()> {
         match event.data {
-            Query::Created(ev) => { self.insert_plan.execute(params![/*...*/])?; }
+            Query::Created(ev) => { self.insert_project.execute(params![/*...*/])?; }
             // ...
         }
         Ok(())
@@ -228,10 +230,10 @@ Traps kill the projector worker; the runtime restarts it but the bad event will 
 ## Replay
 
 ```bash
-umari projectors replay plans
+umari projectors replay projects
 ```
 
-Or via HTTP: `POST /projectors/plans/replay`.
+Or via HTTP: `POST /projectors/projects/replay`.
 
 - Deletes the projector's SQLite DB.
 - Re-runs `init()`.

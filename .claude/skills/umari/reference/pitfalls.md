@@ -2,6 +2,16 @@
 
 Mistakes Claude (and humans) tend to make when writing Umari modules. Check this list before declaring a task done.
 
+> **TypeScript** (`@umari/js`) pitfalls:
+> - **Fold `apply`** is reduce-style — **return the next state**. For a primitive fold (`initial: () => false`) you MUST return (`apply: () => true`); mutating a primitive does nothing. Object/array state may be mutated in place (return optional).
+> - **Imports use the `.js` extension** on `.ts` source (`from "../shared/index.js"`), and packages are ESM (`"type": "module"`).
+> - **Domain IDs and `position` are `bigint`** — pass them straight to SQLite (which accepts `bigint`); use `.toString()` for HTTP bodies / template strings.
+> - **`execute(name, …)` returns `void`** — no receipt. Decide whether to act with `foldQuery({ … }).run()` first.
+> - **Validate command input** with an optional `zod` schema on `input`; for fold-state-dependent checks call `reject(msg)` / `invalidInput(msg)` inside `execute`.
+> - **Only effects get `fetch`** — commands and projectors are network-free (jco strips http from their builds).
+
+The Rust pitfalls below have direct TypeScript analogues where noted; see [`javascript.md`](javascript.md).
+
 ## Derives & macros
 
 - **Forgetting `DomainIds` on an event** — `#[derive(Event, Serialize, Deserialize)]` is INCOMPLETE. Always: `#[derive(Event, DomainIds, Serialize, Deserialize)]`. The error message is misleading — usually surfaces as a trait bound failure on `Fold::Events`.
@@ -20,7 +30,7 @@ Mistakes Claude (and humans) tend to make when writing Umari modules. Check this
 
 - **Calling `input.validate()?` inside the execute closure** — too late. Validate before `Command::new`.
 
-- **Putting state-dependent invariants in `validate()`** — `validate()` only checks the input shape. Invariants like "shop must exist" need a fold + `anyhow::ensure!` inside the execute closure.
+- **Putting state-dependent invariants in `validate()`** — `validate()` only checks the input shape. Invariants like "user must exist" need a fold + `anyhow::ensure!` inside the execute closure.
 
 - **Returning `Ok(emit![])` on an actual rejection** — empty emit means "idempotent no-op, succeed". For an actual rejection use `anyhow::bail!("...")` or `anyhow::ensure!(...)`.
 
@@ -80,7 +90,7 @@ Mistakes Claude (and humans) tend to make when writing Umari modules. Check this
 
 - **Command function not named `execute`** — works, but unusual. Most patterns assume `execute`. The `#[export_command]` macro generates `{PascalCase(fn_name)}Export` for the ZST, so any name works but `execute` is the convention.
 
-- **`EVENT_TYPE` string in PascalCase** — works, but the convention is `object.verb` lowercase dotted: `warranty.plan.created`, not `WarrantyPlanCreated`.
+- **`EVENT_TYPE` string in PascalCase** — works, but the convention is `object.verb` lowercase dotted: `project.created`, not `ProjectCreated`.
 
 - **Module crate name in PascalCase** — `cargo` rejects this anyway, but worth knowing — kebab-case only.
 

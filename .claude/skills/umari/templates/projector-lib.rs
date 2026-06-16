@@ -1,7 +1,7 @@
 // Verbatim output of `umari new projector <name>` (Rust mode).
 // Source: crates/cli/src/commands/new.rs (`lib_rs_content` for "projector").
 // `{type_name}` is the kebab-case → PascalCase form of the crate name
-// (e.g. `plans` → `Plans`, `warranty-plans` → `WarrantyPlans`).
+// (e.g. `projects` → `Projects`, `task-projects` → `Projects`).
 // Copy this as src/lib.rs in a new projector crate and fill in the TODOs.
 
 use umari::prelude::*;

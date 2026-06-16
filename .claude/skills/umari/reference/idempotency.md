@@ -2,6 +2,8 @@
 
 Umari distinguishes two layers of idempotency. Use the right one for the right job — they're not interchangeable.
 
+> **TypeScript** (`@umari/js`): both layers apply identically. Layer A — pass `idempotencyKey` in the command context (`execute(name, input, { idempotencyKey: event.id })`); the runtime short-circuits on a match. Layer B (domain-level) — return `emit()` when the desired state already holds. In effects, guard the side effect with `foldQuery({ … }).run()` before acting (cross-module `execute` returns `void`, so there's no receipt to inspect). See [`javascript.md`](javascript.md#effects).
+
 ## Layer A — per-command `idempotency_key` (caller-supplied)
 
 The HTTP client (or upstream service) generates a UUID per request and includes it on the `CommandContext`:
@@ -24,7 +26,7 @@ During fold replay, the runtime checks each event in scope. If any event's store
 - Deterministic from `(user_id, action, content_hash)` — useful for idempotent UIs.
 - Random UUIDs — only safe if the caller persists and reuses them across retries.
 
-**Scope of the check**: the same event must be in the fold query's scope to be seen. If the command queries `shop_id:42, plan_id:abc` and a previous command emitted with the same key but for `shop_id:99`, the new command won't see it. Match scope to the boundary you care about.
+**Scope of the check**: the same event must be in the fold query's scope to be seen. If the command queries `user_id:42, project_id:abc` and a previous command emitted with the same key but for `user_id:99`, the new command won't see it. Match scope to the boundary you care about.
 
 ## Layer B — fold-check inside effects
 
@@ -43,17 +45,17 @@ See `effects.md` for both implementations of the pattern.
 A command can recognise that the request leaves the world unchanged and emit no events:
 
 ```rust
-.execute(|input, plan| {
-    if plan.exists
-        && plan.title.as_deref() == Some(&input.title)
-        && plan.price.as_deref() == Some(&input.price)
+.execute(|input, project| {
+    if project.exists
+        && project.title.as_deref() == Some(&input.title)
+        && project.description.as_deref() == Some(&input.description)
     {
         return Ok(emit![]);   // same state already — silent success
     }
-    if !plan.exists {
-        return Ok(emit![WarrantyPlanCreated { /* ... */ }]);
+    if !project.exists {
+        return Ok(emit![ProjectCreated { /* ... */ }]);
     }
-    Ok(emit![WarrantyPlanUpdated { /* ... */ }])
+    Ok(emit![ProjectUpdated { /* ... */ }])
 })
 ```
 
@@ -66,11 +68,11 @@ This is independent of Layers A and B. Use when "doing the thing again would be 
 ```rust
 // WRONG
 fn handle(&mut self, event: ...) -> anyhow::Result<()> {
-    if query_row("SELECT 1 FROM notified WHERE plan_id = ?", params![ev.plan_id]).is_some() {
+    if query_row("SELECT 1 FROM notified WHERE project_id = ?", params![ev.project_id]).is_some() {
         return Ok(());
     }
     /* ... side effect ... */
-    execute("INSERT INTO notified ...", params![ev.plan_id])?;
+    execute("INSERT INTO notified ...", params![ev.project_id])?;
 }
 ```
 
@@ -98,9 +100,9 @@ WASM modules don't persist state between activations. Restart loses everything.
 
 ```rust
 // WRONG
-let already_sent = self.client.get("https://merchant.example.com/api/notifications")
+let already_sent = self.client.get("https://user.example.com/api/notifications")
     .send()?
-    .contains(plan_id);
+    .contains(project_id);
 ```
 
 The external API isn't part of your event log; it can be inconsistent, slow, or change semantics. Build the answer locally.
@@ -109,11 +111,11 @@ The external API isn't part of your event log; it can be inconsistent, slow, or 
 
 A command called from an effect can have BOTH:
 - Layer A: caller-supplied `idempotency_key` on `CommandContext`.
-- Layer C: the fold detects "already done" via a `MerchantNotified` event.
+- Layer C: the fold detects "already done" via a `UserNotified` event.
 
 Layer A short-circuits via the runtime before the execute closure runs. Layer C runs inside the execute closure. Both produce empty `ExecuteOutput.events`, both let `has_event::<X>()` return false, both are safe.
 
-The effect doesn't need to care which layer triggered — it checks `receipt.has_event::<MerchantNotified>()` after the call. If false → already done by some mechanism → skip the side effect.
+The effect doesn't need to care which layer triggered — it checks `receipt.has_event::<UserNotified>()` after the call. If false → already done by some mechanism → skip the side effect.
 
 ## Testing idempotency
 

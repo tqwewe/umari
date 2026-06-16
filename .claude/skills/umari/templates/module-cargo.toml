@@ -2,7 +2,7 @@
 # Source: crates/cli/src/commands/new.rs (`cargo_toml_content`).
 #
 # Substitute:
-#   {name}           — kebab-case crate name (e.g. `create-warranty-plan`)
+#   {name}           — kebab-case crate name (e.g. `create-project`)
 #   {workspace_pkg} — shared crate name from workspace root [package].name
 #                      (e.g. `my-project`). OMIT THE WHOLE `{workspace_pkg}.workspace = true`
 #                      LINE if the workspace root has no [package].

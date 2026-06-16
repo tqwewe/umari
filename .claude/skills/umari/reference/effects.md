@@ -2,13 +2,15 @@
 
 An effect reads events and does something with the outside world: HTTP calls, sending email, queueing background work, calling commands. Effects must be **re-runnable** — the runtime may re-deliver an event after a crash, restart, or manual replay.
 
+> **TypeScript** (`@umari/js`): an effect is `defineEffect({ events, init, partitionKey, handle })` + `exportEffect`. `handle(event, state)` is **async** — use `fetch` for HTTP; `execute(name, input, ctx)` calls a command (returns `void`); `foldQuery({ … }).run()` is the fold-check. Same fold-check → side effect → record pattern; env via `env(name)`/`envOptional(name)`. See [`javascript.md`](javascript.md#effects).
+
 ## Crate setup
 
-`effects/notify-merchant/Cargo.toml`:
+`effects/notify-user/Cargo.toml`:
 
 ```toml
 [package]
-name = "notify-merchant"
+name = "notify-user"
 version = "0.1.0"
 edition = "2024"
 
@@ -24,7 +26,7 @@ umari.workspace = true
 wasi-http-client = { version = "0.2", features = ["json"] }
 
 # private commands the effect calls
-record-merchant-notified = { path = "../../commands/record-merchant-notified" }
+record-user-notified = { path = "../../commands/record-user-notified" }
 ```
 
 `schemars` and `serde` aren't strictly required by `Effect` but are usually needed for JSON payloads.
@@ -37,25 +39,25 @@ record-merchant-notified = { path = "../../commands/record-merchant-notified" }
 use umari::prelude::*;
 use wasi_http_client::Client;
 
-use my_project::events::WarrantyPlanCreated;
-use record_merchant_notified::{
-    execute as record_merchant_notified,
-    Input as RecordMerchantNotifiedInput,
+use my_project::events::ProjectCreated;
+use record_user_notified::{
+    execute as record_user_notified,
+    Input as RecordUserNotifiedInput,
 };
-use my_project::events::MerchantNotified;
+use my_project::events::UserNotified;
 
-export_effect!(NotifyMerchant);
+export_effect!(NotifyUser);
 
 #[derive(EventSet)]
 enum Query {
-    Created(WarrantyPlanCreated),
+    Created(ProjectCreated),
 }
 
-struct NotifyMerchant {
+struct NotifyUser {
     client: Client,
 }
 
-impl Effect for NotifyMerchant {
+impl Effect for NotifyUser {
     type Query = Query;
 
     fn init() -> anyhow::Result<Self> {
@@ -64,25 +66,25 @@ impl Effect for NotifyMerchant {
 
     fn partition_key(&self, event: StoredEvent<Self::Query>) -> Option<String> {
         let Query::Created(ev) = event.data;
-        Some(ev.shop_id.to_string())   // per-shop ordering, cross-shop parallelism
+        Some(ev.user_id.to_string())   // per-user ordering, cross-user parallelism
     }
 
     fn handle(&mut self, event: StoredEvent<Self::Query>) -> anyhow::Result<()> {
         let Query::Created(ev) = event.data;
 
         // 1. Fold-check (via the private command's receipt).
-        let receipt = record_merchant_notified(
-            RecordMerchantNotifiedInput { plan_id: ev.plan_id },
+        let receipt = record_user_notified(
+            RecordUserNotifiedInput { project_id: ev.project_id },
             CommandContext::new(),
         )?;
-        if !receipt.has_event::<MerchantNotified>() {
+        if !receipt.has_event::<UserNotified>() {
             return Ok(()); // already notified — replay is a no-op
         }
 
         // 2. Side effect — call out.
         self.client
-            .post("https://merchant.example.com/webhooks/plan-created")
-            .header("authorization", &format!("Bearer {}", std::env::var("MERCHANT_TOKEN")?))
+            .post("https://user.example.com/webhooks/project-created")
+            .header("authorization", &format!("Bearer {}", std::env::var("NOTIFY_TOKEN")?))
             .json(&ev)
             .send()?;
 
@@ -137,8 +139,8 @@ Two ways to do the fold-check:
 The private command's own fold checks for the completion event; if seen, it emits nothing. The receipt's `has_event::<X>()` tells the effect whether the command actually wrote.
 
 ```rust
-let receipt = record_merchant_notified(input, CommandContext::new())?;
-if !receipt.has_event::<MerchantNotified>() {
+let receipt = record_user_notified(input, CommandContext::new())?;
+if !receipt.has_event::<UserNotified>() {
     return Ok(()); // already notified
 }
 self.client.post(...).send()?;
@@ -152,15 +154,15 @@ This is the pattern in the canonical example above. Pros: the same private comma
 use my_project::folds::AlreadyNotifiedFold;
 
 let already_notified: bool = FoldQuery::new()
-    .fold(AlreadyNotifiedFold { plan_id: ev.plan_id })
+    .fold(AlreadyNotifiedFold { project_id: ev.project_id })
     .run()?;
 
 if already_notified { return Ok(()); }
 
 self.client.post(...).send()?;
 
-record_merchant_notified(
-    RecordMerchantNotifiedInput { plan_id: ev.plan_id },
+record_user_notified(
+    RecordUserNotifiedInput { project_id: ev.project_id },
     CommandContext::new(),
 )?;
 ```
@@ -181,7 +183,7 @@ Controls effect parallelism.
 | `Some(key)` | `hash(key) % 8` of 8 keyed workers. Different keys parallelise; same key serialises. |
 
 Common choices:
-- `Some(shop_id.to_string())` — per-shop ordering, cross-shop parallelism. Usual default.
+- `Some(user_id.to_string())` — per-user ordering, cross-user parallelism. Usual default.
 - `Some(customer_id.to_string())` — per-customer.
 - `Some(event.id.to_string())` — maximum parallelism, no ordering guarantees. Use only if `handle()` doesn't need ordering.
 - `None` — only for very low-volume effects where simplicity beats throughput.
@@ -209,7 +211,7 @@ Two key behaviors:
 Commands that are only called by an effect (never directly via HTTP) live inside the effect's own crate, typically in `src/commands.rs`. They are PLAIN functions — NO `#[export_command]`:
 
 ```
-effects/notify-merchant/
+effects/notify-user/
 ├── Cargo.toml
 └── src/
     ├── lib.rs          # Effect + export_effect!
@@ -220,25 +222,25 @@ effects/notify-merchant/
 ```rust
 // src/commands.rs
 use umari::prelude::*;
-use crate::events::MerchantNotified;
+use crate::events::UserNotified;
 
 #[derive(DomainIds, Serialize, Deserialize)]
-pub struct RecordMerchantNotifiedInput {
+pub struct RecordUserNotifiedInput {
     #[domain_id]
-    pub plan_id: Uuid,
+    pub project_id: Uuid,
 }
 
-pub fn record_merchant_notified(
-    input: RecordMerchantNotifiedInput,
+pub fn record_user_notified(
+    input: RecordUserNotifiedInput,
     context: CommandContext,
 ) -> anyhow::Result<ExecuteOutput> {
     Command::new(input, context)
-        .fold::<MerchantNotifiedFold>()
+        .fold::<UserNotifiedFold>()
         .execute(|input, notified| {
             if notified.exists {
                 return Ok(emit![]); // idempotent no-op
             }
-            Ok(emit![MerchantNotified { plan_id: input.plan_id }])
+            Ok(emit![UserNotified { project_id: input.project_id }])
         })
 }
 ```
@@ -253,20 +255,20 @@ Effects often need API keys / URLs. Two ways to supply them:
 
 ```toml
 [package.metadata.umari.env]
-MERCHANT_TOKEN = ""           # required, empty default → must be set per environment
-MERCHANT_URL = "https://merchant.example.com"
+NOTIFY_TOKEN = ""           # required, empty default → must be set per environment
+NOTIFY_URL = "https://user.example.com"
 ```
 
 **CLI**:
 
 ```bash
-umari effects env set notify-merchant MERCHANT_TOKEN sk-prod-xxxx
+umari effects env set notify-user NOTIFY_TOKEN sk-prod-xxxx
 ```
 
 Accessed inside the module:
 
 ```rust
-let token = std::env::var("MERCHANT_TOKEN")?;
+let token = std::env::var("NOTIFY_TOKEN")?;
 ```
 
 Env vars are baked into the running module — changing them via the CLI re-activates the module.
@@ -301,7 +303,7 @@ There's no max retry count baked in — a stuck effect keeps retrying forever. W
 ## Replay
 
 ```bash
-umari effects replay notify-merchant
+umari effects replay notify-user
 ```
 
 Resets the effect's subscription to position 0. Safe ONLY because of the fold-check → side effect → record pattern: every event is re-delivered, but the fold-check skips ones already processed.

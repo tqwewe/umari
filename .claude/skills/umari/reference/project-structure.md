@@ -5,6 +5,8 @@ A Umari project is a Cargo workspace where:
 - Each command/projector/effect is its own module crate under `commands/`, `projectors/`, `effects/`.
 - All module crates build for `wasm32-wasip2` and produce `cdylib` + `rlib`.
 
+> **TypeScript** (`@umari/js`): a project is an **npm-workspaces** project instead — a `shared` package (`@<project>/shared`) for events/folds, plus one package per module under `commands/`/`projectors/`/`effects/`, with build tooling (`@umari/js`, jco, esbuild, typescript) hoisted to the root `package.json`. Imports use the `.js` extension on `.ts` source. `umari init --lang js` scaffolds it; see [`javascript.md`](javascript.md#setup--workspace) and `cli.md`.
+
 ## Layout
 
 ```
@@ -14,26 +16,26 @@ my-project/
 │   ├── lib.rs
 │   ├── events/
 │   │   ├── mod.rs
-│   │   ├── shop.rs
-│   │   └── warranty.rs
+│   │   ├── user.rs
+│   │   └── task.rs
 │   └── folds/
 │       └── mod.rs
 ├── commands/
-│   ├── connect-shop/
+│   ├── register-user/
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       └── lib.rs
-│   └── create-warranty-plan/
+│   └── create-project/
 │       └── ...
 ├── projectors/
-│   ├── plans/
+│   ├── projects/
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       └── lib.rs
-│   └── shops/
+│   └── users/
 │       └── ...
 └── effects/
-    ├── notify-merchant/
+    ├── notify-user/
     │   ├── Cargo.toml
     │   └── src/
     │       ├── lib.rs           # Effect + export_effect!
@@ -64,11 +66,11 @@ validator.workspace = true
 resolver = "2"
 members = [
     ".",
-    "commands/connect-shop",
-    "commands/create-warranty-plan",
-    "projectors/plans",
-    "projectors/shops",
-    "effects/notify-merchant",
+    "commands/register-user",
+    "commands/create-project",
+    "projectors/projects",
+    "projectors/users",
+    "effects/notify-user",
 ]
 
 [workspace.dependencies]
@@ -93,7 +95,7 @@ Mirror of `umari new` output:
 
 ```toml
 [package]
-name = "create-warranty-plan"
+name = "create-project"
 version = "0.1.0"
 edition = "2024"
 
@@ -124,10 +126,10 @@ pub mod folds;
 `src/events/mod.rs`:
 
 ```rust
-mod shop;
-mod warranty;
-pub use shop::*;
-pub use warranty::*;
+mod user;
+mod task;
+pub use user::*;
+pub use task::*;
 ```
 
 Reasons to centralize events and folds:
@@ -141,17 +143,17 @@ There's nothing stopping you from defining an event inside a single command's cr
 
 | Item | Convention | Example |
 |---|---|---|
-| Event struct | PascalCase past-tense | `WarrantyPlanCreated` |
-| `EVENT_TYPE` string | `object.verb` lowercase, dotted | `"warranty.plan.created"` |
-| Command crate | kebab-case imperative | `create-warranty-plan` |
+| Event struct | PascalCase past-tense | `ProjectCreated` |
+| `EVENT_TYPE` string | `object.verb` lowercase, dotted | `"project.created"` |
+| Command crate | kebab-case imperative | `create-project` |
 | Command function | `pub fn execute` | (fixed) |
 | Command input struct | Always `Input` | (fixed) |
-| Projector crate | kebab-case plural noun | `plans`, `shops` |
-| Projector struct | PascalCase plural noun | `Plans`, `Shops` |
-| Effect crate | kebab-case verb phrase | `notify-merchant` |
-| Effect struct | PascalCase noun phrase | `NotifyMerchant` |
-| Fold struct | PascalCase + `Fold` | `WarrantyPlanFold` |
-| Fold state struct | PascalCase + `State` | `WarrantyPlanState` |
+| Projector crate | kebab-case plural noun | `projects`, `users` |
+| Projector struct | PascalCase plural noun | `Projects`, `Users` |
+| Effect crate | kebab-case verb phrase | `notify-user` |
+| Effect struct | PascalCase noun phrase | `NotifyUser` |
+| Fold struct | PascalCase + `Fold` | `ProjectFold` |
+| Fold state struct | PascalCase + `State` | `ProjectState` |
 | EventSet enum | Always `Query` | (fixed) |
 
 `umari new` auto-converts the kebab-case name to PascalCase for type names.

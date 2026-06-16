@@ -2,15 +2,17 @@
 
 A command is a Rust function that takes a typed `Input`, queries a slice of the event log via folds, decides whether the request is allowed, and either emits new events or returns an error. **Commands are the only writers in Umari.**
 
+> **TypeScript** (`@umari/js`): a command is `defineCommand({ input?, domainIds, folds, execute })` + `exportCommand`. `execute({ input, folds, context, emit, reject, invalidInput })` — `folds` is a named map (same keys as `folds(input)`); `reject(msg)` is the `ensure!`/`bail!` equivalent, `invalidInput(msg)` for bad input; `emit(Event({ … }))` collects events (`emit()` = no-op). An optional `input` zod schema validates before `execute`. See [`javascript.md`](javascript.md#commands).
+
 ## Crate setup
 
 A command lives in its own crate under `commands/<name>/`. The lib crate exports a `cdylib` (built as a WASM component) and an `rlib` (so other crates can call it directly — see the private-command pattern in `effects.md`).
 
-`commands/create-warranty-plan/Cargo.toml`:
+`commands/create-project/Cargo.toml`:
 
 ```toml
 [package]
-name = "create-warranty-plan"
+name = "create-project"
 version = "0.1.0"
 edition = "2024"
 
@@ -36,18 +38,18 @@ use uuid::Uuid;
 use validator::Validate;
 use schemars::JsonSchema;
 
-use my_project::events::{WarrantyPlanCreated};
-use my_project::folds::{ShopExistsFold, WarrantyPlanFold};
+use my_project::events::{ProjectCreated};
+use my_project::folds::{UserExistsFold, ProjectFold};
 
 #[derive(DomainIds, Validate, JsonSchema, Serialize, Deserialize)]
 pub struct Input {
     #[domain_id]
-    pub shop_id: u64,
+    pub user_id: u64,
     #[domain_id]
-    pub plan_id: Uuid,
+    pub project_id: Uuid,
     #[validate(length(min = 1, max = 200))]
     pub title: String,
-    pub price: String,
+    pub description: String,
 }
 
 #[export_command]
@@ -55,17 +57,17 @@ pub fn execute(input: Input, context: CommandContext) -> anyhow::Result<ExecuteO
     input.validate()?;
 
     Command::new(input, context)
-        .fold::<ShopExistsFold>()
-        .fold::<WarrantyPlanFold>()
-        .execute(|input, (shop_exists, plan)| {
-            anyhow::ensure!(shop_exists, "shop does not exist");
-            anyhow::ensure!(!plan.exists, "plan already exists with this ID");
+        .fold::<UserExistsFold>()
+        .fold::<ProjectFold>()
+        .execute(|input, (user_exists, project)| {
+            anyhow::ensure!(user_exists, "user does not exist");
+            anyhow::ensure!(!project.exists, "project already exists with this ID");
 
-            Ok(emit![WarrantyPlanCreated {
-                plan_id: input.plan_id,
-                shop_id: input.shop_id,
+            Ok(emit![ProjectCreated {
+                project_id: input.project_id,
+                user_id: input.user_id,
                 title: input.title,
-                price: input.price,
+                description: input.description,
             }])
         })
 }
@@ -146,10 +148,10 @@ The HTTP API surfaces these as 4xx responses with the message. The CLI prints th
 Recognise an already-applied command and return zero events:
 
 ```rust
-.execute(|input, plan| {
-    if plan.exists
-        && plan.title.as_deref() == Some(&input.title)
-        && plan.price.as_deref() == Some(&input.price)
+.execute(|input, project| {
+    if project.exists
+        && project.title.as_deref() == Some(&input.title)
+        && project.description.as_deref() == Some(&input.description)
     {
         return Ok(emit![]); // same outcome → silent success
     }
@@ -206,8 +208,8 @@ impl ExecuteOutput {
 `has_event::<E>()` is the standard way an effect detects "did the command actually emit X, or was it a no-op?":
 
 ```rust
-let receipt = record_warranty_sold(input, CommandContext::new())?;
-if !receipt.has_event::<WarrantySold>() {
+let receipt = record_task_created(input, CommandContext::new())?;
+if !receipt.has_event::<TaskCreated>() {
     return Ok(()); // already recorded — skip side effect
 }
 self.client.post(...).send()?;
@@ -233,7 +235,7 @@ my-other-command = { path = "../../commands/my-other-command" }
 ## Common mistakes
 
 - **Calling `input.validate()` inside the execute closure** — too late; folds will already have run. Validate FIRST.
-- **Putting business invariants in `validate()`** — invariants depending on event-store state (e.g., "plan must exist") belong inside the execute closure, not as field validators. Use folds + `anyhow::ensure!`.
+- **Putting business invariants in `validate()`** — invariants depending on event-store state (e.g., "project must exist") belong inside the execute closure, not as field validators. Use folds + `anyhow::ensure!`.
 - **Forgetting `Serialize` on Input** — the HTTP API path won't deserialize, but more confusingly you'll get an obscure trait-bound error somewhere else.
 - **Returning `Ok(Emit::default())` (or no events) on actual rejection** — write `anyhow::bail!("...")` so the caller sees the failure. `emit![]` is for "already done, silently succeed".
 - **Reading SQLite from a command** — commands have no SQLite handle. Only projectors do. If you need derived state, build a fold.

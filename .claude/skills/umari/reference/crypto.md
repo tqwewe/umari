@@ -2,6 +2,8 @@
 
 Umari supports per-event encryption with **AES-256-GCM**. Each unique scope value gets its own key, stored separately from the events. Delete the key and the event payload becomes permanently unreadable — this is **crypto-shredding**, used for right-to-be-forgotten and data-retention compliance.
 
+> **TypeScript** (`@umari/js`): instead of `#[crypto_scope]`, pass a `cryptoScope` callback to `defineEvent` returning the scope string — e.g. `cryptoScope: (data) => "user_id:" + data.userId`; returning `undefined` stores plaintext. Crypto-shredding is `deleteCryptoKey(...)`. The scope semantics below are identical across SDKs. See [`javascript.md`](javascript.md#events).
+
 ## Activation — `#[crypto_scope]`
 
 Mark exactly one field on the event:
