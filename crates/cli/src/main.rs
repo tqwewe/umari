@@ -2,6 +2,7 @@ mod client;
 mod commands;
 mod output;
 
+use std::io::IsTerminal;
 use std::path::PathBuf;
 
 use anyhow::Result;
@@ -284,9 +285,8 @@ enum EnvAction {
     },
 }
 
-#[derive(clap::ValueEnum, Clone, Default)]
+#[derive(clap::ValueEnum, Clone)]
 enum Lang {
-    #[default]
     Rust,
     Js,
 }
@@ -296,21 +296,46 @@ enum NewSubcommand {
     /// create a new command module
     Command {
         name: String,
-        #[arg(long, default_value = "rust")]
-        lang: Lang,
+        #[arg(long)]
+        lang: Option<Lang>,
     },
     /// create a new projector module
     Projector {
         name: String,
-        #[arg(long, default_value = "rust")]
-        lang: Lang,
+        #[arg(long)]
+        lang: Option<Lang>,
     },
     /// create a new effect module
     Effect {
         name: String,
-        #[arg(long, default_value = "rust")]
-        lang: Lang,
+        #[arg(long)]
+        lang: Option<Lang>,
     },
+}
+
+/// resolve the language, prompting interactively when not passed via --lang.
+fn resolve_lang(lang: Option<Lang>) -> Result<Lang> {
+    match lang {
+        Some(lang) => Ok(lang),
+        None => prompt_lang(),
+    }
+}
+
+fn prompt_lang() -> Result<Lang> {
+    // no tty (scripts, CI) — keep the historical default rather than hang.
+    if !std::io::stdin().is_terminal() {
+        return Ok(Lang::Rust);
+    }
+    let items = ["rust", "javascript / typescript"];
+    let selection = dialoguer::Select::with_theme(&dialoguer::theme::ColorfulTheme::default())
+        .with_prompt("which language?")
+        .items(&items)
+        .default(0)
+        .interact()?;
+    Ok(match selection {
+        1 => Lang::Js,
+        _ => Lang::Rust,
+    })
 }
 
 #[derive(Subcommand)]
@@ -459,19 +484,16 @@ fn main() -> Result<()> {
             debug,
             jobs,
         } => commands::workspace::deploy(&client, paths, no_activate, bump_patch, debug, jobs),
-        Commands::New { command } => match command {
-            NewSubcommand::Command { name, lang } => match lang {
-                Lang::Js => commands::new::generate_js("command", &name),
-                Lang::Rust => commands::new::generate("command", &name),
-            },
-            NewSubcommand::Projector { name, lang } => match lang {
-                Lang::Js => commands::new::generate_js("projector", &name),
-                Lang::Rust => commands::new::generate("projector", &name),
-            },
-            NewSubcommand::Effect { name, lang } => match lang {
-                Lang::Js => commands::new::generate_js("effect", &name),
-                Lang::Rust => commands::new::generate("effect", &name),
-            },
-        },
+        Commands::New { command } => {
+            let (module_type, name, lang) = match command {
+                NewSubcommand::Command { name, lang } => ("command", name, lang),
+                NewSubcommand::Projector { name, lang } => ("projector", name, lang),
+                NewSubcommand::Effect { name, lang } => ("effect", name, lang),
+            };
+            match resolve_lang(lang)? {
+                Lang::Js => commands::new::generate_js(module_type, &name),
+                Lang::Rust => commands::new::generate(module_type, &name),
+            }
+        }
     }
 }

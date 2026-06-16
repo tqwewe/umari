@@ -139,7 +139,7 @@ impl AnyModule {
     }
 }
 
-fn discover_modules(filter_paths: &[PathBuf], debug: bool) -> Result<(Vec<AnyModule>, PathBuf)> {
+fn run_cargo_metadata() -> Result<CargoMetadata> {
     let output = Command::new("cargo")
         .args(["metadata", "--format-version", "1", "--no-deps"])
         .output()
@@ -150,8 +150,56 @@ fn discover_modules(filter_paths: &[PathBuf], debug: bool) -> Result<(Vec<AnyMod
         return Err(anyhow!("cargo metadata failed: {stderr}"));
     }
 
-    let metadata: CargoMetadata = serde_json::from_slice(&output.stdout)
-        .map_err(|err| anyhow!("failed to parse cargo metadata: {err}"))?;
+    serde_json::from_slice(&output.stdout)
+        .map_err(|err| anyhow!("failed to parse cargo metadata: {err}"))
+}
+
+fn cargo_manifest_in_ancestors() -> bool {
+    std::env::current_dir()
+        .map(|cwd| cwd.ancestors().any(|dir| dir.join("Cargo.toml").exists()))
+        .unwrap_or(false)
+}
+
+fn js_workspace_root() -> Result<PathBuf> {
+    let cwd = std::env::current_dir()?;
+    let mut current = cwd.as_path();
+    loop {
+        if is_js_workspace_marker(current) {
+            return Ok(current.to_path_buf());
+        }
+        match current.parent() {
+            Some(parent) => current = parent,
+            None => return Ok(cwd.clone()),
+        }
+    }
+}
+
+fn is_js_workspace_marker(dir: &Path) -> bool {
+    if dir.join(".git").exists() {
+        return true;
+    }
+    if let Ok(content) = std::fs::read_to_string(dir.join("package.json")) {
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+            return json.get("workspaces").is_some();
+        }
+    }
+    false
+}
+
+fn discover_modules(filter_paths: &[PathBuf], debug: bool) -> Result<(Vec<AnyModule>, PathBuf)> {
+    // A pure JS project has no Cargo.toml, so cargo metadata legitimately fails;
+    // fall back to JS-only discovery. A present-but-broken manifest is a real
+    // error worth surfacing.
+    let metadata = match run_cargo_metadata() {
+        Ok(metadata) => Some(metadata),
+        Err(err) if cargo_manifest_in_ancestors() => return Err(err),
+        Err(_) => None,
+    };
+
+    let workspace_root = match &metadata {
+        Some(metadata) => metadata.workspace_root.clone(),
+        None => js_workspace_root()?,
+    };
 
     let profile = if debug { "debug" } else { "release" };
 
@@ -165,58 +213,60 @@ fn discover_modules(filter_paths: &[PathBuf], debug: bool) -> Result<(Vec<AnyMod
     let mut modules = Vec::new();
 
     // Rust modules
-    for pkg in metadata.packages {
-        let is_cdylib = pkg
-            .targets
-            .iter()
-            .any(|t| t.kind.iter().any(|k| k == "cdylib"));
-        if !is_cdylib {
-            continue;
-        }
-
-        let Some(module_type) = detect_module_type(&pkg.manifest_path) else {
-            continue;
-        };
-
-        if !canonicalized_filters.is_empty() {
-            let pkg_dir = pkg.manifest_path.parent().unwrap_or(&pkg.manifest_path);
-            let canonical_pkg_dir = pkg_dir
-                .canonicalize()
-                .unwrap_or_else(|_| pkg_dir.to_path_buf());
-
-            let mut matches = false;
-            for (i, filter) in canonicalized_filters.iter().enumerate() {
-                if canonical_pkg_dir.starts_with(filter) {
-                    matched_filters[i] = true;
-                    matches = true;
-                }
-            }
-            if !matches {
+    if let Some(metadata) = metadata {
+        for pkg in metadata.packages {
+            let is_cdylib = pkg
+                .targets
+                .iter()
+                .any(|t| t.kind.iter().any(|k| k == "cdylib"));
+            if !is_cdylib {
                 continue;
             }
+
+            let Some(module_type) = detect_module_type(&pkg.manifest_path) else {
+                continue;
+            };
+
+            if !canonicalized_filters.is_empty() {
+                let pkg_dir = pkg.manifest_path.parent().unwrap_or(&pkg.manifest_path);
+                let canonical_pkg_dir = pkg_dir
+                    .canonicalize()
+                    .unwrap_or_else(|_| pkg_dir.to_path_buf());
+
+                let mut matches = false;
+                for (i, filter) in canonicalized_filters.iter().enumerate() {
+                    if canonical_pkg_dir.starts_with(filter) {
+                        matched_filters[i] = true;
+                        matches = true;
+                    }
+                }
+                if !matches {
+                    continue;
+                }
+            }
+
+            let wasm_name = pkg.name.replace('-', "_");
+            let wasm_path = metadata
+                .target_directory
+                .join("wasm32-wasip2")
+                .join(profile)
+                .join(format!("{wasm_name}.wasm"));
+            let env_vars = pkg.metadata.unwrap_or_default().umari.env;
+
+            modules.push(AnyModule::Rust(Module {
+                name: pkg.name,
+                version: pkg.version,
+                module_type,
+                env_vars,
+                wasm_path,
+                manifest_path: pkg.manifest_path,
+            }));
         }
-
-        let wasm_name = pkg.name.replace('-', "_");
-        let wasm_path = metadata
-            .target_directory
-            .join("wasm32-wasip2")
-            .join(profile)
-            .join(format!("{wasm_name}.wasm"));
-        let env_vars = pkg.metadata.unwrap_or_default().umari.env;
-
-        modules.push(AnyModule::Rust(Module {
-            name: pkg.name,
-            version: pkg.version,
-            module_type,
-            env_vars,
-            wasm_path,
-            manifest_path: pkg.manifest_path,
-        }));
     }
 
     // JS modules
     for type_dir in &["commands", "projectors", "effects"] {
-        let dir = metadata.workspace_root.join(type_dir);
+        let dir = workspace_root.join(type_dir);
         if !dir.exists() {
             continue;
         }
@@ -296,7 +346,7 @@ fn discover_modules(filter_paths: &[PathBuf], debug: bool) -> Result<(Vec<AnyMod
             .then_with(|| a.name().cmp(b.name()))
     });
 
-    Ok((modules, metadata.workspace_root))
+    Ok((modules, workspace_root))
 }
 
 fn name_width(modules: &[AnyModule]) -> usize {

@@ -16,6 +16,7 @@ indoc.workspace = true
 clap.workspace = true
 colored.workspace = true
 comfy-table.workspace = true
+dialoguer.workspace = true
 indicatif.workspace = true
 semver.workspace = true
 serde.workspace = true
