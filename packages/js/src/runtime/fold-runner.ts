@@ -80,11 +80,14 @@ export function runFolds(
       if (skipShredded) continue;
 
       const stored = liftStoredEvent<unknown>(raw);
-      for (const { fold, state } of states.values()) {
-        const entry = fold.entries.find((e) => e.eventType === stored.type);
+      for (const slot of states.values()) {
+        const entry = slot.fold.entries.find((e) => e.eventType === stored.type);
         if (!entry) continue;
-        if (!matchesFoldQuery(entry, stored.tags, fold.bindings)) continue;
-        fold.apply(state, stored);
+        if (!matchesFoldQuery(entry, stored.tags, slot.fold.bindings)) continue;
+        // Reduce-style: honour a returned next state; `undefined` means the
+        // user mutated `state` in place, so keep it.
+        const next = slot.fold.apply(slot.state, stored);
+        if (next !== undefined) slot.state = next;
       }
     }
   }

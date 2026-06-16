@@ -24,8 +24,8 @@ export interface FoldDef<
   readonly events: TEvents;
   /** Build the initial state. */
   initial(): TState;
-  /** Apply a stored event, mutating `state` in place. */
-  apply(state: TState, event: StoredEventUnion<TEvents>): void;
+  /** Reduce a stored event into the state; returns the next state (or void to keep the mutated state). */
+  apply(state: TState, event: StoredEventUnion<TEvents>): TState | void;
   /** Bind this fold to runtime values, producing a `BoundFold`. */
   (bindings: TBindings): BoundFold<TState>;
 }
@@ -39,8 +39,8 @@ export interface BoundFold<TState = unknown> {
   readonly entries: readonly EventDomainId[];
   /** Runtime bindings used to filter events for this fold. */
   readonly bindings: ReadonlyMap<string, string>;
-  /** Apply a stored event after the fold-runner has confirmed it matches. */
-  apply(state: TState, event: StoredEvent<unknown>): void;
+  /** Apply a stored event after the fold-runner has confirmed it matches; returns the next state (or void). */
+  apply(state: TState, event: StoredEvent<unknown>): TState | void;
 }
 
 /** Internal helper used by built-ins. */
@@ -91,8 +91,12 @@ export interface DefineFoldOptions<
   events: TEvents;
   /** Build the initial state. */
   initial: () => TState;
-  /** Apply a stored event, mutating `state` in place. */
-  apply: (state: TState, event: StoredEventUnion<TEvents>) => void;
+  /**
+   * Reduce a stored event into the state. Return the next state (like
+   * `Array.reduce`); you may also mutate `state` and return it — or mutate and
+   * return nothing, in which case the mutated `state` is kept.
+   */
+  apply: (state: TState, event: StoredEventUnion<TEvents>) => TState | void;
 }
 
 /**
@@ -103,7 +107,7 @@ export interface DefineFoldOptions<
  *   domainIds: ['userId'] as const,
  *   events: [UserRegistered, UserReactivated],
  *   initial: () => false,
- *   apply: (state, event) => true,
+ *   apply: () => true, // return the next state, reduce-style
  * });
  *
  * // bound:
@@ -129,8 +133,9 @@ export function defineFold<
       bindings: boundBindings,
       apply(state, event) {
         // We trust the fold-runner to only deliver events that match the
-        // fold's filter; just dispatch to the user's apply.
-        options.apply(state as TState, event as StoredEventUnion<TEvents>);
+        // fold's filter; dispatch to the user's apply and propagate the
+        // returned next state (the runner keeps the old state on `undefined`).
+        return options.apply(state as TState, event as StoredEventUnion<TEvents>);
       },
     };
   }) as FoldDef<TBindings, TEvents, TState>;

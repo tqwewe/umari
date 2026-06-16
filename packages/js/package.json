@@ -1,6 +1,6 @@
 {
   "name": "@umari/js",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "TypeScript SDK for authoring Umari WASM modules (commands, projectors, effects).",
   "type": "module",
   "sideEffects": false,
@@ -54,8 +54,12 @@
     "esbuild": "^0.28.1"
   },
   "peerDependenciesMeta": {
-    "@bytecodealliance/jco": { "optional": false },
-    "esbuild": { "optional": false }
+    "@bytecodealliance/jco": {
+      "optional": false
+    },
+    "esbuild": {
+      "optional": false
+    }
   },
   "devDependencies": {
     "@bytecodealliance/jco": "^1.24.1",

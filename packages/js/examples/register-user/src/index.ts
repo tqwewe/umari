@@ -18,7 +18,7 @@ const UserExistsFold = defineFold({
   domainIds: ["userId"] as const,
   events: [UserRegistered],
   initial: () => false,
-  apply: (_state, _event) => true,
+  apply: () => true,
 });
 
 type Input = {
