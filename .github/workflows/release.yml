@@ -142,6 +142,14 @@ jobs:
       - name: Install dependencies
         run: |
           ${{ matrix.packages_install }}
+      # apt's protoc on ubuntu-22.04 is too old for umadb-proto's proto3
+      # optional fields; install a current one (Linux only — macOS uses brew).
+      - name: Install protoc (Linux)
+        if: runner.os == 'Linux'
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "25.x"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Build artifacts
         run: |
           # Actually do builds and make zips and whatnot

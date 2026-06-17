@@ -19,9 +19,7 @@ install-updater = false
 # doesn't fire on release-plz's SDK tags; don't revert it on regeneration.
 allow-dirty = ["ci"]
 
-# umadb-proto's build script invokes protoc, so install it on each runner.
-[dist.dependencies.apt]
-protobuf-compiler = '*'
-
+# macOS uses brew's recent protobuf; Linux gets a current protoc via
+# setup-protoc in release.yml (apt's 3.12 is too old for proto3 optional).
 [dist.dependencies.homebrew]
 protobuf = '*'
