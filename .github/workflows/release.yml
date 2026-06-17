@@ -42,10 +42,10 @@ on:
   pull_request:
   push:
     tags:
-      # Scoped to the binary packages so release-plz's SDK tags
-      # (umari-v*, umari-macros-v*) don't trigger a binary release.
-      - 'umari-cli-v[0-9]*'
-      - 'umari-server-v[0-9]*'
+      # Unified binary release: a `v*` tag ships both umari (CLI) and
+      # umari-server together. Distinct from release-plz's SDK tags
+      # (umari-v*, umari-macros-v*), which must NOT trigger a binary build.
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
 
 jobs:
   # Run 'dist plan' (or host) to determine what tasks we need to do
