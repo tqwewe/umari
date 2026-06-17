@@ -10,6 +10,9 @@ mathjax-support = false
 smart-punctuation = true
 additional-css = ["theme/tabs.css"]
 additional-js = ["theme/tabs.js"]
+git-repository-url = "https://github.com/tqwewe/umari"
+git-repository-icon = "fab-github"
+edit-url-template = "https://github.com/tqwewe/umari/edit/main/docs/{path}"
 
 [output.html.fold]
 enable = true
