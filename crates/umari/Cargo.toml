@@ -4,6 +4,8 @@ version = "0.3.0"
 edition = "2024"
 description = "SDK for building event-sourced WASM components for the Umari runtime"
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
 
 [dependencies]
 umari-macros.workspace = true

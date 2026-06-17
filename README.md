@@ -59,7 +59,7 @@ Add the `umari` SDK to your module crate's `Cargo.toml`:
 
 ```toml
 [dependencies]
-umari = "0.2"
+umari = "0.3"
 ```
 
 Or via command line:

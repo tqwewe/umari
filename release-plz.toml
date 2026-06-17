@@ -1,0 +1,15 @@
+[workspace]
+# You bump versions by hand in each Cargo.toml; release-plz only publishes what
+# isn't on crates.io yet and tags it (run the action with `command: release`).
+release_always = true
+
+# Only umari + umari-macros are publishable (everything else is publish = false),
+# so release-plz touches just these two. Tag formats kept distinct from the
+# cargo-dist binary tags (umari-cli-v*, umari-server-v*).
+[[package]]
+name = "umari"
+git_tag_name = "umari-v{{ version }}"
+
+[[package]]
+name = "umari-macros"
+git_tag_name = "umari-macros-v{{ version }}"

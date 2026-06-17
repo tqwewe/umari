@@ -2,8 +2,10 @@
 name = "umari-macros"
 version = "0.2.0"
 edition = "2024"
-description = "Derive macros for umari (CommandInput, Event, EventSet)"
+description = "Derive macros for the umari SDK (Event, EventSet, DomainIds, FromDomainIds, export_command)"
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
 
 [lib]
 proc-macro = true

@@ -2,6 +2,7 @@
 name = "umari-types"
 edition = "2024"
 license.workspace = true
+publish = false
 
 [dependencies]
 serde.workspace = true

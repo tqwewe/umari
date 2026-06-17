@@ -2,6 +2,7 @@
 name = "umari-ui"
 edition = "2024"
 license.workspace = true
+publish = false
 
 [dependencies]
 umari-core = { workspace = true }

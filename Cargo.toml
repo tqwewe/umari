@@ -13,6 +13,8 @@ members = [
 
 [workspace.package]
 license = "Apache-2.0"
+repository = "https://github.com/tqwewe/umari"
+homepage = "https://umari.tqwewe.com"
 
 [workspace.dependencies]
 umari-api = { path = "crates/api" }
@@ -97,3 +99,8 @@ wasmtime = { version = "45.0", default-features = false, features = [
 wasmtime-wasi = "45.0"
 wasmtime-wasi-http = "45.0"
 wit-bindgen = "0.58"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"

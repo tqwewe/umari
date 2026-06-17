@@ -2,7 +2,12 @@
 name = "umari-cli"
 edition = "2024"
 license.workspace = true
+repository.workspace = true
 version = "0.1.0"
+publish = false
+
+[package.metadata.dist]
+dist = true
 
 [[bin]]
 name = "umari"
