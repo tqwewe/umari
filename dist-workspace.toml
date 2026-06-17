@@ -18,3 +18,10 @@ install-updater = false
 # The release.yml tag trigger is hand-scoped to unified `v*` tags so it
 # doesn't fire on release-plz's SDK tags; don't revert it on regeneration.
 allow-dirty = ["ci"]
+
+# umadb-proto's build script invokes protoc, so install it on each runner.
+[dist.dependencies.apt]
+protobuf-compiler = '*'
+
+[dist.dependencies.homebrew]
+protobuf = '*'
