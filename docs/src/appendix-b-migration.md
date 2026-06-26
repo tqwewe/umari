@@ -1,4 +1,4 @@
-# Appendix B: Migration from Traditional Event Sourcing
+# Migration from Traditional Event Sourcing
 
 If you're coming from a traditional event sourcing background (EventStoreDB, Marten, Axon, etc.), this chapter maps familiar concepts to Umari equivalents.
 
@@ -7,7 +7,7 @@ If you're coming from a traditional event sourcing background (EventStoreDB, Mar
 | Concept | Traditional ES | Umari |
 |---------|---------------|-------|
 | **Event streams** | Per-aggregate streams | Single global log with domain ID tags |
-| **Concurrency** | Stream position check | DCB — dynamic boundaries by event overlap |
+| **Concurrency** | Stream position check | DCB: dynamic boundaries by event overlap |
 | **Aggregates** | Aggregate root with state | No aggregates; folds derive state on-demand |
 | **Read models** | External projections | Projectors (WASM modules with SQLite) |
 | **Side effects** | Process managers / sagas | Effects (WASM modules with HTTP access) |
@@ -45,8 +45,8 @@ Umari:
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
-// State — just data
+```rust,noplayground
+// State: just data
 #[derive(Default)]
 pub struct WidgetState {
     pub exists: bool,
@@ -54,7 +54,7 @@ pub struct WidgetState {
     pub archived: bool,
 }
 
-// Fold — binds to domain IDs, replays events
+// Fold: binds to domain IDs, replays events
 #[derive(DomainIds, FromDomainIds)]
 pub struct WidgetFold {
     #[domain_id]
@@ -84,7 +84,7 @@ impl Fold for WidgetFold {
     }
 }
 
-// Command — validates, checks invariants, emits events
+// Command: validates, checks invariants, emits events
 #[export_command]
 pub fn create_widget(input: Input, context: CommandContext) -> anyhow::Result<ExecuteOutput> {
     Command::new(input, context)
@@ -103,7 +103,7 @@ pub fn create_widget(input: Input, context: CommandContext) -> anyhow::Result<Ex
 {{#tab name="TypeScript" }}
 
 ```ts
-// Fold — binds to domain IDs, replays events into a mutable state object
+// Fold: binds to domain IDs, replays events into a mutable state object
 export const WidgetFold = defineFold({
   domainIds: ["widgetId"] as const,
   events: [WidgetCreated, WidgetArchived],
@@ -121,7 +121,7 @@ export const WidgetFold = defineFold({
   },
 });
 
-// Command — validates, checks invariants, emits events
+// Command: validates, checks invariants, emits events
 const CreateWidget = defineCommand<Input, { widget: ReturnType<typeof WidgetFold> }>({
   domainIds: ["widgetId"] as const,
   folds: ({ widgetId }) => ({ widget: WidgetFold({ widgetId }) }),
@@ -138,9 +138,9 @@ export const { schema, execute } = exportCommand(CreateWidget);
 {{#endtabs }}
 
 Key differences:
-- The derived state is separate from the binding — the fold holds the domain ID bindings, the state holds the derived data
+- The derived state is separate from the binding: the fold holds the domain ID bindings, the state holds the derived data
 - `apply` updates a mutable state in place (in Rust via `&mut`, in TypeScript by mutating the state object)
-- The command is stateless — no aggregate instance, just pure logic
+- The command is stateless: no aggregate instance, just pure logic
 - Consistency is per-domain-ID, not per-aggregate-stream
 
 ## Projection → Projector
@@ -163,7 +163,7 @@ Umari:
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 impl Projector for Widgets {
     type Query = WidgetQuery;
 
@@ -256,14 +256,14 @@ Umari:
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 impl Effect for OrderProcessor {
     type Query = OrderEvents;
 
     fn handle(&mut self, event: StoredEvent<Self::Query>) -> anyhow::Result<()> {
         match event.data {
             OrderEvents::OrderPlaced(ev) => {
-                // 1. Fold-check via a private command — if the "scheduled"
+                // 1. Fold-check via a private command: if the "scheduled"
                 //    event was already emitted, the command short-circuits
                 //    and the receipt is empty.
                 let receipt = schedule_payment_processing(
@@ -274,7 +274,7 @@ impl Effect for OrderProcessor {
                     return Ok(()); // already processed on a previous run
                 }
 
-                // 2. Side effect — call the payment gateway.
+                // 2. Side effect: call the payment gateway.
                 let response = self.http_client
                     .post("https://payment.example.com/process")
                     .json(&json!({ "order_id": ev.order_id, "amount": ev.amount }))
@@ -306,13 +306,13 @@ const OrderProcessor = defineEffect({
   handle: async (event) => {
     const { orderId, amount } = event.data;
 
-    // 1. Fold-check — has payment already been processed for this order?
+    // 1. Fold-check: has payment already been processed for this order?
     const { processed } = foldQuery({
       processed: EventFold(PaymentProcessed)({ orderId }),
     }).run();
     if (processed.length > 0) return; // already processed on a previous run
 
-    // 2. Side effect — call the payment gateway.
+    // 2. Side effect: call the payment gateway.
     const res = await fetch("https://payment.example.com/process", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -336,7 +336,7 @@ export const { effect } = exportEffect(OrderProcessor);
 
 Key differences:
 - Effects use the fold-check → side effect → record pattern for idempotency.
-- Effects have their own SQLite for internal state, but it's not the idempotency source — the event store is.
+- Effects have their own SQLite for internal state, but it's not the idempotency source: the event store is.
 - Effects call commands directly (a function call in Rust; `execute(name, …)` in TypeScript); no message bus.
 - HTTP is provided via WASI (`wasi-http-client` in Rust, `fetch` in TypeScript); no host-side bridging code.
 
@@ -368,7 +368,7 @@ Port your event definitions first, adding domain IDs to identify the entity each
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 // Old: AccountCreated { AccountId, OwnerName }
 #[derive(Event, DomainIds, Serialize, Deserialize)]
 #[event_type("account.created")]

@@ -1,4 +1,4 @@
-# 4. Events
+# Events
 
 Events are the immutable facts of your system. This chapter covers how to define them, what data they carry, and how they flow through Umari.
 
@@ -11,7 +11,7 @@ An event pairs an event-type string with a typed payload and a list of domain-ID
 
 An event is a struct that derives `Event`, `DomainIds`, `Serialize`, and `Deserialize`:
 
-```rust
+```rust,noplayground
 use umari::prelude::*;
 use serde::{Serialize, Deserialize};
 use uuid::Uuid;
@@ -28,9 +28,9 @@ pub struct ProjectCreated {
 }
 ```
 
-`Event` and `DomainIds` are independent derives — `Event` does **not** include `DomainIds`, so you need to add both. `Clone` and `Debug` are optional; add them if you want them on a particular event.
+`Event` and `DomainIds` are independent derives: `Event` does **not** include `DomainIds`, so you need to add both. `Clone` and `Debug` are optional; add them if you want them on a particular event.
 
-The `#[event_type("project.created")]` attribute sets the `EVENT_TYPE` constant. This string is what the event store uses to identify the event, what projectors and effects filter on, and what appears in the `event_type` field of `StoredEvent`. The attribute is optional — if omitted, `EVENT_TYPE` defaults to the struct name.
+The `#[event_type("project.created")]` attribute sets the `EVENT_TYPE` constant. This string is what the event store uses to identify the event, what projectors and effects filter on, and what appears in the `event_type` field of `StoredEvent`. The attribute is optional; if omitted, `EVENT_TYPE` defaults to the struct name.
 
 {{#endtab }}
 {{#tab name="TypeScript" }}
@@ -52,12 +52,12 @@ export const ProjectCreated = defineEvent<ProjectCreatedData>()("project.created
 });
 ```
 
-The first argument is the event-type string — what the event store uses to identify the event, what projectors and effects filter on, and what appears in the `type` field of `StoredEvent`. The `domainIds` array lists which payload fields are domain IDs (each must be a key of the data type). The curried `defineEvent<Data>()(...)` form lets you annotate the payload type while `type` and `domainIds` are inferred.
+The first argument is the event-type string: what the event store uses to identify the event, what projectors and effects filter on, and what appears in the `type` field of `StoredEvent`. The `domainIds` array lists which payload fields are domain IDs (each must be a key of the data type). The curried `defineEvent<Data>()(...)` form lets you annotate the payload type while `type` and `domainIds` are inferred.
 
 {{#endtab }}
 {{#endtabs }}
 
-**Naming convention**: A common convention is dot-separated past-tense verb phrases like `user.registered`, `project.created`, `order.paid` — the first segment is the domain entity and the second is the action. Umari doesn't enforce this; use whatever naming scheme fits your project.
+**Naming convention**: A common convention is dot-separated past-tense verb phrases like `user.registered`, `project.created`, `order.paid`, where the first segment is the domain entity and the second is the action. Umari doesn't enforce this; use whatever naming scheme fits your project.
 
 ## Domain IDs
 
@@ -71,15 +71,15 @@ Domain-ID fields become tags on the stored event. Commands query for events by t
 
 Annotate fields with `#[domain_id]`:
 
-```rust
+```rust,noplayground
 #[derive(Event, DomainIds, Serialize, Deserialize)]
 #[event_type("task.created")]
 pub struct TaskCreated {
-    #[domain_id] pub task_id: Uuid,      // ✓ — identifies the task
-    #[domain_id] pub project_id: Uuid,   // ✓ — identifies the project
-    #[domain_id] pub user_id: u64,       // ✓ — identifies the user
-    pub title: String,                   // ✗ — just data
-    pub description: String,             // ✗ — just data
+    #[domain_id] pub task_id: Uuid,      // ✓ identifies the task
+    #[domain_id] pub project_id: Uuid,   // ✓ identifies the project
+    #[domain_id] pub user_id: u64,       // ✓ identifies the user
+    pub title: String,                   // ✗ just data
+    pub description: String,             // ✗ just data
 }
 ```
 
@@ -92,11 +92,11 @@ List the domain-ID fields in `domainIds`:
 
 ```ts
 type TaskCreatedData = {
-  taskId: string;      // ✓ — identifies the task
-  projectId: string;   // ✓ — identifies the project
-  userId: bigint;      // ✓ — identifies the user
-  title: string;       // ✗ — just data
-  description: string; // ✗ — just data
+  taskId: string;      // ✓ identifies the task
+  projectId: string;   // ✓ identifies the project
+  userId: bigint;      // ✓ identifies the user
+  title: string;       // ✗ just data
+  description: string; // ✗ just data
 };
 
 export const TaskCreated = defineEvent<TaskCreatedData>()("task.created", {
@@ -104,18 +104,18 @@ export const TaskCreated = defineEvent<TaskCreatedData>()("task.created", {
 });
 ```
 
-Each domain ID becomes a tag like `userId:42` — the tag name is the field name exactly as written. When a command queries for events with `userId=42`, the event store returns only events carrying that tag.
+Each domain ID becomes a tag like `userId:42`; the tag name is the field name exactly as written. When a command queries for events with `userId=42`, the event store returns only events carrying that tag.
 
 {{#endtab }}
 {{#endtabs }}
 
-> **Tag names are the field names.** A tag is `<field>:<value>`, so the field name is part of the contract: every module that queries an event must spell the field the same way. If you mix Rust and TypeScript modules over the same events, keep the field names identical (the Rust SDK can rename a tag — see below — to line up with a TypeScript field, or vice versa).
+> **Tag names are the field names.** A tag is `<field>:<value>`, so the field name is part of the contract: every module that queries an event must spell the field the same way. If you mix Rust and TypeScript modules over the same events, keep the field names identical (the Rust SDK can rename a tag to line up with a TypeScript field, or vice versa; see below).
 
 ### Renaming domain IDs (Rust)
 
-In Rust you can override the tag name — useful when the struct field name differs from the domain concept:
+In Rust you can override the tag name, which is useful when the struct field name differs from the domain concept:
 
-```rust
+```rust,noplayground
 #[domain_id("project_id")]
 pub project_project_id: Uuid,
 ```
@@ -127,12 +127,12 @@ This produces a tag like `project_id:abc-def` rather than `project_project_id:ab
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-`#[derive(DomainIds)]` generates the `domain_ids()` method, which collects all `#[domain_id]` fields into a `DomainIdBindings` map used for querying. It's a separate derive from `Event` — events need both, and so do other structs that participate in DCB queries (see [Chapter 5: Domain IDs](./05-domain-ids.md)).
+`#[derive(DomainIds)]` generates the `domain_ids()` method, which collects all `#[domain_id]` fields into a `DomainIdBindings` map used for querying. It's a separate derive from `Event`: events need both, and so do other structs that participate in DCB queries (see [Domain IDs](./domain-ids.md)).
 
 {{#endtab }}
 {{#tab name="TypeScript" }}
 
-The `domainIds` array on `defineEvent` is the equivalent: at emit time the factory reads those fields off the payload and builds the `field → value` map the runtime tags the event with. The same field names are reused when binding folds (see [Chapter 5: Domain IDs](./05-domain-ids.md)).
+The `domainIds` array on `defineEvent` is the equivalent: at emit time the factory reads those fields off the payload and builds the `field → value` map the runtime tags the event with. The same field names are reused when binding folds (see [Domain IDs](./domain-ids.md)).
 
 {{#endtab }}
 {{#endtabs }}
@@ -146,7 +146,7 @@ Events that contain sensitive data (PII, access tokens, etc.) can be encrypted a
 
 Mark a single field with `#[crypto_scope]`:
 
-```rust
+```rust,noplayground
 #[derive(Event, DomainIds, Serialize, Deserialize)]
 #[event_type("user.registered")]
 pub struct UserRegistered {
@@ -191,9 +191,9 @@ The scope string becomes a **lookup key for an encryption key**, and the runtime
 Encryption is transparent:
 - **Writing**: the runtime serializes the event, fetches/creates the key for the scope, and encrypts the payload before appending.
 - **Reading**: the runtime decrypts the payload before passing it to folds, projectors, and effects.
-- **Key deletion**: deleting a scope's key (crypto-shredding) makes all events for that scope permanently unreadable — they appear as `Value::Null` and are skipped.
+- **Key deletion**: deleting a scope's key (crypto-shredding) makes all events for that scope permanently unreadable; they appear as `Value::Null` and are skipped.
 
-See [Chapter 14: Encryption & Crypto-Shredding](./14-encryption.md) for details.
+The dedicated Encryption & Crypto-Shredding chapter covers key management and shredding in full *(still in draft)*.
 
 ## What an event definition carries
 
@@ -202,7 +202,7 @@ See [Chapter 14: Encryption & Crypto-Shredding](./14-encryption.md) for details.
 
 The `Event` derive macro generates an implementation of the `Event` trait:
 
-```rust
+```rust,noplayground
 pub trait Event: DomainIds + Serialize + DeserializeOwned + Sized {
     const EVENT_TYPE: &'static str;
 
@@ -212,12 +212,12 @@ pub trait Event: DomainIds + Serialize + DeserializeOwned + Sized {
 }
 ```
 
-You rarely need to know this — the derive macro handles everything. But it's useful to understand when debugging.
+You rarely need to know this; the derive macro handles everything. But it's useful to understand when debugging.
 
 {{#endtab }}
 {{#tab name="TypeScript" }}
 
-`defineEvent` returns an `EventDef` — a callable factory that also carries its `type`, its `domainIds`, and (via a phantom type) the payload type. You rarely interact with it beyond calling it to build a payload and listing it in a fold/projector/effect's `events` array:
+`defineEvent` returns an `EventDef`, a callable factory that also carries its `type`, its `domainIds`, and (via a phantom type) the payload type. You rarely interact with it beyond calling it to build a payload and listing it in a fold/projector/effect's `events` array:
 
 ```ts
 ProjectCreated.type;        // "project.created"
@@ -235,7 +235,7 @@ When you receive an event in a fold, projector, or effect, it arrives wrapped in
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 pub struct StoredEvent<T> {
     pub id: Uuid,
     pub position: u64,
@@ -281,14 +281,14 @@ The `data` field contains your typed event payload. The envelope fields carry tr
 
 ## Event sets
 
-An **event set** groups multiple event types together. Folds, projectors, and effects use one to declare which events they care about — the runtime turns it into the DCB query and the discriminated union you receive in handlers.
+An **event set** groups multiple event types together. Folds, projectors, and effects use one to declare which events they care about: the runtime turns it into the DCB query and the discriminated union you receive in handlers.
 
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
 An event set is an enum (conventionally named `Query`) deriving `EventSet`:
 
-```rust
+```rust,noplayground
 #[derive(EventSet)]
 enum Query {
     UserRegistered(UserRegistered),
@@ -298,7 +298,7 @@ enum Query {
 
 The `#[derive(EventSet)]` macro generates the `EventSet` trait implementation:
 
-```rust
+```rust,noplayground
 pub trait EventSet: Sized {
     type Item;
 
@@ -318,7 +318,7 @@ An event set is just an array of event definitions, passed as `events` to `defin
 const events = [UserRegistered, UserReactivated];
 ```
 
-TypeScript builds the discriminated union for you: in a handler, `switch (event.type)` narrows `event.data` to the matching payload. There is no separate `EventSet` declaration — the array is the event set.
+TypeScript builds the discriminated union for you: in a handler, `switch (event.type)` narrows `event.data` to the matching payload. There is no separate `EventSet` declaration: the array is the event set.
 
 {{#endtab }}
 {{#endtabs }}
@@ -330,7 +330,7 @@ TypeScript builds the discriminated union for you: in a handler, `switch (event.
 
 For folds that only care about one event type, use the built-in `SingleEvent<E>`:
 
-```rust
+```rust,noplayground
 impl Fold for UserExistsFold {
     type Events = SingleEvent<UserRegistered>;
     type State = bool;
@@ -357,17 +357,17 @@ const events = [UserRegistered];
 
 ### Scoping which events a fold sees
 
-By default an event in a fold's set is filtered using **all** the domain ID bindings the fold was given. Often you want to narrow that — e.g. a fold that checks whether a task title is unique *within a project* should filter `TaskCreated` by `project_id` only, not by `task_id` (which would only ever return the single task you already know about).
+By default an event in a fold's set is filtered using **all** the domain ID bindings the fold was given. Often you want to narrow that. For example, a fold that checks whether a task title is unique *within a project* should filter `TaskCreated` by `project_id` only, not by `task_id` (which would only ever return the single task you already know about).
 
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
 The `#[scope(...)]` attribute on an `EventSet` variant controls which domain ID tags filter that event type:
 
-```rust
+```rust,noplayground
 #[derive(EventSet)]
 pub enum TaskTitleEvents {
-    // Filter TaskCreated by project_id only — see every task in the project
+    // Filter TaskCreated by project_id only, to see every task in the project
     #[scope(project_id)]
     TaskCreated(TaskCreated),
 
@@ -382,8 +382,8 @@ pub enum TaskTitleEvents {
 
 Three forms:
 - **No attribute**: filtered using all domain ID bindings from the fold/command input
-- **`#[scope(field_name)]`**: filter only by the named domain ID — restricts scope to fewer IDs
-- **`#[scope(field_name = "literal")]`**: hardcoded tag value — matches events with that fixed value
+- **`#[scope(field_name)]`**: filter only by the named domain ID, restricting scope to fewer IDs
+- **`#[scope(field_name = "literal")]`**: hardcoded tag value, matching events with that fixed value
 
 For projectors and effects (which have no fold bindings), only the hardcoded form is meaningful.
 
@@ -403,7 +403,7 @@ const TaskTitleFold = defineFold({
 });
 ```
 
-Folds, and the binding model behind `domainIds`, are covered in [Chapter 6: Folds](./06-folds.md). The TypeScript SDK scopes per fold (via `domainIds`); it has no per-event hardcoded-literal scope like Rust's `#[scope(field = "literal")]`.
+Folds, and the binding model behind `domainIds`, are covered in [Folds](./folds.md). The TypeScript SDK scopes per fold (via `domainIds`); it has no per-event hardcoded-literal scope like Rust's `#[scope(field = "literal")]`.
 
 {{#endtab }}
 {{#endtabs }}

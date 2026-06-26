@@ -1,15 +1,15 @@
-# 2. Core Concepts
+# Core Concepts
 
 This chapter establishes the foundational concepts that Umari is built on. Understanding these will make the rest of the book straightforward.
 
 ## Events as immutable facts
 
-An event represents something that **has already happened**. It is named in past tense and carries all the data needed to describe what occurred. Once written, an event is never modified or deleted — it is a permanent fact in the system's history.
+An event represents something that **has already happened**. It is named in past tense and carries all the data needed to describe what occurred. Once written, an event is never modified or deleted. It is a permanent fact in the system's history.
 
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 #[derive(Event, DomainIds, Serialize, Deserialize)]
 #[event_type("user.registered")]
 pub struct UserRegistered {
@@ -51,11 +51,11 @@ Every event carries metadata in the event envelope:
 | `causation_id` | The specific command execution that produced this event |
 | `triggering_event_id` | The event that caused an effect to trigger this command |
 
-## No aggregates — Dynamic Consistency Boundaries
+## No aggregates: Dynamic Consistency Boundaries
 
 Traditional event sourcing uses **aggregates**: each entity has its own event stream, and concurrency is managed by comparing stream positions. Umari does not use aggregates.
 
-Instead, Umari uses [**Dynamic Consistency Boundaries (DCB)**](https://dcb.events/). When a command runs, it declares exactly which events it needs — specified by event types and domain ID tags. The runtime fetches those events and uses their positions to form a consistency boundary at execution time.
+Instead, Umari uses [**Dynamic Consistency Boundaries (DCB)**](https://dcb.events/). When a command runs, it declares exactly which events it needs, specified by event types and domain ID tags. The runtime fetches those events and uses their positions to form a consistency boundary at execution time.
 
 This means:
 - Different commands touching different domain IDs form different boundaries
@@ -70,7 +70,7 @@ Domain IDs are the mechanism that makes DCB work. They are fields on events that
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 #[derive(Event, DomainIds, Serialize, Deserialize)]
 #[event_type("task.created")]
 pub struct TaskCreated {
@@ -80,7 +80,7 @@ pub struct TaskCreated {
     pub project_id: Uuid,   // tag: project_id:11c-22d
     #[domain_id]
     pub user_id: u64,       // tag: user_id:42
-    pub title: String,      // not a domain ID — just data
+    pub title: String,      // not a domain ID, just data
 }
 ```
 
@@ -92,7 +92,7 @@ type TaskCreatedData = {
   taskId: string;     // tag: taskId:abc-def
   projectId: string;  // tag: projectId:11c-22d
   userId: bigint;     // tag: userId:42
-  title: string;      // not a domain ID — just data
+  title: string;      // not a domain ID, just data
 };
 
 export const TaskCreated = defineEvent<TaskCreatedData>()("task.created", {
@@ -111,15 +111,15 @@ There is no "current state" table. Everything is derived from events:
 
 | Module | How it derives state |
 |--------|----------------------|
-| Command | **Folds** — replay just the events this domain ID touches, in memory, on every call |
+| Command | **Folds**: replay just the events this domain ID touches, in memory, on every call |
 | Projector | `handle()` updates SQLite as events arrive. The SQLite file is a rebuildable cache, not the source of truth |
 | Effect | Tracks internal work in SQLite, but checks the event store (via folds) to decide whether a side effect has already happened |
 
-The contract: delete every SQLite file, replay events from position 0, end up in the same state — and side effects that already ran don't run again.
+The contract: delete every SQLite file, replay events from position 0, end up in the same state, and side effects that already ran don't run again.
 
 ## Commands are the only writers
 
-Every event in the store comes from a command. Projectors never write events; effects don't either — when an effect needs to write, it calls a command inline. A command is just an exported function, so any module can call one directly through the runtime.
+Every event in the store comes from a command. Projectors never write events; effects don't either. When an effect needs to write, it calls a command inline. A command is just an exported function, so any module can call one directly through the runtime.
 
 That single rule keeps every write going through validation and invariant checks, and gives every event a clear causal chain.
 
@@ -140,8 +140,8 @@ The `correlation_id` flows through the entire chain. The `triggering_event_id` l
 
 ## Key principles
 
-1. **Events are immutable facts** — never modified, only appended
-2. **Commands are the only writers** — all events originate from command execution
-3. **No aggregates or streams** — DCB forms consistency boundaries dynamically
-4. **State is derived by replay** — folds for commands, SQLite for projectors
-5. **The system is fully replayable** — delete SQLite, replay events, identical result
+1. **Events are immutable facts**: never modified, only appended
+2. **Commands are the only writers**: all events originate from command execution
+3. **No aggregates or streams**: DCB forms consistency boundaries dynamically
+4. **State is derived by replay**: folds for commands, SQLite for projectors
+5. **The system is fully replayable**: delete SQLite, replay events, identical result

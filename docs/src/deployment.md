@@ -1,4 +1,4 @@
-# 15. Deployment & Operations
+# Deployment & Operations
 
 This chapter covers building, deploying, and operating Umari in production.
 
@@ -41,7 +41,7 @@ name = "register-user"
 version = "1.0.18"
 ```
 
-The runtime tracks versions and supports rolling upgrades — activate a new version and the old one stops gracefully.
+The runtime tracks versions and supports rolling upgrades: activate a new version and the old one stops gracefully.
 
 ## Starting the server
 
@@ -175,14 +175,14 @@ The event store (UmaDB) should be compacted periodically to reclaim space from d
 
 ### What to back up
 
-- **UmaDB event store** — the source of truth. Everything else is derivable.
-- **`umari.sqlite`** — module store (WASM bytes, crypto keys, metadata). Without this, you'd need to re-upload all modules.
-- **Module source code** — WASM bytes in the store are binary; keep source in git.
+- **UmaDB event store**: the source of truth. Everything else is derivable.
+- **`umari.sqlite`**: module store (WASM bytes, crypto keys, metadata). Without this, you'd need to re-upload all modules.
+- **Module source code**: WASM bytes in the store are binary; keep source in git.
 
 ### What NOT to back up
 
-- **Projector/effect SQLite databases** — these are derivable from events via replay.
-- **`cache/*.cwasm`** — compiled cache, regenerated on restart.
+- **Projector/effect SQLite databases**: these are derivable from events via replay.
+- **`cache/*.cwasm`**: compiled cache, regenerated on restart.
 
 ## Production checklist
 

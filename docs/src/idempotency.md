@@ -1,6 +1,6 @@
-# 16. Idempotency Deep Dive
+# Idempotency Deep Dive
 
-Idempotency is the property that repeating an operation produces the same result as doing it once. In Umari, idempotency is **not optional** — the runtime may redeliver events, effects may be replayed, and commands may be retried. Every module type handles idempotency differently, and this chapter explains each mechanism in detail.
+Idempotency is the property that repeating an operation produces the same result as doing it once. In Umari, idempotency is **not optional**: the runtime may redeliver events, effects may be replayed, and commands may be retried. Every module type handles idempotency differently, and this chapter explains each mechanism in detail.
 
 ## Why idempotency matters
 
@@ -20,7 +20,7 @@ Without idempotency, any of these would produce duplicate events, double-charge 
 
 Commands accept an optional `idempotency_key` in `CommandContext`. When present, the runtime checks the event store for any event in the fold scope that carries the same key.
 
-```rust
+```rust,noplayground
 let context = CommandContext::new()
     .with_idempotency_key(Some(request_id));
 ```
@@ -35,7 +35,7 @@ If a matching event is found, the command's execute closure is never called. The
 
 Commands can also check fold state to decide whether the operation already occurred:
 
-```rust
+```rust,noplayground
 Command::new(input, context)
     .fold::<EventFold<UserRegistered>>()
     .execute(|input, connected| {
@@ -46,7 +46,7 @@ Command::new(input, context)
     })
 ```
 
-This is domain-level idempotency — the command understands its own business rules and can determine that "registering a user that's already registered" is a no-op.
+This is domain-level idempotency: the command understands its own business rules and can determine that "registering a user that's already registered" is a no-op.
 
 **When to use**: When the idempotency logic depends on business state (e.g., "if the project already has this title, don't create a duplicate").
 
@@ -109,14 +109,14 @@ Effect idempotency is the most complex because effects perform external side eff
 If the effect crashes at any point:
 
 - **During step 1**: FoldQuery is a read-only transaction against the event store. Nothing to recover.
-- **During step 2**: On replay, step 1 checks the event store and finds no completion event. The side effect runs again — make the external API call idempotent (the external service should handle duplicates gracefully).
-- **During step 3**: The record command is transactional. If committed, step 1 will find it and exit early. If not committed, steps 1-2 will run again — the side effect must be idempotent at the API level.
+- **During step 2**: On replay, step 1 checks the event store and finds no completion event. The side effect runs again; make the external API call idempotent (the external service should handle duplicates gracefully).
+- **During step 3**: The record command is transactional. If committed, step 1 will find it and exit early. If not committed, steps 1-2 will run again; the side effect must be idempotent at the API level.
 
 ### FoldQuery is the primary mechanism
 
 Unlike the older "scheduled event" pattern, the recommended approach uses `FoldQuery` to directly check for the completion event:
 
-```rust
+```rust,noplayground
 let already_done = FoldQuery::new()
     .fold(AlreadyRegisteredFold { user_id, topic, current_event_id })
     .run()?;
@@ -132,20 +132,20 @@ This is lighter than executing a separate private "schedule" command and avoids 
 
 A common mistake is using SQLite to track whether work has been done:
 
-```rust
-// WRONG — SQLite can be deleted and rebuilt
+```rust,noplayground
+// WRONG: SQLite can be deleted and rebuilt
 let done: bool = query_row("SELECT done FROM tracking WHERE id = ?1", ...)?;
 if done { return Ok(()); }
 ```
 
-This fails under replay. SQLite databases are derivable — they can be wiped and rebuilt. The only durable source of truth is the event store.
+This fails under replay. SQLite databases are derivable: they can be wiped and rebuilt. The only durable source of truth is the event store.
 
 ## Anti-patterns
 
 ### Using timestamps for idempotency
 
-```rust
-// WRONG — clock skew, replay produces different timestamps
+```rust,noplayground
+// WRONG: clock skew, replay produces different timestamps
 if event.timestamp > last_processed_timestamp {
     return Ok(());
 }
@@ -155,15 +155,15 @@ Timestamps are not monotonic and change during replay.
 
 ### Using in-memory state
 
-```rust
-// WRONG — doesn't survive restarts
+```rust,noplayground
+// WRONG: doesn't survive restarts
 static mut PROCESSED: HashSet<Uuid> = HashSet::new();
 ```
 
 ### Checking external state
 
-```rust
-// WRONG — external systems aren't part of the event log
+```rust,noplayground
+// WRONG: external systems aren't part of the event log
 let exists = external_api.check_webhook_exists(topic)?;
 if exists { return Ok(()); }
 ```
@@ -174,7 +174,7 @@ External APIs can fail, be rate-limited, or return different results over time. 
 
 Test that your effects are idempotent:
 
-1. Run the effect once — it should perform the side effect
+1. Run the effect once: it should perform the side effect
 2. Delete the effect's SQLite database
 3. Replay all events
 4. The effect should NOT perform the side effect again

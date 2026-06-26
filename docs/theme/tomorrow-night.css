@@ -1,0 +1,86 @@
+/* Glide theme — highlight.js token colours.
+ *
+ * Mapped to the --tok-* variables, which switch with the active theme, so this
+ * single file works for light; tomorrow-night.css is an identical copy used by
+ * mdBook for the dark theme. */
+
+.hljs {
+    background: transparent;
+    color: var(--tok-var);
+    -webkit-text-size-adjust: 100%;
+}
+
+.hljs-comment,
+.hljs-quote {
+    color: var(--tok-com);
+    font-style: italic;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-type,
+.hljs-tag .hljs-name,
+.hljs-doctag {
+    color: var(--tok-key);
+}
+
+.hljs-string,
+.hljs-meta .hljs-string,
+.hljs-regexp,
+.hljs-symbol,
+.hljs-bullet {
+    color: var(--tok-str);
+}
+
+.hljs-title,
+.hljs-title.function_,
+.hljs-section,
+.hljs-name,
+.hljs-built_in,
+.hljs-class .hljs-title {
+    color: var(--tok-fn);
+}
+
+.hljs-number,
+.hljs-meta {
+    color: var(--tok-num);
+}
+
+.hljs-operator,
+.hljs-punctuation {
+    color: var(--tok-punct);
+}
+
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-params,
+.hljs-property {
+    color: var(--tok-var);
+}
+
+.hljs-emphasis {
+    font-style: italic;
+}
+.hljs-strong {
+    font-weight: 700;
+}
+.hljs-addition {
+    color: var(--tip);
+}
+.hljs-deletion {
+    color: var(--caution);
+}
+.hljs-link {
+    color: var(--glide-accent);
+    text-decoration: underline;
+}
+
+.boring {
+    opacity: 0.55;
+}
+.hide-boring .boring {
+    display: none;
+}

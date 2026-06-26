@@ -8,11 +8,17 @@ language = "en"
 [output.html]
 mathjax-support = false
 smart-punctuation = true
-additional-css = ["theme/tabs.css"]
-additional-js = ["theme/tabs.js"]
+default-theme = "light"
+preferred-dark-theme = "navy"
+no-section-label = true
 git-repository-url = "https://github.com/tqwewe/umari"
 git-repository-icon = "fab-github"
 edit-url-template = "https://github.com/tqwewe/umari/edit/main/docs/{path}"
+additional-css = ["theme/tabs.css", "theme/glide.css"]
+additional-js = ["theme/tabs.js", "theme/glide.js"]
+
+[output.html.print]
+enable = false
 
 [output.html.fold]
 enable = true

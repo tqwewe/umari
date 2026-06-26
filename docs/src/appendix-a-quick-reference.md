@@ -1,4 +1,4 @@
-# Appendix A: Quick Reference
+# Quick Reference
 
 ## Rust ↔ TypeScript at a glance
 
@@ -56,7 +56,7 @@ The Rust tables below describe the derive/attribute/export macros. The TypeScrip
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 Command::new(input, context)           // create builder
     .fold::<T>()                        // register fold (no args)
     .fold_args::<T>(args)               // register fold with args
@@ -95,7 +95,7 @@ export const { schema, execute } = exportCommand(def);
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 execute(sql, params)       -> Result<usize, SqliteError>
 execute_batch(sql)         -> Result<(), SqliteError>
 query_one(sql, params)     -> Row              // traps on 0 or >1 rows
@@ -153,7 +153,7 @@ row.get(0, "bigint")              // "bigint"|"number"|"string"|"boolean"|"uint8
 | `EventToggle` | `ToggleState<A, B>` | `{ last?: { side, event } }` | Paired opposing events |
 | `SingleEvent` | N/A (an `EventSet`) | `events: [E]` | Single event type queries |
 
-In Rust: `cmd.fold::<EventFold<E>>()`. In TypeScript: `EventFold(E)({ …bindings })` in the `folds` map. See [Chapter 12](./12-fold-reference.md).
+In Rust: `cmd.fold::<EventFold<E>>()`. In TypeScript: `EventFold(E)({ …bindings })` in the `folds` map. See [Fold Reference](./fold-reference.md).
 
 ## Event envelope fields
 
@@ -176,7 +176,7 @@ In Rust: `cmd.fold::<EventFold<E>>()`. In TypeScript: `EventFold(E)({ …binding
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 CommandContext::new()                           // auto-detect (effect or external)
     .with_correlation_id(id)
     .with_triggering_event_id(id)
@@ -225,7 +225,7 @@ execute("create-project", input, {
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 use umari::prelude::*;           // everything you need
 use serde::{Serialize, Deserialize};
 use validator::Validate;

@@ -1,13 +1,13 @@
-# 6. Folds
+# Folds
 
-A **fold** is a "reduce" over the event log. You declare which events to read and how each one updates a piece of in-memory state. Commands replay folds on every call to recover whatever state they need to make a decision — they have no SQLite, no other query path.
+A **fold** is a "reduce" over the event log. You declare which events to read and how each one updates a piece of in-memory state. Commands replay folds on every call to recover whatever state they need to make a decision: they have no SQLite, no other query path.
 
 If you've used `Iterator::fold` / `Array.reduce`, the mental model is identical:
 
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 // Iterator::fold
 events.iter().fold(State::default(), |state, event| apply(state, event));
 
@@ -24,13 +24,13 @@ The runtime supplies the events (scoped by the fold's domain IDs) and the initia
 // Array.reduce
 events.reduce((state, event) => apply(state, event), initial());
 
-// Umari fold — apply returns the next state, reduce-style
+// Umari fold: apply returns the next state, reduce-style
 apply: (state, event) => nextState
 ```
 
 The runtime supplies the events (scoped by the fold's domain IDs) and the initial state (`initial()`). You only write `apply`.
 
-> **`apply` returns the next state**, just like `Array.reduce`. For a primitive state, return the new value (`apply: () => true`). For an object/array state you may instead **mutate it in place** — returning nothing keeps the mutated state (the runtime only overwrites the state when you return a value). Both styles work; pick whichever reads best.
+> **`apply` returns the next state**, just like `Array.reduce`. For a primitive state, return the new value (`apply: () => true`). For an object/array state you may instead **mutate it in place**: returning nothing keeps the mutated state (the runtime only overwrites the state when you return a value). Both styles work; pick whichever reads best.
 
 {{#endtab }}
 {{#endtabs }}
@@ -42,7 +42,7 @@ The runtime supplies the events (scoped by the fold's domain IDs) and the initia
 
 A fold is a struct implementing the `Fold` trait:
 
-```rust
+```rust,noplayground
 pub trait Fold: DomainIds + 'static {
     type Events: EventSet;
     type State: Default + 'static;
@@ -51,9 +51,9 @@ pub trait Fold: DomainIds + 'static {
 }
 ```
 
-- `Events` — which events this fold subscribes to (an `EventSet`)
-- `State` — the type of state produced by replaying those events (must implement `Default`)
-- `apply()` — called once per matching event, in position order, to update the state
+- `Events`: which events this fold subscribes to (an `EventSet`)
+- `State`: the type of state produced by replaying those events (must implement `Default`)
+- `apply()`: called once per matching event, in position order, to update the state
 
 {{#endtab }}
 {{#tab name="TypeScript" }}
@@ -69,7 +69,7 @@ defineFold({
 });
 ```
 
-The result is a callable fold definition; you bind it to concrete ids by calling it — `UserExistsFold({ userId })` — usually inside a command's `folds` map.
+The result is a callable fold definition; you bind it to concrete ids by calling it (`UserExistsFold({ userId })`), usually inside a command's `folds` map.
 
 {{#endtab }}
 {{#endtabs }}
@@ -81,7 +81,7 @@ A fold that records whether a user exists, scoped by `user_id`:
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 use umari::prelude::*;
 
 #[derive(DomainIds, FromDomainIds)]
@@ -133,7 +133,7 @@ For folds that need more than one event type:
 
 Group them in an `EventSet` enum:
 
-```rust
+```rust,noplayground
 #[derive(EventSet)]
 pub enum UserEmailQuery {
     UserRegistered(UserRegistered),
@@ -183,7 +183,7 @@ export const UserEmailFold = defineFold({
 {{#endtab }}
 {{#endtabs }}
 
-The `apply` body receives the typed event and decides how to update state. Events arrive in position order — the state after all events have been applied is what's handed to the command's `execute`.
+The `apply` body receives the typed event and decides how to update state. Events arrive in position order; the state after all events have been applied is what's handed to the command's `execute`.
 
 ## Built-in fold types
 
@@ -196,7 +196,7 @@ Collects ALL occurrences of event `E`. Use when you need the full history.
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 let projects = cmd.fold::<EventFold<ProjectCreated>>();
 // State: EventState<ProjectCreated> { events: Vec<StoredEvent<ProjectCreated>> }
 // projects.exists() → true if at least one event exists
@@ -221,7 +221,7 @@ Keeps only the most recent occurrence of event `E`. More efficient than `EventFo
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 let latest = cmd.fold::<LatestEvent<ProjectCreated>>();
 // State: Option<StoredEvent<ProjectCreated>>
 ```
@@ -239,12 +239,12 @@ folds: ({ projectId }) => ({ latest: LatestEvent(ProjectCreated)({ projectId }) 
 
 ### EventCounter
 
-Counts occurrences of event `E`. Efficient — doesn't retain events.
+Counts occurrences of event `E`. Efficient: it doesn't retain events.
 
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 let task_count = cmd.fold::<EventCounter<TaskCreated>>();
 // State: u64
 ```
@@ -267,7 +267,7 @@ Tracks which of two opposing events occurred last. Ideal for created/deleted, ac
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 let toggle = cmd.fold::<EventToggle<ProjectArchived, ProjectUnarchived>>();
 // State: ToggleState<A, B> {
 //     last: Option<ToggleSide<A, B>>  // None, Some(ToggleSide::A(...)), or Some(ToggleSide::B(...))
@@ -297,7 +297,7 @@ For anything beyond the built-in types, build a state object from several event 
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 #[derive(Default)]
 pub struct ProjectState {
     pub exists: bool,
@@ -346,7 +346,7 @@ impl Fold for ProjectFold {
 }
 ```
 
-`#[scope(project_id)]` ensures we only see events for the specific project being queried. Without the scope attribute, the fold would filter by all domain ID bindings from the command input — which may be too narrow.
+`#[scope(project_id)]` ensures we only see events for the specific project being queried. Without the scope attribute, the fold would filter by all domain ID bindings from the command input, which may be too narrow.
 
 {{#endtab }}
 {{#tab name="TypeScript" }}
@@ -385,7 +385,7 @@ export const ProjectFold = defineFold({
 });
 ```
 
-The fold's `domainIds: ["projectId"]` is what scopes every event to the specific project being queried (the equivalent of Rust's `#[scope(project_id)]`). Widen or narrow it to change what the fold sees — see [Chapter 4: Scoping](./04-events.md#scoping-which-events-a-fold-sees).
+The fold's `domainIds: ["projectId"]` is what scopes every event to the specific project being queried (the equivalent of Rust's `#[scope(project_id)]`). Widen or narrow it to change what the fold sees; see [Events → Scoping](./events.md#scoping-which-events-a-fold-sees).
 
 {{#endtab }}
 {{#endtabs }}
@@ -399,7 +399,7 @@ A command names the folds it needs; the runtime replays each one and hands the t
 
 Commands register folds through the builder pattern:
 
-```rust
+```rust,noplayground
 Command::new(input, context)
     .fold::<UserExistsFold>()           // No extra args
     .fold::<ProjectFold>()              // No extra args
@@ -443,11 +443,11 @@ All folds are replayed in one DCB query, then their terminal states are passed t
 
 ## Fold state and idempotency
 
-When the runtime replays events into folds, it also checks for **idempotency**. If the command was called with an `idempotency_key`, and any event in the fold's scope has a matching key, the command exits early without running your logic — returning an empty result. This means you can safely retry command executions without worrying about duplicate events; the runtime deduplicates at the event store level.
+When the runtime replays events into folds, it also checks for **idempotency**. If the command was called with an `idempotency_key`, and any event in the fold's scope has a matching key, the command exits early without running your logic, returning an empty result. This means you can safely retry command executions without worrying about duplicate events; the runtime deduplicates at the event store level.
 
 ## Crypto-shredded events in folds
 
-When an event's encryption key has been deleted, its payload reads back as null with an encryption scope set. Folds skip these events silently — `apply` is never called for them — so your fold state simply won't reflect the shredded event, which is the intended behavior.
+When an event's encryption key has been deleted, its payload reads back as null with an encryption scope set. Folds skip these events silently (`apply` is never called for them), so your fold state simply won't reflect the shredded event, which is the intended behavior.
 
 ## Standalone fold execution
 
@@ -456,7 +456,7 @@ Outside of commands, you can run folds directly against the event store. This is
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 use umari::prelude::FoldQuery;
 
 let registered = FoldQuery::new()
@@ -487,4 +487,4 @@ if (states.projects.length === 0) {
 {{#endtab }}
 {{#endtabs }}
 
-It opens a transaction, reads events, applies them to the bound folds, and returns the terminal states — the same mechanism commands use internally, exposed for effects that need to check event store state without executing a full command.
+It opens a transaction, reads events, applies them to the bound folds, and returns the terminal states, the same mechanism commands use internally, exposed for effects that need to check event store state without executing a full command.

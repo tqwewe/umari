@@ -1,4 +1,4 @@
-# 7. Commands
+# Commands
 
 Commands are the entry point for all mutations. They are pure, deterministic functions that validate input, check invariants against event history, and emit new events. Commands are the **only mechanism for writing to the event store**.
 
@@ -11,7 +11,7 @@ A command declares typed input, the folds it needs, and an `execute` body that c
 
 A command is a function annotated with `#[export_command]`. It receives typed input and a `CommandContext`, then uses the `Command` builder to declare folds and run logic.
 
-```rust
+```rust,noplayground
 use umari::prelude::*;
 use schemars::JsonSchema;
 use serde::{Serialize, Deserialize};
@@ -84,7 +84,7 @@ const CreateProject = defineCommand<Input, {
   userExists: ReturnType<typeof UserExistsFold>;
   project: ReturnType<typeof ProjectFold>;
 }>({
-  input: InputSchema, // optional — validates before execute runs
+  input: InputSchema, // optional; validates before execute runs
   domainIds: ["userId", "projectId"] as const,
   folds: ({ userId, projectId }) => ({
     userExists: UserExistsFold({ userId }),
@@ -122,21 +122,21 @@ export const { schema, execute } = exportCommand(CreateProject);
 
 The `Command` builder chains fold registrations, then `execute`:
 
-- **`Command::new(input, context)`** — creates the builder. `input` must implement `DomainIds`.
-- **`.fold::<T>()`** — registers a fold. `T` must implement `Fold + FromDomainIds<Args = ()>`; it's constructed from the input's domain ID bindings automatically.
-- **`.fold_args::<T>(args)`** — same, but passes extra constructor arguments to `T::from_domain_ids(args, bindings)`.
-- **`.fold_with(|input| MyFold { ... })`** — manual construction from the raw input.
-- **`.execute(|input, fold_states| { ... })`** — runs the command. The closure receives the input by value and the fold states as a **tuple** (registration order, up to 12 folds). Check invariants with `anyhow::ensure!`/`bail!`, then return `Ok(emit![...])` (or `Ok(emit![])` for a no-op).
+- **`Command::new(input, context)`**: creates the builder. `input` must implement `DomainIds`.
+- **`.fold::<T>()`**: registers a fold. `T` must implement `Fold + FromDomainIds<Args = ()>`; it's constructed from the input's domain ID bindings automatically.
+- **`.fold_args::<T>(args)`**: same, but passes extra constructor arguments to `T::from_domain_ids(args, bindings)`.
+- **`.fold_with(|input| MyFold { ... })`**: manual construction from the raw input.
+- **`.execute(|input, fold_states| { ... })`**: runs the command. The closure receives the input by value and the fold states as a **tuple** (registration order, up to 12 folds). Check invariants with `anyhow::ensure!`/`bail!`, then return `Ok(emit![...])` (or `Ok(emit![])` for a no-op).
 
 {{#endtab }}
 {{#tab name="TypeScript" }}
 
 `defineCommand<Input, Folds>({ … })` takes an options object:
 
-- **`input?`** — an optional schema (e.g. a [zod](https://zod.dev) object). If present, the input JSON is parsed and validated before `execute`; its JSON Schema is exposed via the `schema` export.
-- **`domainIds`** — the input fields that are domain IDs (each a key of `Input`).
-- **`folds: (input) => ({ … })`** — returns a **named map** of bound folds. The same keys appear on `folds` in `execute`.
-- **`execute: ({ input, folds, context, emit, reject, invalidInput }) => emit(...)`** — the body. Check invariants (call `reject(message)` to fail a business rule, or `invalidInput(message)` for bad input), then return `emit(...)` (or `emit()` for a no-op).
+- **`input?`**: an optional schema (e.g. a [zod](https://zod.dev) object). If present, the input JSON is parsed and validated before `execute`; its JSON Schema is exposed via the `schema` export.
+- **`domainIds`**: the input fields that are domain IDs (each a key of `Input`).
+- **`folds: (input) => ({ … })`**: returns a **named map** of bound folds. The same keys appear on `folds` in `execute`.
+- **`execute: ({ input, folds, context, emit, reject, invalidInput }) => emit(...)`**: the body. Check invariants (call `reject(message)` to fail a business rule, or `invalidInput(message)` for bad input), then return `emit(...)` (or `emit()` for a no-op).
 
 `exportCommand(def)` wraps the definition into the `{ schema, execute }` pair the runtime expects.
 
@@ -150,7 +150,7 @@ The `Command` builder chains fold registrations, then `execute`:
 
 The `emit!` macro collects the events to commit:
 
-```rust
+```rust,noplayground
 emit![]                                 // No events
 emit![SomeEvent { field: value }]       // Single event
 emit![EventA { .. }, EventB { .. }]     // Multiple events
@@ -158,7 +158,7 @@ emit![EventA { .. }, EventB { .. }]     // Multiple events
 
 Each expression must be a struct implementing `Event`. You can also build an `Emit` manually:
 
-```rust
+```rust,noplayground
 Emit::new()
     .event(FirstEvent { .. })
     .event(SecondEvent { .. })
@@ -182,17 +182,17 @@ emit(EventA({ ... }), EventB({ ... }));  // Multiple events
 
 ## Command idempotency
 
-Commands support **built-in idempotency** through an idempotency key on the context. When present, the runtime checks whether any event in the fold scope already carries this key. If a match is found, the command exits early — your logic never runs and no events are emitted. This deduplication happens at the event store level, so it survives crashes and restarts; you can safely retry commands without producing duplicates.
+Commands support **built-in idempotency** through an idempotency key on the context. When present, the runtime checks whether any event in the fold scope already carries this key. If a match is found, the command exits early: your logic never runs and no events are emitted. This deduplication happens at the event store level, so it survives crashes and restarts; you can safely retry commands without producing duplicates.
 
-You can also implement **domain-level idempotency** inside the body — return an empty emit when the desired state already holds:
+You can also implement **domain-level idempotency** inside the body, returning an empty emit when the desired state already holds:
 
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 .execute(|input, project_state| {
     if project_state.exists && project_state.title.as_deref() == Some(&input.title) {
-        return Ok(emit![]);  // already exists with same data — idempotent
+        return Ok(emit![]);  // already exists with same data, idempotent
     }
     // ... emit ProjectCreated
 })
@@ -206,7 +206,7 @@ The context key is set with `CommandContext::new().with_idempotency_key(Some(req
 ```ts
 execute: ({ input, folds, emit }) => {
   if (folds.project.exists && folds.project.title === input.title) {
-    return emit(); // already exists with same data — idempotent
+    return emit(); // already exists with same data, idempotent
   }
   // ... emit ProjectCreated
 },
@@ -224,7 +224,7 @@ The context carries the causal-chain metadata threaded through every command.
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 pub struct CommandContext {
     pub correlation_id: Uuid,               // request that started the chain
     pub causation_id: Uuid,                 // this specific execution
@@ -233,9 +233,9 @@ pub struct CommandContext {
 }
 ```
 
-You almost never construct this by hand — use `CommandContext::new()` and override fields as needed:
+You almost never construct this by hand; use `CommandContext::new()` and override fields as needed:
 
-```rust
+```rust,noplayground
 CommandContext::new()
     .with_correlation_id(id)
     .with_triggering_event_id(id)
@@ -254,7 +254,7 @@ interface CommandContext {
 }
 ```
 
-It's available as `context` in the `execute` args. You rarely build one by hand — the runtime supplies it, and cross-module `execute(name, input, partialContext)` fills in any fields you omit.
+It's available as `context` in the `execute` args. You rarely build one by hand; the runtime supplies it, and cross-module `execute(name, input, partialContext)` fills in any fields you omit.
 
 {{#endtab }}
 {{#endtabs }}
@@ -270,13 +270,13 @@ The right values are populated automatically depending on where the command runs
 
 Commands fall into two categories by convention, not by type:
 
-- **Public commands** — part of the domain API. Called by external services, HTTP handlers, or scheduled jobs. They live in the `commands/` directory and are uploaded to the runtime.
-- **Private commands** — implementation details of effect idempotency, only called from within effects. They use the same definition pattern but aren't uploaded as standalone modules; effects call them to record that a side effect has happened.
+- **Public commands**: part of the domain API. Called by external services, HTTP handlers, or scheduled jobs. They live in the `commands/` directory and are uploaded to the runtime.
+- **Private commands**: implementation details of effect idempotency, only called from within effects. They use the same definition pattern but aren't uploaded as standalone modules; effects call them to record that a side effect has happened.
 
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 // In effects/register-webhooks/src/commands.rs
 use umari::prelude::*;
 
@@ -302,7 +302,7 @@ pub fn record_webhook(
 }
 ```
 
-Private commands are plain functions (not `#[export_command]`) — they aren't exported as WASM modules.
+Private commands are plain functions (not `#[export_command]`): they aren't exported as WASM modules.
 
 {{#endtab }}
 {{#tab name="TypeScript" }}
@@ -342,7 +342,7 @@ Input validation runs before your logic and surfaces failures as an invalid-inpu
 
 Use the `validator` crate and call `validate()` first:
 
-```rust
+```rust,noplayground
 #[derive(DomainIds, Validate, Serialize, Deserialize)]
 pub struct Input {
     #[validate(length(min = 1, max = 200))]
@@ -360,7 +360,7 @@ pub fn execute(input: Input, context: CommandContext) -> anyhow::Result<ExecuteO
 
 Custom validators:
 
-```rust
+```rust,noplayground
 fn non_nil_uuid(value: &Uuid) -> Result<(), validator::ValidationError> {
     if value.is_nil() {
         return Err(validator::ValidationError::new("uuid")
@@ -408,7 +408,7 @@ A private command guarding an effect needs to answer: "did anything actually get
 
 Every command returns `ExecuteOutput`, which effects inspect with `has_event`:
 
-```rust
+```rust,noplayground
 pub struct ExecuteOutput {
     pub position: Option<u64>,      // event store position after commit
     pub events: Vec<EmittedEvent>,  // events that were emitted
@@ -421,10 +421,10 @@ pub struct EmittedEvent {
 }
 ```
 
-```rust
+```rust,noplayground
 let receipt = ScheduleWebhookRegistration::execute(&input)?;
 if !receipt.has_event::<WebhooksRegistrationScheduled>() {
-    return Ok(());  // already scheduled — skip the side effect
+    return Ok(());  // already scheduled, skip the side effect
 }
 ```
 
@@ -433,10 +433,10 @@ If the command short-circuited (idempotency hit or empty emit), the receipt is e
 {{#endtab }}
 {{#tab name="TypeScript" }}
 
-The cross-module `execute(name, input, context?)` returns `void` — it doesn't hand back a receipt. So a TypeScript effect guards its side effect a different way:
+The cross-module `execute(name, input, context?)` returns `void`: it doesn't hand back a receipt. So a TypeScript effect guards its side effect a different way:
 
 - **Pass an `idempotencyKey`** (typically the triggering event's id) so a retry of the same command is deduplicated at the event store, and
-- **Check event store state first** with `foldQuery(...)` (see [Chapter 6: Standalone fold execution](./06-folds.md#standalone-fold-execution)) — replay a fold to decide whether the side effect already happened before doing it.
+- **Check event store state first** with `foldQuery(...)` (see [Folds → Standalone fold execution](./folds.md#standalone-fold-execution)): replay a fold to decide whether the side effect already happened before doing it.
 
 ```ts
 import { execute, foldQuery, EventFold } from "@umari/js";
@@ -445,7 +445,7 @@ const already = foldQuery({
   scheduled: EventFold(WebhooksRegistrationScheduled)({ userId }),
 }).run();
 
-if (already.scheduled.length > 0) return; // already scheduled — skip
+if (already.scheduled.length > 0) return; // already scheduled, skip
 
 execute("schedule-webhook-registration", input, {
   correlationId: event.correlationId,
@@ -464,7 +464,7 @@ A register-or-reactivate command: it emits `UserRegistered` the first time and `
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 #[derive(DomainIds, Validate, JsonSchema, Serialize, Deserialize)]
 pub struct Input {
     #[domain_id]
@@ -534,4 +534,4 @@ export const { schema, execute } = exportCommand(RegisterUser);
 {{#endtab }}
 {{#endtabs }}
 
-Both events carry the same data but mean different things downstream — projectors and effects can treat a reactivation differently from a first registration.
+Both events carry the same data but mean different things downstream: projectors and effects can treat a reactivation differently from a first registration.

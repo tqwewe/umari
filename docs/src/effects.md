@@ -1,6 +1,6 @@
-# 9. Effects
+# Effects
 
-Effects react to events by performing **side effects** — HTTP requests, sending emails, or executing commands. They have their own SQLite database for internal state, but idempotency is anchored entirely in the event store.
+Effects react to events by performing **side effects**: HTTP requests, sending emails, or executing commands. They have their own SQLite database for internal state, but idempotency is anchored entirely in the event store.
 
 ## The effect contract
 
@@ -11,7 +11,7 @@ An effect declares the events that trigger it, an `init` for its state, an optio
 
 Implement the `Effect` trait and export it with `export_effect!`:
 
-```rust
+```rust,noplayground
 pub trait Effect: Sized {
     type Query: EventSet;
 
@@ -23,10 +23,10 @@ pub trait Effect: Sized {
 }
 ```
 
-- `Query` — which events trigger this effect
-- `init()` — called once at startup; return the effect instance
-- `partition_key()` — controls parallel processing (return `None` for sequential)
-- `handle()` — called for each matching event
+- `Query`: which events trigger this effect
+- `init()`: called once at startup; return the effect instance
+- `partition_key()`: controls parallel processing (return `None` for sequential)
+- `handle()`: called for each matching event
 
 {{#endtab }}
 {{#tab name="TypeScript" }}
@@ -46,7 +46,7 @@ const MyEffect = defineEffect({
 export const { effect } = exportEffect(MyEffect);
 ```
 
-Note `handle` is **async** — you can `await fetch(...)` and other promises directly.
+Note `handle` is **async**: you can `await fetch(...)` and other promises directly.
 
 {{#endtab }}
 {{#endtabs }}
@@ -67,12 +67,12 @@ Because idempotency is anchored in the event store (steps 1 and 3), deleting all
 
 ## Example: Registering webhooks
 
-An effect that subscribes an external system to a user's activity, registering one webhook per topic — applying the fold-check → side effect → record pattern.
+An effect that subscribes an external system to a user's activity, registering one webhook per topic, applying the fold-check → side effect → record pattern.
 
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 use umari::prelude::*;
 use wasi_http_client::Client;
 
@@ -118,7 +118,7 @@ impl Effect for RegisterWebhooks {
 
         let topics = ["project.created", "task.created"];
 
-        // 1. FOLD-CHECK — use a fold to check which topics are already registered
+        // 1. FOLD-CHECK: use a fold to check which topics are already registered
         let topics_registered = FoldQuery::new()
             .fold_iter(topics.iter().map(|topic| AlreadyRegisteredFold {
                 user_id,
@@ -128,16 +128,16 @@ impl Effect for RegisterWebhooks {
             .run()?;
 
         for (topic, registered) in topics.into_iter().zip(topics_registered) {
-            // Already done — skip
+            // Already done, skip
             if registered {
                 continue;
             }
 
-            // 2. SIDE EFFECT — make the HTTP call
+            // 2. SIDE EFFECT: make the HTTP call
             let result = self.register_webhook(user_id, &email, &name, topic)?;
             match result {
                 Ok(()) => {
-                    // 3. RECORD — persist completion in the event store
+                    // 3. RECORD: persist completion in the event store
                     record_webhook(
                         RecordWebhookInput { user_id, topic: topic.to_string() },
                         CommandContext::new(),
@@ -145,7 +145,7 @@ impl Effect for RegisterWebhooks {
                 }
                 Err(err) => {
                     eprintln!("failed to register webhook for topic {topic}: {err}");
-                    // Don't fail the effect — retry on next event
+                    // Don't fail the effect, retry on next event
                     return Ok(());
                 }
             }
@@ -175,13 +175,13 @@ const RegisterWebhooks = defineEffect({
     const topics = ["project.created", "task.created"];
 
     for (const topic of topics) {
-      // 1. FOLD-CHECK — has this topic already been registered for this user?
+      // 1. FOLD-CHECK: has this topic already been registered for this user?
       const { registered } = foldQuery({
         registered: EventFold(WebhookRegistered)({ userId }),
       }).run();
       if (registered.some((e) => e.data.topic === topic)) continue;
 
-      // 2. SIDE EFFECT — make the HTTP call
+      // 2. SIDE EFFECT: make the HTTP call
       const res = await fetch(`${state.webhookAddress}/webhooks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -189,10 +189,10 @@ const RegisterWebhooks = defineEffect({
       });
       if (!res.ok) {
         console.error(`failed to register webhook for topic ${topic}: ${res.status}`);
-        return; // don't throw — retry on next event
+        return; // don't throw, retry on next event
       }
 
-      // 3. RECORD — persist completion in the event store
+      // 3. RECORD: persist completion in the event store
       execute("record-webhook", { userId, topic }, {
         correlationId: event.correlationId,
         triggeringEventId: event.id,
@@ -208,7 +208,7 @@ export const { effect } = exportEffect(RegisterWebhooks);
 {{#endtab }}
 {{#endtabs }}
 
-The fold-check looks for a `WebhookRegistered` event for this user and topic. If one exists, the webhook was already registered in a previous run — skip. If not, perform the HTTP call and record completion, so future runs skip it.
+The fold-check looks for a `WebhookRegistered` event for this user and topic. If one exists, the webhook was already registered in a previous run, so skip it. If not, perform the HTTP call and record completion, so future runs skip it.
 
 ## Partition keys and parallel processing
 
@@ -217,12 +217,12 @@ The partition key enables parallel event processing. The runtime routes events t
 - **no key** (`None` / `undefined`) → global worker (sequential for this effect)
 - **a key** (`Some(key)` / a string) → hashed to one of 8 keyed workers, enabling parallelism across independent streams
 
-In the webhook example the key is `user_id` — events for different users are processed in parallel, but events for the same user are serialized (same worker). This prevents races within a user while maximizing throughput across users.
+In the webhook example the key is `user_id`: events for different users are processed in parallel, but events for the same user are serialized (same worker). This prevents races within a user while maximizing throughput across users.
 
 When to use partition keys:
 - **No key** when events must be processed strictly in order
 - **An entity id** when events for different entities are independent (e.g. different users)
-- **The event id** with care — this parallelizes everything but may cause out-of-order processing within an entity
+- **The event id**, with care: this parallelizes everything but may cause out-of-order processing within an entity
 
 ## HTTP requests
 
@@ -231,7 +231,7 @@ When to use partition keys:
 
 Effects make HTTP requests via `wasi-http-client`:
 
-```rust
+```rust,noplayground
 use wasi_http_client::Client;
 
 let client = Client::new();
@@ -269,7 +269,7 @@ const body = await resp.json();
 {{#endtab }}
 {{#endtabs }}
 
-The WASI HTTP interface is provided by the runtime, and **only to effects** — commands and projectors are network-free. Effects get full HTTP client capability and can make any outgoing request.
+The WASI HTTP interface is provided by the runtime, and **only to effects**: commands and projectors are network-free. Effects get full HTTP client capability and can make any outgoing request.
 
 ## Executing commands from effects
 
@@ -280,7 +280,7 @@ An effect records its outcome by executing a (usually private) command. The cont
 
 Call the private command function directly:
 
-```rust
+```rust,noplayground
 use crate::commands::record_webhook;
 
 record_webhook(
@@ -306,19 +306,19 @@ execute("record-webhook", { userId, topic }, {
 });
 ```
 
-Any context fields you omit are derived from the current event. Passing `idempotencyKey: event.id` makes a redelivery of the same event a no-op at the event store. Note `execute(...)` returns `void` — to decide *whether* to act, check event store state with `foldQuery` first (below).
+Any context fields you omit are derived from the current event. Passing `idempotencyKey: event.id` makes a redelivery of the same event a no-op at the event store. Note `execute(...)` returns `void`: to decide *whether* to act, check event store state with `foldQuery` first (below).
 
 {{#endtab }}
 {{#endtabs }}
 
 ## Checking event store state in effects
 
-Effects check whether work has already been done by replaying a fold directly — no full command needed. This is the recommended idempotency check: lightweight, with no extra events.
+Effects check whether work has already been done by replaying a fold directly, with no full command needed. This is the recommended idempotency check: lightweight, with no extra events.
 
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 let registered = FoldQuery::new()
     .fold(AlreadyRegisteredFold {
         user_id,
@@ -328,7 +328,7 @@ let registered = FoldQuery::new()
     .run()?;
 ```
 
-`FoldQuery::fold_iter()` runs many folds in one transaction — e.g. one per topic — checking each in a single event store read.
+`FoldQuery::fold_iter()` runs many folds in one transaction (e.g. one per topic), checking each in a single event store read.
 
 {{#endtab }}
 {{#tab name="TypeScript" }}
@@ -348,18 +348,18 @@ Pass several bound folds in one `foldQuery({ … })` to check multiple things in
 {{#endtab }}
 {{#endtabs }}
 
-It opens a transaction, reads events, applies them to the fold(s), and returns the terminal state — the same mechanism commands use internally.
+It opens a transaction, reads events, applies them to the fold(s), and returns the terminal state, the same mechanism commands use internally.
 
 ## Environment variables
 
-Effects read configuration from environment variables, injected per-module by the runtime as WASI env vars. This separates config from code — deploy the same WASM module to staging and production with different values.
+Effects read configuration from environment variables, injected per-module by the runtime as WASI env vars. This separates config from code: deploy the same WASM module to staging and production with different values.
 
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
 Read them in `init()`:
 
-```rust
+```rust,noplayground
 fn init() -> anyhow::Result<Self> {
     let webhook_address = env::var("WEBHOOK_ADDRESS")
         .expect("missing WEBHOOK_ADDRESS env var");
@@ -394,20 +394,20 @@ How the values get set depends on the SDK:
   WEBHOOK_ADDRESS = "https://example.com/hooks"
   ```
 
-- **All modules** can be given env vars at upload time via the CLI / API — pass `--env KEY=VALUE` to `umari effects upload` (or the equivalent HTTP API). This is the path TypeScript modules use today, and it works for ad-hoc Rust overrides too.
+- **All modules** can be given env vars at upload time via the CLI / API: pass `--env KEY=VALUE` to `umari effects upload` (or the equivalent HTTP API). This is the path TypeScript modules use today, and it works for ad-hoc Rust overrides too.
 
 ## Error handling
 
-A handler signals failure by **returning an error** (Rust `Err` from `handle`) or **throwing** (TypeScript — reject the `async handle` promise). When a handler fails (or panics / traps), the runtime treats the module as having failed and **retries indefinitely with exponential backoff**:
+A handler signals failure by **returning an error** (Rust `Err` from `handle`) or **throwing** (TypeScript: reject the `async handle` promise). When a handler fails (or panics / traps), the runtime treats the module as having failed and **retries indefinitely with exponential backoff**:
 
 - The first retry runs after **1 second**.
 - If the module keeps failing on the same event store position, the delay doubles each attempt, capped at **10 minutes**.
 - If a retry makes progress (the position advances) before failing again, the backoff resets to 1 second.
-- There is **no maximum attempt count** — retries continue forever until the module starts succeeding (or is deactivated/replaced).
+- There is **no maximum attempt count**: retries continue forever until the module starts succeeding (or is deactivated/replaced).
 
 The effect's position watermark is never advanced past a failed event, so the same event is replayed on each restart. The module's captured `stderr` and the system log lines from the supervisor will show `"module failed, retrying with backoff"` along with the current attempt and delay.
 
-This means effects should be designed to **fail loudly on transient errors** and let the runtime back off and retry — that's the recovery path. The flip side is that a failed handler pauses forward progress for that effect until the underlying problem is fixed, so reserve failure for situations that genuinely warrant blocking.
+This means effects should be designed to **fail loudly on transient errors** and let the runtime back off and retry: that's the recovery path. The flip side is that a failed handler pauses forward progress for that effect until the underlying problem is fixed, so reserve failure for situations that genuinely warrant blocking.
 
 For known-permanent failures, prefer catching them inside `handle` and recording the failure as an event (via a private command) so the fold-check pattern can skip the work on future runs.
 
@@ -416,7 +416,7 @@ For known-permanent failures, prefer catching them inside `handle` and recording
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 export_effect!(RegisterWebhooks);
 ```
 
@@ -458,11 +458,11 @@ effects/register-webhooks/
 ├── package.json
 └── src/
     ├── index.ts        # Effect definition + exportEffect
-    ├── record-webhook.ts  # Private command(s) — deployed as their own module
+    ├── record-webhook.ts  # Private command(s), deployed as their own module
     └── events.ts       # Effect-private events
 ```
 
 {{#endtab }}
 {{#endtabs }}
 
-Private events and commands are scoped to the effect — they're not part of the shared domain library. This keeps the shared library focused on domain events and prevents effect implementation details from leaking.
+Private events and commands are scoped to the effect: they're not part of the shared domain library. This keeps the shared library focused on domain events and prevents effect implementation details from leaking.

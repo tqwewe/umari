@@ -1,6 +1,6 @@
-# 8. Projectors
+# Projectors
 
-Projectors build **read models** by consuming events from the event store and updating SQLite databases. Their databases are designed to be queried by external processes — your HTTP API, dashboard, or reporting tools.
+Projectors build **read models** by consuming events from the event store and updating SQLite databases. Their databases are designed to be queried by external processes: your HTTP API, dashboard, or reporting tools.
 
 ## How projectors work
 
@@ -10,7 +10,7 @@ A projector:
 3. Calls `handle()` for each event to update its SQLite database
 4. Maintains a `last_position` watermark for crash recovery
 
-Projectors are **naturally idempotent** — deleting the SQLite database and replaying all events from the beginning produces the exact same result. There is no need for explicit idempotency logic.
+Projectors are **naturally idempotent**: deleting the SQLite database and replaying all events from the beginning produces the exact same result. There is no need for explicit idempotency logic.
 
 ## The projector contract
 
@@ -21,7 +21,7 @@ A projector declares the events it subscribes to, an `init` that prepares the da
 
 Implement the `Projector` trait and export it with `export_projector!`:
 
-```rust
+```rust,noplayground
 pub trait Projector: Sized {
     type Query: EventSet;
 
@@ -56,7 +56,7 @@ A projector that maintains `users` and `projects` read tables, counting tasks pe
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 use umari::prelude::*;
 
 export_projector!(Projects);
@@ -252,11 +252,11 @@ export const { projector } = exportProjector(Projects);
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 export_projector!(Projects);
 ```
 
-This macro generates the WASM component glue — the `projector()` constructor, the `handle()` entry point, and `query()` for declaring the event subscription. Your struct only needs to implement `Projector`.
+This macro generates the WASM component glue: the `projector()` constructor, the `handle()` entry point, and `query()` for declaring the event subscription. Your struct only needs to implement `Projector`.
 
 {{#endtab }}
 {{#tab name="TypeScript" }}
@@ -278,7 +278,7 @@ Each projector typically manages one primary concept (projects, users, tasks). I
 
 ### Denormalize for reads
 
-Projector tables should be optimized for query patterns, not normalized like an OLTP database. Denormalize freely — the source of truth is the event store, not the projector's SQLite.
+Projector tables should be optimized for query patterns, not normalized like an OLTP database. Denormalize freely; the source of truth is the event store, not the projector's SQLite.
 
 ### Use `CREATE TABLE IF NOT EXISTS`
 
@@ -286,7 +286,7 @@ Always use `IF NOT EXISTS` in `init()`. Projectors may be replayed from scratch 
 
 ### Keep `handle()` fast
 
-Each event handler should be a single SQL statement or a small, bounded operation. Avoid complex computation or anything that could fail non-deterministically. If a handler fails, the projector stops and the error is logged; the runtime retries (the event store subscription is persistent). Projectors have no access to HTTP or other side effects — they're confined to their SQLite database — so this is mostly about keeping per-event work tight.
+Each event handler should be a single SQL statement or a small, bounded operation. Avoid complex computation or anything that could fail non-deterministically. If a handler fails, the projector stops and the error is logged; the runtime retries (the event store subscription is persistent). Projectors have no access to HTTP or other side effects (they're confined to their SQLite database), so this is mostly about keeping per-event work tight.
 
 ### Use prepared statements
 
@@ -295,7 +295,7 @@ For SQL that runs on every event, build a statement once in `init()` and reuse i
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 struct Widgets {
     insert: Statement,
     archive: Statement,
@@ -325,7 +325,7 @@ impl Projector for Widgets {
 {{#endtab }}
 {{#tab name="TypeScript" }}
 
-Keep the prepared statements on the object returned from `init` — it becomes the state passed to `handle`:
+Keep the prepared statements on the object returned from `init`; it becomes the state passed to `handle`:
 
 ```ts
 const Widgets = defineProjector({
@@ -357,7 +357,7 @@ The statement is parsed once and reused across every event, avoiding the per-eve
 
 ## Replaying projectors
 
-Projectors can be replayed at any time — the runtime deletes the projector's SQLite database and reprocesses all events from position 0. This works the same regardless of the SDK a projector was written in. Via the API:
+Projectors can be replayed at any time: the runtime deletes the projector's SQLite database and reprocesses all events from position 0. This works the same regardless of the SDK a projector was written in. Via the API:
 
 ```
 POST /projectors/{name}/replay
@@ -375,7 +375,7 @@ This is safe because projectors are naturally idempotent. Replaying is the stand
 
 Projectors have no fold bindings, so they receive every event of a subscribed type from the entire event log. To narrow that to a fixed value, use a hardcoded scope (Rust only):
 
-```rust
+```rust,noplayground
 #[derive(EventSet)]
 enum Query {
     ProjectCreated(ProjectCreated),  // all projects, all users

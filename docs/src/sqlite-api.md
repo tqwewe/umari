@@ -1,14 +1,14 @@
-# 11. SQLite API Reference
+# SQLite API Reference
 
 Projectors and effects each get their own isolated SQLite database file. Modules cannot read each other's data. This chapter is the complete reference for the SQLite API available inside WASM modules.
 
-In Rust the API is a set of free functions plus `Statement` (from `umari::prelude`). In TypeScript it's the `sqlite` namespace — `import { sqlite } from "@umari/js"` (or `import * as sqlite from "@umari/js/sqlite"`).
+In Rust the API is a set of free functions plus `Statement` (from `umari::prelude`). In TypeScript it's the `sqlite` namespace: `import { sqlite } from "@umari/js"` (or `import * as sqlite from "@umari/js/sqlite"`).
 
 ## Mental model
 
-- **One-off statements** run against the module's implicit connection — convenient for individual events.
-- **Prepared statements** compile the SQL once and reuse it per event — store them on your module's state.
-- **Recoverable errors** are constraint violations. Everything else (wrong column name, wrong type, "expected one row but got two") **traps the module** — the runtime treats traps as bugs, not business failures.
+- **One-off statements** run against the module's implicit connection, convenient for individual events.
+- **Prepared statements** compile the SQL once and reuse it per event; store them on your module's state.
+- **Recoverable errors** are constraint violations. Everything else (wrong column name, wrong type, "expected one row but got two") **traps the module**: the runtime treats traps as bugs, not business failures.
 
 Every `handle()` call runs inside an implicit transaction. Don't reach for `BEGIN`/`COMMIT` yourself.
 
@@ -23,7 +23,7 @@ Returns the number of rows affected.
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 // execute(sql, params) -> Result<usize, SqliteError>
 execute(
     "INSERT INTO projects (project_id, user_id, title) VALUES (?1, ?2, ?3)",
@@ -52,7 +52,7 @@ Run multiple statements separated by semicolons. Use this in `init()` for `CREAT
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 execute_batch(
     "
         CREATE TABLE IF NOT EXISTS widgets (
@@ -87,7 +87,7 @@ Return exactly one row. **Traps** if zero or multiple rows match.
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 let row = query_one(
     "SELECT name, duration_months FROM projects WHERE project_id = ?1",
     params![project_id],
@@ -118,7 +118,7 @@ Return the first match, or nothing. Extra rows are dropped.
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 // query_row(sql, params) -> Option<Row>
 if let Some(row) = query_row(
     "SELECT name FROM users WHERE user_id = ?1",
@@ -147,7 +147,7 @@ if (row) {
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-Use a prepared statement's `query(params)` (see below) — it returns `Vec<Row>`.
+Use a prepared statement's `query(params)` (see below); it returns `Vec<Row>`.
 
 {{#endtab }}
 {{#tab name="TypeScript" }}
@@ -170,7 +170,7 @@ Returns the rowid of the most recent successful `INSERT` on this connection, or 
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 let rowid: Option<i64> = last_insert_rowid();
 ```
 
@@ -191,7 +191,7 @@ For queries that run on every event, prepare once in `init()` and reuse. A malfo
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 struct MyProjector {
     insert_widget: Statement,
     archive_widget: Statement,
@@ -260,7 +260,7 @@ const Widgets = defineProjector({
 
 Pass parameters with the `params!` macro (positional, for `?1`, `?2`, …). Each value converts through `Into<SqliteValue>`.
 
-```rust
+```rust,noplayground
 params![]                          // no params
 params![value1, value2, value3]
 ```
@@ -294,7 +294,7 @@ Pass parameters as an array (positional, for each `?`):
 | `Uint8Array` | Blob |
 | `null` | Null |
 
-Domain IDs arrive as `bigint` (numeric ids) or `string` (UUIDs) — pass them through directly. There is no UUID type; store UUIDs as `TEXT`.
+Domain IDs arrive as `bigint` (numeric ids) or `string` (UUIDs); pass them through directly. There is no UUID type; store UUIDs as `TEXT`.
 
 {{#endtab }}
 {{#endtabs }}
@@ -306,7 +306,7 @@ Domain IDs arrive as `bigint` (numeric ids) or `string` (UUIDs) — pass them th
 
 `Row::get::<T>(column)` reads a column by name (`&str`) or zero-based index (`usize`). Traps on type mismatch or unknown column.
 
-```rust
+```rust,noplayground
 let name: String = row.get("name");
 let count: i64 = row.get(0);
 let maybe: Option<String> = row.get("nullable_col");
@@ -314,7 +314,7 @@ let maybe: Option<String> = row.get("nullable_col");
 
 `Row::tuple::<T>()` unpacks the first N columns into a tuple by position (up to 8):
 
-```rust
+```rust,noplayground
 let (id, name, months): (String, String, i64) = row.tuple();
 ```
 
@@ -347,12 +347,12 @@ Coercion hints: `"bigint"`, `"number"` (range-checked), `"string"`, `"boolean"`,
 
 ## Errors
 
-Only constraint violations are recoverable — they're the one failure the API surfaces. Everything else traps.
+Only constraint violations are recoverable: they're the one failure the API surfaces. Everything else traps.
 
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 pub enum SqliteError {
     ConstraintViolation(ConstraintViolation),
 }
@@ -365,11 +365,11 @@ pub struct ConstraintViolation {
 
 Use a `UNIQUE` collision to mean "already projected, skip":
 
-```rust
+```rust,noplayground
 match execute("INSERT INTO widgets (id, name) VALUES (?1, ?2)", params![id, name]) {
     Ok(_) => {}
     Err(SqliteError::ConstraintViolation(v)) if v.kind == ConstraintViolationKind::Unique => {
-        // already projected — fine
+        // already projected, fine
     }
     Err(err) => return Err(err.into()),
 }
@@ -386,7 +386,7 @@ try {
 } catch (err) {
   const e = err as { tag?: string };
   if (e.tag === "constraint-violation") {
-    // already projected — fine
+    // already projected, fine
   } else {
     throw err;
   }
@@ -405,5 +405,5 @@ The runtime wraps every `handle()` call in a transaction: it begins before the c
 - Use `IF NOT EXISTS` in DDL so `init()` is idempotent across module restarts.
 - Store UUIDs as `TEXT` (SQLite has no UUID type).
 - Store decimals as `TEXT` to avoid floating-point precision issues.
-- Always pass parameters — never interpolate values into the SQL string.
+- Always pass parameters; never interpolate values into the SQL string.
 - Prepare per-event statements in `init()`; use the one-off helpers for individual statements.

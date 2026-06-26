@@ -1,6 +1,6 @@
-# 13. Runtime Deep Dive
+# Runtime Deep Dive
 
-This chapter covers the internals of the Umari runtime — the actor system, module lifecycle, worker pools, and event processing. Understanding these helps with debugging, performance tuning, and operational decisions.
+This chapter covers the internals of the Umari runtime: the actor system, module lifecycle, worker pools, and event processing. Understanding these helps with debugging, performance tuning, and operational decisions.
 
 ## Actor hierarchy
 
@@ -30,7 +30,7 @@ RuntimeSupervisor
 
 ### Upload
 
-A `.wasm` file is uploaded via the API (`POST /commands/{name}/upload`). The bytes are stored in the module store (`umari.sqlite`) with the module name, version (from `Cargo.toml`), and type (command/projector/effect). The module is **not** activated — it just sits in the store.
+A `.wasm` file is uploaded via the API (`POST /commands/{name}/upload`). The bytes are stored in the module store (`umari.sqlite`) with the module name, version (from `Cargo.toml`), and type (command/projector/effect). The module is **not** activated: it just sits in the store.
 
 ### Activate
 
@@ -49,7 +49,7 @@ If a module is already active, activating a new version triggers a **rolling upg
 
 ### Deactivate
 
-Stops the ModuleActor. The SQLite database is preserved — reactivating will resume from the last position.
+Stops the ModuleActor. The SQLite database is preserved; reactivating will resume from the last position.
 
 ### Replay
 
@@ -68,9 +68,9 @@ Commands don't subscribe to events. When a command execution request arrives:
    - Reads events in batches via `transaction.next_batch()`
    - Applies events to folds (checking idempotency)
    - Calls user's execute closure
-   - Commits with `transaction.commit()` — this appends events to the event store atomically with a DCB condition check
+   - Commits with `transaction.commit()`, which appends events to the event store atomically with a DCB condition check
 
-The DCB condition check ensures no conflicting events were written between reading and committing. If the condition fails (events were written that overlap the query), the command returns an error — the caller should retry.
+The DCB condition check ensures no conflicting events were written between reading and committing. If the condition fails (events were written that overlap the query), the command returns an error; the caller should retry.
 
 ### Projectors (sequential)
 
@@ -82,7 +82,7 @@ The DCB condition check ensures no conflicting events were written between readi
    - SQLite is committed
    - `last_position` is updated
 
-Projectors run on a single actor thread — no worker pool. This guarantees sequential processing and makes the SQLite connection simple (no thread-safety concerns).
+Projectors run on a single actor thread, with no worker pool. This guarantees sequential processing and makes the SQLite connection simple (no thread-safety concerns).
 
 ### Effects (parallel)
 
@@ -96,7 +96,7 @@ Projectors run on a single actor thread — no worker pool. This guarantees sequ
    - Workers run on dedicated OS threads (`.spawn_in_thread()`)
 4. Workers call the effect's `handle()`
 5. Workers ack completion back to the ModuleActor
-6. ModuleActor tracks the watermark — the highest contiguous position that all workers have acknowledged
+6. ModuleActor tracks the watermark, the highest contiguous position that all workers have acknowledged
 
 ### Watermark algorithm
 
@@ -120,7 +120,7 @@ This ensures **at-least-once** delivery within a partition key while maintaining
 
 The runtime uses **dedicated OS threads** for SQLite connections:
 
-- Each `ModuleActor` (projector) runs on one dedicated thread — SQLite is not `Send`, so the actor is bound to that thread
+- Each `ModuleActor` (projector) runs on one dedicated thread: SQLite is not `Send`, so the actor is bound to that thread
 - Each `WorkerActor` (effect worker) runs on its own dedicated thread
 - `kameo`'s `.spawn_in_thread()` ensures all async work stays on that thread
 - Debug builds include thread-affinity checks that panic if SQLite is accessed from the wrong thread
@@ -180,7 +180,7 @@ Effects have automatic retry with exponential backoff (`RETRY_ON_FAILURE = true`
 - Third: after 4 seconds
 - ...up to a maximum of 32 seconds
 
-If the same position fails repeatedly, the backoff keeps increasing. If a new event at a new position succeeds, the backoff resets — indicating the failure was transient.
+If the same position fails repeatedly, the backoff keeps increasing. If a new event at a new position succeeds, the backoff resets, indicating the failure was transient.
 
 Projectors do not have automatic backoff (`RETRY_ON_FAILURE = false`). If a projector fails, it stops. The supervisor logs the error and the projector must be manually replayed or fixed.
 

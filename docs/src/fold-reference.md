@@ -1,6 +1,6 @@
-# 12. Fold Reference
+# Fold Reference
 
-Both SDKs ship a handful of generic folds for the most common state-derivation shapes — "did this happen?", "what's the latest value?", "how many times?", "which of these two won?". Reach for these first; only write a custom fold when none of them fit.
+Both SDKs ship a handful of generic folds for the most common state-derivation shapes: "did this happen?", "what's the latest value?", "how many times?", "which of these two won?". Reach for these first; only write a custom fold when none of them fit.
 
 | Fold | Rust state | TypeScript state | Pick when you ask… |
 |------|-----------|------------------|--------------------|
@@ -19,9 +19,9 @@ Collects **every** occurrence of event type `E`.
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-**State**: `EventState<E>` — `{ events: Vec<StoredEvent<E>>, fn exists() -> bool }`
+**State**: `EventState<E>` (`{ events: Vec<StoredEvent<E>>, fn exists() -> bool }`)
 
-```rust
+```rust,noplayground
 .fold::<EventFold<UserRegistered>>()
 .execute(|input, registered| {
     if registered.exists() {
@@ -52,7 +52,7 @@ execute: ({ folds, emit }) => {
 {{#endtabs }}
 
 **Use when**: you need to inspect or aggregate over the full history.
-**Avoid when**: you only need the most recent value — `LatestEvent` is cheaper.
+**Avoid when**: you only need the most recent value; `LatestEvent` is cheaper.
 
 ## LatestEvent
 
@@ -63,7 +63,7 @@ Keeps only the **most recent** `E`. Each new event replaces the previous.
 
 **State**: `Option<StoredEvent<E>>`
 
-```rust
+```rust,noplayground
 .fold::<LatestEvent<ProjectUpdated>>()
 .execute(|input, latest| {
     if let Some(event) = latest {
@@ -91,7 +91,7 @@ execute: ({ folds, emit }) => {
 {{#endtab }}
 {{#endtabs }}
 
-**Use when**: you care about the current value — last `Updated`, last `Created`, etc.
+**Use when**: you care about the current value, e.g. last `Updated`, last `Created`.
 **Avoid when**: you need the full history.
 
 ## EventCounter
@@ -103,7 +103,7 @@ Counts occurrences of `E` without storing event data.
 
 **State**: `u64`
 
-```rust
+```rust,noplayground
 .fold::<EventCounter<TaskCreated>>()
 .execute(|input, task_count| {
     anyhow::ensure!(task_count < MAX_TASKS, "project has reached the maximum number of tasks");
@@ -139,7 +139,7 @@ Tracks which of **two opposing events** occurred last. Designed for created/dele
 
 **State**: `ToggleState<A, B>`
 
-```rust
+```rust,noplayground
 .fold::<EventToggle<ProjectArchived, ProjectUnarchived>>()
 .execute(|input, toggle| {
     if toggle.is_a() {
@@ -153,7 +153,7 @@ Tracks which of **two opposing events** occurred last. Designed for created/dele
 })
 ```
 
-```rust
+```rust,noplayground
 impl<A: Event, B: Event> ToggleState<A, B> {
     pub last: Option<ToggleSide<A, B>>;
     pub fn is_a(&self) -> bool;
@@ -188,7 +188,7 @@ execute: ({ folds, emit }) => {
 {{#endtab }}
 {{#endtabs }}
 
-**Use when**: paired opposing events — archived/unarchived, activated/deactivated, locked/unlocked.
+**Use when**: paired opposing events: archived/unarchived, activated/deactivated, locked/unlocked.
 
 ## SingleEvent
 
@@ -197,9 +197,9 @@ For a custom fold that reads a single event type.
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-`SingleEvent<E>` is an `EventSet` shorthand — use it as `type Events = SingleEvent<MyEvent>;`:
+`SingleEvent<E>` is an `EventSet` shorthand; use it as `type Events = SingleEvent<MyEvent>;`:
 
-```rust
+```rust,noplayground
 #[derive(DomainIds, FromDomainIds)]
 pub struct UserExistsFold {
     #[domain_id]
@@ -219,7 +219,7 @@ impl Fold for UserExistsFold {
 {{#endtab }}
 {{#tab name="TypeScript" }}
 
-There's no special type — just list one event in the `events` array:
+There's no special type; just list one event in the `events` array:
 
 ```ts
 export const UserExistsFold = defineFold({
@@ -240,7 +240,7 @@ When none of the built-ins fit, write the fold yourself.
 {{#tabs global="lang" }}
 {{#tab name="Rust" }}
 
-```rust
+```rust,noplayground
 #[derive(DomainIds, FromDomainIds)]
 pub struct MyFold {
     #[domain_id] pub user_id: u64,
@@ -306,11 +306,11 @@ export const MyFold = defineFold({
 });
 ```
 
-Extra (non-binding) configuration is just closure state — capture it where you define the fold rather than binding it from domain IDs.
+Extra (non-binding) configuration is just closure state: capture it where you define the fold rather than binding it from domain IDs.
 
 {{#endtab }}
 {{#endtabs }}
 
 ## Fold composition limit
 
-Rust commands support up to **12 folds** in a single tuple; if you need more, compose folds by nesting state types or split the command. TypeScript commands use a named `folds` map with no fixed limit, but the same advice applies — keep each command focused.
+Rust commands support up to **12 folds** in a single tuple; if you need more, compose folds by nesting state types or split the command. TypeScript commands use a named `folds` map with no fixed limit, but the same advice applies: keep each command focused.

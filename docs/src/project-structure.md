@@ -1,6 +1,6 @@
-# 10. Project Structure
+# Project Structure
 
-This chapter describes how to organize an Umari project workspace. The structure is opinionated but flexible — and `umari init` scaffolds it for you in either language.
+This chapter describes how to organize an Umari project workspace. The structure is opinionated but flexible, and `umari init` scaffolds it for you in either language.
 
 ## Workspace layout
 
@@ -124,7 +124,7 @@ validator = { version = "0.20", features = ["derive"] }
 wasi-http-client = { version = "0.2", features = ["json"] }
 ```
 
-- The root package (`.`) is a workspace member — it's the shared library.
+- The root package (`.`) is a workspace member: it's the shared library.
 - `my-project = { path = "." }` lets module crates depend on `my-project.workspace = true`.
 - `umari` is the SDK crate from crates.io.
 - `umari new` appends each new module's path to `members`.
@@ -158,7 +158,7 @@ The root declares the npm workspaces and the shared build tooling (hoisted to ev
 
 - `@bytecodealliance/jco` and `esbuild` power `umari-js build` (bundle → componentize → wasm).
 - Build tooling lives at the root and is hoisted; modules only declare what they import.
-- The `commands/*`, `projectors/*`, `effects/*` globs pick up new modules automatically — run `npm install` from the root after `umari new` to link them.
+- The `commands/*`, `projectors/*`, `effects/*` globs pick up new modules automatically; run `npm install` from the root after `umari new` to link them.
 
 {{#endtab }}
 {{#endtabs }}
@@ -188,7 +188,7 @@ schemars.workspace = true
 serde.workspace = true
 ```
 
-`crate-type = ["cdylib", "rlib"]` is required — `cdylib` produces the `.wasm`, `rlib` enables Rust-level linking for tests. Effects that make HTTP calls add `wasi-http-client.workspace = true`.
+`crate-type = ["cdylib", "rlib"]` is required: `cdylib` produces the `.wasm`, `rlib` enables Rust-level linking for tests. Effects that make HTTP calls add `wasi-http-client.workspace = true`.
 
 {{#endtab }}
 {{#tab name="TypeScript" }}
@@ -209,7 +209,7 @@ serde.workspace = true
 }
 ```
 
-The `umari` field points at the built wasm so `umari deploy` can find it. The module depends on `@my-project/shared` (the workspace's shared package — resolved locally via npm workspaces) and `@umari/js`. Commands that validate input also add `zod`. The matching `tsconfig.json` extends the root: `{ "extends": "../../tsconfig.json", "include": ["src"] }`.
+The `umari` field points at the built wasm so `umari deploy` can find it. The module depends on `@my-project/shared` (the workspace's shared package, resolved locally via npm workspaces) and `@umari/js`. Commands that validate input also add `zod`. The matching `tsconfig.json` extends the root: `{ "extends": "../../tsconfig.json", "include": ["src"] }`.
 
 {{#endtab }}
 {{#endtabs }}
@@ -223,7 +223,7 @@ Events and folds live in one place that every module imports.
 
 Group events by entity and re-export them:
 
-```rust
+```rust,noplayground
 // src/events/mod.rs
 pub mod user;
 pub mod project;
@@ -234,7 +234,7 @@ pub use project::*;
 pub use task::*;
 ```
 
-```rust
+```rust,noplayground
 // src/events/user.rs
 use umari::prelude::*;
 
@@ -249,7 +249,7 @@ pub struct UserRegistered {
 }
 ```
 
-```rust
+```rust,noplayground
 // src/folds/mod.rs
 use umari::prelude::*;
 use crate::events::*;
@@ -314,7 +314,7 @@ export const UserExistsFold = defineFold({
 });
 ```
 
-The shared package's `exports` point directly at `src/index.ts`, so modules import TypeScript source — `umari-js build` bundles it per module via esbuild.
+The shared package's `exports` point directly at `src/index.ts`, so modules import TypeScript source; `umari-js build` bundles it per module via esbuild.
 
 {{#endtab }}
 {{#endtabs }}
@@ -334,7 +334,7 @@ The shared package's `exports` point directly at `src/index.ts`, so modules impo
 | Fold | PascalCase noun + `Fold` | `UserExistsFold`, `ProjectStateFold` |
 | Event set | Rust enum `Query` / TS `events: [...]` array | `enum Query { ... }` / `events: [UserRegistered]` |
 
-Rust domain-ID fields are `snake_case` (`user_id`); TypeScript ones are `camelCase` (`userId`). The tag name follows the field name — keep them consistent if you mix languages over the same events (see [Chapter 4](./04-events.md#domain-ids)).
+Rust domain-ID fields are `snake_case` (`user_id`); TypeScript ones are `camelCase` (`userId`). The tag name follows the field name; keep them consistent if you mix languages over the same events (see [Events](./events.md#domain-ids)).
 
 ## Dependencies between module types
 
@@ -355,7 +355,7 @@ shared library / package (events, folds)
 
 ## Working with modules
 
-The `umari` CLI is the intended way to scaffold, build, and deploy — it understands the workspace layout above (in either language), picks up env config, and handles the `wasm32-wasip2` / componentize build for you.
+The `umari` CLI is the intended way to scaffold, build, and deploy: it understands the workspace layout above (in either language), picks up env config, and handles the `wasm32-wasip2` / componentize build for you.
 
 ### `umari init`
 
@@ -367,7 +367,7 @@ umari init my-project       # scaffold into ./my-project
 umari init --lang js        # choose the language explicitly
 ```
 
-If `--lang` is omitted, `umari init` prompts for the language. It generates the root manifest, the shared library/package, a `.gitignore`, and (for Rust) `rust-toolchain.toml`, then initializes a git repository if one doesn't already exist. It's non-destructive — existing files are left untouched.
+If `--lang` is omitted, `umari init` prompts for the language. It generates the root manifest, the shared library/package, a `.gitignore`, and (for Rust) `rust-toolchain.toml`, then initializes a git repository if one doesn't already exist. It's non-destructive: existing files are left untouched.
 
 ### `umari new`
 
@@ -379,7 +379,7 @@ umari new projector projects
 umari new effect register-webhooks
 ```
 
-`umari new` infers the language from the workspace it's run in (Cargo vs npm), so you don't repeat `--lang`. For a Rust module it appends the crate to the workspace `members`; for a TypeScript module it wires in the `@<project>/shared` dependency — run `npm install` from the root afterward to link it.
+`umari new` infers the language from the workspace it's run in (Cargo vs npm), so you don't repeat `--lang`. For a Rust module it appends the crate to the workspace `members`; for a TypeScript module it wires in the `@<project>/shared` dependency; run `npm install` from the root afterward to link it.
 
 ### `umari build`
 
@@ -407,7 +407,7 @@ For Rust modules, env vars declared under `[package.metadata.umari.env]` in the 
 
 ### Manual / lower-level CLI
 
-To bypass the workspace tooling — one-off uploads, custom flags, or your own scripts — build directly and upload through the typed subcommands:
+To bypass the workspace tooling (one-off uploads, custom flags, or your own scripts), build directly and upload through the typed subcommands:
 
 ```sh
 # Rust
@@ -422,4 +422,4 @@ umari commands upload create-project 0.1.0 \
     commands/create-project/dist/module.wasm --activate
 ```
 
-For production, always build in release mode — debug builds can be 10× larger and slower.
+For production, always build in release mode: debug builds can be 10× larger and slower.

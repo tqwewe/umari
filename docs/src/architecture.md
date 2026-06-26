@@ -1,6 +1,6 @@
-# 3. Architecture Overview
+# Architecture Overview
 
-This chapter describes the Umari runtime architecture — how the pieces connect, how modules are loaded, and how events flow through the system.
+This chapter describes the Umari runtime architecture: how the pieces connect, how modules are loaded, and how events flow through the system.
 
 ## Crate map
 
@@ -8,14 +8,14 @@ Umari is a Cargo workspace with these crates:
 
 | Crate | Role |
 |-------|------|
-| `umari` (crates/umari) | **SDK** — traits, types, macros, and the WASM guest library |
-| `umari-macros` (crates/macros) | Derive macros: `Event`, `EventSet`, `DomainIds`, `FromDomainIds`, `#[export_command]` |
-| `umari-runtime` (crates/runtime) | **Runtime** — Wasmtime-based module runner, event dispatch, actor system |
-| `umari-api` (crates/api) | HTTP API server (Axum) — upload modules, execute commands, manage lifecycle |
-| `umari-server` (crates/server) | Server binary — starts the runtime + API + optional Web UI |
-| `umari-cli` (crates/cli) | CLI tool — upload modules, execute commands, manage the system |
-| `umari-ui` (crates/ui) | Web UI built with HTMX |
-| `umari-types` (crates/types) | Shared API types |
+| `umari` | **SDK**: traits, types, macros, and the WASM guest library |
+| `umari-macros` | Derive macros: `Event`, `EventSet`, `DomainIds`, `FromDomainIds`, `#[export_command]` |
+| `umari-runtime` | **Runtime**: Wasmtime-based module runner, event dispatch, actor system |
+| `umari-api` | HTTP API server (Axum): upload modules, execute commands, manage lifecycle |
+| `umari-server` | Server binary: starts the runtime + API + optional Web UI |
+| `umari-cli` | CLI tool: upload modules, execute commands, manage the system |
+| `umari-ui` | Web UI built with HTMX |
+| `umari-types` | Shared API types |
 
 ## Runtime architecture
 
@@ -59,16 +59,16 @@ Each active module has one `ModuleActor` that:
 ### Worker pool (effects only)
 
 Effects use a worker pool for parallel processing. The pool consists of:
-- One **global worker** — handles events with no partition key or `PartitionKey::Inline`
-- N **keyed workers** (default: 8) — each handles a hash-consistent subset of partition keys
+- One **global worker**: handles events with no partition key or `PartitionKey::Inline`
+- N **keyed workers** (default: 8), each handling a hash-consistent subset of partition keys
 
 The `partition_key()` method on an effect determines routing. Returning `None` routes to the global worker (sequential for that effect). Returning `Some(key)` routes to `hash(key) % 8`, enabling parallel processing of independent event streams.
 
-Workers acknowledge completion back to the ModuleActor, which tracks the **watermark** — the highest contiguous position acknowledged. The watermark prevents data loss: if a worker crashes, events above the watermark are replayed.
+Workers acknowledge completion back to the ModuleActor, which tracks the **watermark**, the highest contiguous position acknowledged. The watermark prevents data loss: if a worker crashes, events above the watermark are replayed.
 
 ### CommandActor
 
-Commands are different from projectors/effects — they don't subscribe to event streams. Instead, the `CommandActor` handles on-demand execution:
+Commands differ from projectors and effects: they don't subscribe to event streams. Instead, the `CommandActor` handles on-demand execution:
 
 1. A client (HTTP API, effect, or direct call) sends an execution request
 2. The CommandActor compiles (or retrieves from cache) the command's WASM
@@ -87,9 +87,9 @@ Each module runs as a WASM component using the **component model**. The WIT inte
 | `crypto` | Effects | Delete encryption keys (crypto-shredding) |
 | `wasi:http` | Effects | Make HTTP requests |
 
-Commands have a simpler interface — they only need the transaction interface. Effects have the richest interface, including HTTP and the SQLite database for their own internal state.
+Commands have a simpler interface: they only need the transaction interface. Effects have the richest interface, including HTTP and the SQLite database for their own internal state.
 
-> **Note**: An older `command/executor` interface still exists in the WIT package but is unused — effects today execute commands by calling the command function directly (see [Chapter 9: Effects](./09-effects.md)).
+> **Note**: An older `command/executor` interface still exists in the WIT package but is unused; effects today execute commands by calling the command function directly (see [Effects](./effects.md)).
 
 ## Event flow
 
@@ -137,9 +137,9 @@ Anything a module writes to `stdout` or `stderr` (e.g. `println!`, `eprintln!`, 
 ## Module store
 
 The module store (`umari.sqlite`) is a SQLite database that holds:
-- **WASM bytecode** — raw `.wasm` bytes for each module version
-- **Module metadata** — name, version, module type, active status
-- **Environment variables** — key-value pairs injected as WASI env vars
-- **Crypto keys** — AES-256 keys per encryption scope
+- **WASM bytecode**: raw `.wasm` bytes for each module version
+- **Module metadata**: name, version, module type, active status
+- **Environment variables**: key-value pairs injected as WASI env vars
+- **Crypto keys**: AES-256 keys per encryption scope
 
-When a module is uploaded, the bytes are stored. When activated, the WASM is compiled (cached to `cache/*.cwasm`) and a ModuleActor is spawned. Multiple versions can coexist — only one is "active" at a time.
+When a module is uploaded, the bytes are stored. When activated, the WASM is compiled (cached to `cache/*.cwasm`) and a ModuleActor is spawned. Multiple versions can coexist, but only one is "active" at a time.
