@@ -155,6 +155,9 @@
  * ------------------------------------------------------------------------ */
 html {
     font-family: var(--sans-font);
+    /* Reserve the scrollbar's space so the fixed full-width header clears it
+       (otherwise the right-hand controls sit under/against the scrollbar), and
+       so content doesn't shift between short and long pages. */
     scrollbar-gutter: stable;
     background-color: var(--glide-bg);
     color: var(--glide-fg);
@@ -396,6 +399,18 @@ html.sidebar-visible #mdbook-menu-bar {
 }
 .glide-logo:hover {
     text-decoration: none;
+}
+.glide-logo-img {
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
+    flex-shrink: 0;
+    box-shadow: rgba(0, 0, 0, 0.15) 0 1px 2px;
+}
+/* [hidden] must win over the badge's display:flex below. */
+.glide-logo-img[hidden],
+.glide-logo-badge[hidden] {
+    display: none;
 }
 .glide-logo-badge {
     width: 26px;
@@ -752,7 +767,8 @@ main {
     height: 12px;
 }
 /* Action group on the right of the header: holds the Copy button plus, for
-   runnable Rust blocks, mdBook's relocated Run + "show hidden lines" buttons. */
+   runnable Rust blocks, a Run button (proxying mdBook's play button) and the
+   relocated "show hidden lines" toggle. */
 .glide-code-actions {
     display: flex;
     align-items: center;

@@ -32,6 +32,24 @@
             const letter = (name.textContent || '').trim().charAt(0).toUpperCase();
             badge.textContent = letter || 'G';
         }
+        // Use a real logo image when src/logo.svg is present; otherwise keep the
+        // generated letter badge as a fallback.
+        const img = document.querySelector('.glide-logo-img');
+        if (img) {
+            const reveal = () => {
+                if (img.naturalWidth > 0) {
+                    img.hidden = false;
+                    if (badge) badge.hidden = true;
+                } else {
+                    img.hidden = true;
+                }
+            };
+            if (img.complete) reveal();
+            else {
+                img.addEventListener('load', reveal);
+                img.addEventListener('error', () => { img.hidden = true; });
+            }
+        }
         const version = document.querySelector('meta[name="glide-version"]');
         const pill = document.querySelector('.glide-version');
         if (pill && version && version.content) {
