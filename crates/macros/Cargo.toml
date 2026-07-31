@@ -1,6 +1,6 @@
 [package]
 name = "umari-macros"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 description = "Derive macros for the umari SDK (Event, EventSet, DomainIds, FromDomainIds, export_command)"
 license.workspace = true
