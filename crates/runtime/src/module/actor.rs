@@ -19,7 +19,7 @@ use semver::Version;
 use serde_json::Value;
 use tracing::{debug, error, info, warn};
 use umadb_client::AsyncUmaDbClient;
-use umadb_dcb::{DcbError, DcbEventStoreAsync, DcbQuery, DcbReadResponseAsync, DcbSequencedEvent};
+use umadb_dcb::{DcbError, DcbQuery, DcbSequencedEvent, DcbSubscriptionAsync};
 use umari_core::event::{StoredEvent, StoredEventData};
 use wasmtime::{
     Engine, Store,
@@ -67,7 +67,7 @@ pub struct ModuleActor<A: EventHandlerModule> {
     name: Arc<str>,
     version: Version,
     output: ModuleOutput,
-    stream: Box<dyn DcbReadResponseAsync + Send + 'static>,
+    stream: Box<dyn DcbSubscriptionAsync + Send + 'static>,
     worker_pool: Option<WorkerPool<A>>,
     query: DcbQuery,
 }
@@ -217,11 +217,7 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
         };
 
         let start = store.data().last_position().map(|n| n + 1);
-        let stream = match args
-            .event_store
-            .read(Some(query.clone()), start, false, None, true)
-            .await
-        {
+        let stream = match args.event_store.subscribe(Some(query.clone()), start).await {
             Ok(stream) => stream,
             Err(err) => {
                 args.output.push_stderr(format!("{err:#}"));
@@ -313,6 +309,7 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
             | PanicReason::OnStart
             | PanicReason::OnPanic
             | PanicReason::OnStop
+            | PanicReason::OnUndelivered
             | PanicReason::Next => {
                 err.with_str(|s| {
                     self.output.push_stderr(s);
@@ -595,8 +592,8 @@ async fn decrypt_stored_event(
             let hex_str = event.data.as_str()?;
             let ciphertext = hex::decode(hex_str).ok()?;
             let cipher = Aes256Gcm::new_from_slice(&key).ok()?;
-            let nonce = Nonce::from_slice(&event.id.as_bytes()[..12]);
-            let plaintext = cipher.decrypt(nonce, ciphertext.as_ref()).ok()?;
+            let nonce = Nonce::try_from(&event.id.as_bytes()[..12]).ok()?;
+            let plaintext = cipher.decrypt(&nonce, ciphertext.as_ref()).ok()?;
             serde_json::from_slice(&plaintext).ok()
         })()
         .unwrap_or(Value::Null),

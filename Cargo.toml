@@ -24,7 +24,7 @@ umari-runtime = { path = "crates/runtime" }
 umari-types = { path = "crates/types" }
 umari-ui = { path = "crates/ui" }
 
-aes-gcm = "0.10"
+aes-gcm = "0.11"
 anyhow = "1.0"
 axum = { version = "0.8", features = ["multipart"] }
 bytes = "1.11"
@@ -40,8 +40,8 @@ hex = "0.4"
 humantime = "2.3"
 indexmap = { version = "2.13", features = ["serde"] }
 indicatif = "0.18"
-kameo = "0.20"
-kameo_actors = "0.5"
+kameo = "0.22"
+kameo_actors = "0.8"
 libc = "0.2"
 maud = { version = "0.27", features = ["axum"] }
 metrics = "0.24"
@@ -59,22 +59,22 @@ serde_json = { version = "1.0", features = ["preserve_order"] }
 sha2 = "0.11"
 slotmap = "1.1"
 strum = { version = "0.28", features = ["derive"] }
-syn = "2.0"
+syn = "3.0"
 thiserror = "2.0"
 tokio = { version = "1.50", features = ["macros", "rt-multi-thread"] }
 tokio-util = "0.7"
 toml_edit = "0.25"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-umadb-client = "0.5"
-umadb-dcb = "0.5"
+umadb-client = "0.6"
+umadb-dcb = "0.6"
 ureq = "3.2"
 utoipa = { version = "5.3", features = ["axum_extras", "uuid"] }
 utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
 uuid = { version = "1.22", features = ["serde", "v4", "v5"] }
-validator = "0.20"
+validator = "0.21"
 wasip2 = "1.0.2"
-wasmtime = { version = "45.0", default-features = false, features = [
+wasmtime = { version = "47.0", default-features = false, features = [
   "addr2line",
   "anyhow",
   "async",
@@ -99,9 +99,9 @@ wasmtime = { version = "45.0", default-features = false, features = [
   "threads",
   "wat",
 ] }
-wasmtime-wasi = "45.0"
-wasmtime-wasi-http = "45.0"
-wit-bindgen = "0.58"
+wasmtime-wasi = "47.0"
+wasmtime-wasi-http = "47.0"
+wit-bindgen = "0.60"
 
 # The profile that 'dist' will build with
 [profile.dist]

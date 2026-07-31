@@ -133,6 +133,7 @@ impl<A: EventHandlerModule> Actor for ModuleWorkerActor<A> {
             | PanicReason::OnStart
             | PanicReason::OnPanic
             | PanicReason::OnStop
+            | PanicReason::OnUndelivered
             | PanicReason::Next => {
                 err.with_str(|s| {
                     self.output.push_stderr(s);

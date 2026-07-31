@@ -238,7 +238,7 @@ async fn transaction_new(
     } else {
         Some(
             event_store
-                .read(Some(query.clone()), None, false, None, false)
+                .read(Some(query.clone()), None, false, None)
                 .await?,
         )
     };
@@ -366,8 +366,9 @@ async fn transaction_commit(
                 let plaintext = serde_json::to_vec(&data_value)
                     .expect("serde value should never fail to serialize");
                 let cipher = Aes256Gcm::new_from_slice(&key).expect("invalid key length");
-                let nonce = Nonce::from_slice(&event_id.as_bytes()[..12]);
-                let ciphertext = cipher.encrypt(nonce, plaintext.as_ref()).map_err(|err| {
+                let nonce =
+                    Nonce::try_from(&event_id.as_bytes()[..12]).expect("invalid event id bytes");
+                let ciphertext = cipher.encrypt(&nonce, plaintext.as_ref()).map_err(|err| {
                     wasmtime::Error::msg(format!("aes-gcm encryption failed: {err}"))
                 })?;
                 (Some(key_id), Value::String(hex::encode(ciphertext)))
@@ -379,6 +380,7 @@ async fn transaction_commit(
             tags,
             data: encode_with_envelope(envelope, encrypted_value, encryption_scope, key_id),
             uuid: Some(event_id),
+            metadata: Vec::new(),
         });
     }
 
@@ -479,9 +481,9 @@ async fn decrypt_event_data(
         .map_err(|err| wasmtime::Error::msg(format!("hex decode failed: {err}")))?;
 
     let cipher = Aes256Gcm::new_from_slice(&key).expect("invalid key length");
-    let nonce = Nonce::from_slice(&event_id.as_bytes()[..12]);
+    let nonce = Nonce::try_from(&event_id.as_bytes()[..12]).expect("invalid event id bytes");
     let plaintext = cipher
-        .decrypt(nonce, ciphertext.as_ref())
+        .decrypt(&nonce, ciphertext.as_ref())
         .map_err(|err| wasmtime::Error::msg(format!("aes-gcm decryption failed: {err}")))?;
 
     serde_json::from_slice(&plaintext)

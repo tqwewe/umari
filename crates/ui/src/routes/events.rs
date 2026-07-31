@@ -32,7 +32,6 @@ enum EventData {
     CryptoShredded,
 }
 
-
 struct EventView {
     position: u64,
     uuid: Option<Uuid>,
@@ -111,7 +110,7 @@ pub async fn list_events(
 
     let (raw_events, _head) = state
         .event_store
-        .read(query, None, true, Some(limit), false)
+        .read(query, None, true, Some(limit))
         .await
         .map_err(|err| HtmlError::internal(err.to_string()))?
         .collect_with_head()
@@ -140,7 +139,9 @@ pub async fn list_events(
                 } else {
                     state
                         .module_store_ref
-                        .ask(GetCryptoKey { scope: scope.as_str().into() })
+                        .ask(GetCryptoKey {
+                            scope: scope.as_str().into(),
+                        })
                         .reply_timeout(Duration::from_secs(5))
                         .send()
                         .await
@@ -156,8 +157,8 @@ pub async fn list_events(
                         let ciphertext = hex::decode(hex_str).ok()?;
                         let uuid = seq.event.uuid?;
                         let cipher = Aes256Gcm::new_from_slice(&key).ok()?;
-                        let nonce = Nonce::from_slice(&uuid.as_bytes()[..12]);
-                        let plaintext = cipher.decrypt(nonce, ciphertext.as_ref()).ok()?;
+                        let nonce = Nonce::try_from(&uuid.as_bytes()[..12]).ok()?;
+                        let plaintext = cipher.decrypt(&nonce, ciphertext.as_ref()).ok()?;
                         let value = serde_json::from_slice(&plaintext).ok()?;
                         Some(EventData::Decrypted(value))
                     })()

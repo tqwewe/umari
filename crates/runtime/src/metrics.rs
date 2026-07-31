@@ -56,15 +56,36 @@ pub fn install() -> PrometheusHandle {
 }
 
 fn describe_metrics() {
-    describe_gauge!(MODULE_UP, "1 if the module is loaded and its actor is alive, 0 otherwise");
+    describe_gauge!(
+        MODULE_UP,
+        "1 if the module is loaded and its actor is alive, 0 otherwise"
+    );
     describe_gauge!(MODULE_INFO, "module version info, always 1");
-    describe_gauge!(MODULE_LAST_POSITION, "last global event position committed by the module");
-    describe_gauge!(MODULE_QUERY_HEAD, "global position of the latest event matching the module's query");
-    describe_gauge!(MODULE_LAG, "events behind the module's query head (0 when caught up)");
-    describe_gauge!(MODULE_LAST_PROGRESS, "unix timestamp of the module's last committed progress");
+    describe_gauge!(
+        MODULE_LAST_POSITION,
+        "last global event position committed by the module"
+    );
+    describe_gauge!(
+        MODULE_QUERY_HEAD,
+        "global position of the latest event matching the module's query"
+    );
+    describe_gauge!(
+        MODULE_LAG,
+        "events behind the module's query head (0 when caught up)"
+    );
+    describe_gauge!(
+        MODULE_LAST_PROGRESS,
+        "unix timestamp of the module's last committed progress"
+    );
     describe_counter!(MODULE_FAILURES, "number of times the module actor has died");
-    describe_counter!(MODULE_RESTARTS, "number of times the module has been scheduled for restart");
-    describe_gauge!(MODULE_BACKOFF, "current restart backoff delay in seconds (0 when healthy)");
+    describe_counter!(
+        MODULE_RESTARTS,
+        "number of times the module has been scheduled for restart"
+    );
+    describe_gauge!(
+        MODULE_BACKOFF,
+        "current restart backoff delay in seconds (0 when healthy)"
+    );
     describe_gauge!(EVENT_STORE_HEAD, "global head position of the event store");
 }
 
@@ -162,7 +183,7 @@ async fn collect_supervisor<A: EventHandlerModule>(
 /// backwards, limit-1 read. `None` if the query matches no events or the read
 /// fails.
 async fn query_head(event_store: &AsyncUmaDbClient, query: DcbQuery) -> Option<u64> {
-    match event_store.read(Some(query), None, true, Some(1), false).await {
+    match event_store.read(Some(query), None, true, Some(1)).await {
         Ok(mut stream) => match stream.next_batch().await {
             Ok(batch) => batch.first().map(|event| event.position),
             Err(err) => {
