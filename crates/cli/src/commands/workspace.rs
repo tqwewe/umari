@@ -178,10 +178,10 @@ fn is_js_workspace_marker(dir: &Path) -> bool {
     if dir.join(".git").exists() {
         return true;
     }
-    if let Ok(content) = std::fs::read_to_string(dir.join("package.json")) {
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-            return json.get("workspaces").is_some();
-        }
+    if let Ok(content) = std::fs::read_to_string(dir.join("package.json"))
+        && let Ok(json) = serde_json::from_str::<serde_json::Value>(&content)
+    {
+        return json.get("workspaces").is_some();
     }
     false
 }
@@ -436,9 +436,11 @@ pub fn deploy(
         &ui,
         &alive,
         &rust_names,
-        no_activate,
-        bump_patch,
-        debug,
+        UploadFlags {
+            no_activate,
+            bump_patch,
+            debug,
+        },
         jobs,
     );
 
@@ -489,7 +491,7 @@ fn run_build_phase<'a>(
         })
         .collect();
 
-    let js_queue: Mutex<Vec<&JsModule>> = Mutex::new(js_modules.iter().copied().collect());
+    let js_queue: Mutex<Vec<&JsModule>> = Mutex::new(js_modules.to_vec());
     let resolved_jobs = resolve_jobs(jobs);
     let js_workers = resolved_jobs.min(js_modules.len().max(1));
 
@@ -508,39 +510,46 @@ fn run_build_phase<'a>(
                 let queue = &js_queue;
                 let stats = &stats;
                 let succeeded = &succeeded;
-                s.spawn(move || loop {
-                    let m = match queue.lock().unwrap().pop() {
-                        Some(m) => m,
-                        None => break,
-                    };
-                    let start = Instant::now();
-                    match build_one_js(m) {
-                        Ok(()) => {
-                            if finalize {
+                s.spawn(move || {
+                    loop {
+                        let m = match queue.lock().unwrap().pop() {
+                            Some(m) => m,
+                            None => break,
+                        };
+                        let start = Instant::now();
+                        match build_one_js(m) {
+                            Ok(()) => {
+                                if finalize {
+                                    ui.finish(
+                                        m.module_type,
+                                        &m.name,
+                                        Status::Built {
+                                            dur: start.elapsed(),
+                                        },
+                                    );
+                                } else {
+                                    ui.set_action(m.module_type, &m.name, "uploading…");
+                                }
+                                succeeded
+                                    .lock()
+                                    .unwrap()
+                                    .insert((m.module_type, m.name.clone()));
+                            }
+                            Err(err) => {
                                 ui.finish(
                                     m.module_type,
                                     &m.name,
-                                    Status::Built {
-                                        dur: start.elapsed(),
+                                    Status::Failed {
+                                        msg: err.to_string(),
                                     },
                                 );
-                            } else {
-                                ui.set_action(m.module_type, &m.name, "uploading…");
+                                stats
+                                    .lock()
+                                    .unwrap()
+                                    .entry(m.module_type)
+                                    .or_default()
+                                    .failed += 1;
                             }
-                            succeeded
-                                .lock()
-                                .unwrap()
-                                .insert((m.module_type, m.name.clone()));
-                        }
-                        Err(err) => {
-                            ui.finish(
-                                m.module_type,
-                                &m.name,
-                                Status::Failed {
-                                    msg: err.to_string(),
-                                },
-                            );
-                            stats.lock().unwrap().entry(m.module_type).or_default().failed += 1;
                         }
                     }
                 });
@@ -606,7 +615,12 @@ fn run_rust_build(
                         msg: format!("failed to spawn cargo: {err}"),
                     },
                 );
-                stats.lock().unwrap().entry(m.module_type).or_default().failed += 1;
+                stats
+                    .lock()
+                    .unwrap()
+                    .entry(m.module_type)
+                    .or_default()
+                    .failed += 1;
             }
             return;
         }
@@ -653,21 +667,21 @@ fn run_rust_build(
                     .and_then(|t| t.get("name"))
                     .and_then(|n| n.as_str())
                     .unwrap_or("");
-                if let Some((ty, pkg_name, started)) = start_map.get(name) {
-                    if finished.insert(name.to_string()) {
-                        if finalize {
-                            ui.finish(
-                                *ty,
-                                pkg_name,
-                                Status::Built {
-                                    dur: started.elapsed(),
-                                },
-                            );
-                        } else {
-                            ui.set_action(*ty, pkg_name, "uploading…");
-                        }
-                        succeeded.lock().unwrap().insert((*ty, pkg_name.clone()));
+                if let Some((ty, pkg_name, started)) = start_map.get(name)
+                    && finished.insert(name.to_string())
+                {
+                    if finalize {
+                        ui.finish(
+                            *ty,
+                            pkg_name,
+                            Status::Built {
+                                dur: started.elapsed(),
+                            },
+                        );
+                    } else {
+                        ui.set_action(*ty, pkg_name, "uploading…");
                     }
+                    succeeded.lock().unwrap().insert((*ty, pkg_name.clone()));
                 }
             }
             "compiler-message" => {
@@ -725,12 +739,13 @@ fn run_rust_build(
                 }
             })
             .unwrap_or_else(|| "build failed".to_string());
-        ui.finish(
-            m.module_type,
-            &m.name,
-            Status::Failed { msg },
-        );
-        stats.lock().unwrap().entry(m.module_type).or_default().failed += 1;
+        ui.finish(m.module_type, &m.name, Status::Failed { msg });
+        stats
+            .lock()
+            .unwrap()
+            .entry(m.module_type)
+            .or_default()
+            .failed += 1;
     }
 }
 
@@ -782,44 +797,50 @@ fn rebuild_module(module: &AnyModule, rust_names: &[&str], debug: bool) -> Resul
 
 // -------- upload phase --------
 
+#[derive(Clone, Copy)]
+struct UploadFlags {
+    no_activate: bool,
+    bump_patch: bool,
+    debug: bool,
+}
+
 fn run_upload_phase(
     client: &ApiClient,
     ui: &DeployUi,
     modules: &[&AnyModule],
     rust_names: &[&str],
-    no_activate: bool,
-    bump_patch: bool,
-    debug: bool,
+    flags: UploadFlags,
     jobs: usize,
 ) -> BTreeMap<ModuleType, Stats> {
-    let stats: Mutex<BTreeMap<ModuleType, Stats>> =
-        Mutex::new(init_stats_from_refs(modules));
-    let queue: Mutex<Vec<&AnyModule>> = Mutex::new(modules.iter().copied().collect());
+    let stats: Mutex<BTreeMap<ModuleType, Stats>> = Mutex::new(init_stats_from_refs(modules));
+    let queue: Mutex<Vec<&AnyModule>> = Mutex::new(modules.to_vec());
     let workers = resolve_jobs(jobs).min(modules.len().max(1)).max(1);
 
     thread::scope(|s| {
         for _ in 0..workers {
             let queue = &queue;
             let stats = &stats;
-            s.spawn(move || loop {
-                let m = match queue.lock().unwrap().pop() {
-                    Some(m) => m,
-                    None => break,
-                };
-                let status = upload_one(client, m, rust_names, no_activate, bump_patch, debug);
-                let ty = m.module_type();
-                {
-                    let mut g = stats.lock().unwrap();
-                    let entry = g.entry(ty).or_default();
-                    match &status {
-                        Status::Built { .. } => {} // not used in upload
-                        Status::Unchanged => entry.unchanged += 1,
-                        Status::Deployed => entry.deployed += 1,
-                        Status::Bumped { .. } => entry.bumped += 1,
-                        Status::Failed { .. } => entry.failed += 1,
+            s.spawn(move || {
+                loop {
+                    let m = match queue.lock().unwrap().pop() {
+                        Some(m) => m,
+                        None => break,
+                    };
+                    let status = upload_one(client, m, rust_names, flags);
+                    let ty = m.module_type();
+                    {
+                        let mut g = stats.lock().unwrap();
+                        let entry = g.entry(ty).or_default();
+                        match &status {
+                            Status::Built { .. } => {} // not used in upload
+                            Status::Unchanged => entry.unchanged += 1,
+                            Status::Deployed => entry.deployed += 1,
+                            Status::Bumped { .. } => entry.bumped += 1,
+                            Status::Failed { .. } => entry.failed += 1,
+                        }
                     }
+                    ui.finish(ty, m.name(), status);
                 }
-                ui.finish(ty, m.name(), status);
             });
         }
     });
@@ -831,10 +852,13 @@ fn upload_one(
     client: &ApiClient,
     module: &AnyModule,
     rust_names: &[&str],
-    no_activate: bool,
-    bump_patch: bool,
-    debug: bool,
+    flags: UploadFlags,
 ) -> Status {
+    let UploadFlags {
+        no_activate,
+        bump_patch,
+        debug,
+    } = flags;
     let wasm_path = module.wasm_path();
     if !wasm_path.exists() {
         return Status::Failed {
@@ -863,13 +887,21 @@ fn upload_one(
         Ok(None) if bump_patch => {
             let new_version = match bump_patch_version(&version) {
                 Ok(v) => v,
-                Err(err) => return Status::Failed { msg: err.to_string() },
+                Err(err) => {
+                    return Status::Failed {
+                        msg: err.to_string(),
+                    };
+                }
             };
             if let Err(err) = write_version_to_manifest(module, &new_version) {
-                return Status::Failed { msg: err.to_string() };
+                return Status::Failed {
+                    msg: err.to_string(),
+                };
             }
             if let Err(err) = rebuild_module(module, rust_names, debug) {
-                return Status::Failed { msg: err.to_string() };
+                return Status::Failed {
+                    msg: err.to_string(),
+                };
             }
             match client.upload_wasm(
                 module.module_type().as_str(),
@@ -886,13 +918,17 @@ fn upload_one(
                 Ok(None) => Status::Failed {
                     msg: "module already exists after bump".to_string(),
                 },
-                Err(err) => Status::Failed { msg: err.to_string() },
+                Err(err) => Status::Failed {
+                    msg: err.to_string(),
+                },
             }
         }
         Ok(None) => Status::Failed {
             msg: "module already exists".to_string(),
         },
-        Err(err) => Status::Failed { msg: err.to_string() },
+        Err(err) => Status::Failed {
+            msg: err.to_string(),
+        },
     }
 }
 
@@ -964,4 +1000,3 @@ fn write_version_to_manifest(module: &AnyModule, new_version: &str) -> Result<()
     }
     Ok(())
 }
-

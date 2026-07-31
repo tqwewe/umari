@@ -346,18 +346,15 @@ fn resolve_lang_for_new(lang: Option<Lang>) -> Result<Lang> {
 fn detect_workspace_lang() -> Option<Lang> {
     let cwd = std::env::current_dir().ok()?;
     for dir in cwd.ancestors() {
-        if let Ok(content) = std::fs::read_to_string(dir.join("Cargo.toml")) {
-            if content.contains("[workspace]") {
+        if let Ok(content) = std::fs::read_to_string(dir.join("Cargo.toml"))
+            && content.contains("[workspace]") {
                 return Some(Lang::Rust);
             }
-        }
-        if let Ok(content) = std::fs::read_to_string(dir.join("package.json")) {
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                if json.get("workspaces").is_some() {
+        if let Ok(content) = std::fs::read_to_string(dir.join("package.json"))
+            && let Ok(json) = serde_json::from_str::<serde_json::Value>(&content)
+                && json.get("workspaces").is_some() {
                     return Some(Lang::Js);
                 }
-            }
-        }
     }
     None
 }
@@ -370,7 +367,7 @@ fn prompt_lang() -> Result<Lang> {
     let items = ["rust", "javascript / typescript"];
     let selection = dialoguer::Select::with_theme(&dialoguer::theme::ColorfulTheme::default())
         .with_prompt("which language?")
-        .items(&items)
+        .items(items)
         .default(0)
         .interact()?;
     Ok(match selection {

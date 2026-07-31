@@ -14,9 +14,11 @@ use crate::{
     runtime::command::umari::command::transaction::Transaction,
 };
 
+type FoldEntry = (Box<dyn BoxFold>, DomainIdBindings, Box<dyn Any>);
+
 pub struct FoldQuery<Fs = ()> {
     domain_ids: Vec<EventDomainId>,
-    folds: SlotMap<FoldKey, (Box<dyn BoxFold>, DomainIdBindings, Box<dyn Any>)>,
+    folds: SlotMap<FoldKey, FoldEntry>,
     handles: Fs,
 }
 
@@ -88,8 +90,7 @@ impl<Fs> FoldQuery<Fs> {
         let query = build_dcb_query(self.domain_ids, &all_bindings);
         let tx = Transaction::new(&query.into());
 
-        let mut folds: HashMap<FoldKey, (Box<dyn BoxFold>, DomainIdBindings, Box<dyn Any>)> =
-            self.folds.into_iter().collect();
+        let mut folds: HashMap<FoldKey, FoldEntry> = self.folds.into_iter().collect();
 
         loop {
             let events = tx.next_batch();

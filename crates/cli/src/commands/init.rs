@@ -9,7 +9,8 @@ use super::new::umari_js_dep;
 
 const RUST_TOOLCHAIN: &str = "[toolchain]\ntargets = [\"wasm32-wasip2\"]\n";
 
-const SHARED_TSCONFIG: &str = "{\n  \"extends\": \"../tsconfig.json\",\n  \"include\": [\"src\"]\n}\n";
+const SHARED_TSCONFIG: &str =
+    "{\n  \"extends\": \"../tsconfig.json\",\n  \"include\": [\"src\"]\n}\n";
 
 const SHARED_INDEX_TS: &str = r#"// Shared event & fold definitions. Import these from your modules, e.g.:
 //
@@ -230,10 +231,10 @@ fn print_next_steps(path: Option<&str>, name: &str, js: bool) {
     println!("created umari workspace '{name}'");
     println!();
     println!("next steps:");
-    if let Some(p) = path {
-        if p != "." {
-            println!("  cd {p}");
-        }
+    if let Some(p) = path
+        && p != "."
+    {
+        println!("  cd {p}");
     }
     if js {
         println!("  npm install");

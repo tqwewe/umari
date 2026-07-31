@@ -26,17 +26,16 @@ fn has_workspace_marker(dir: &Path) -> bool {
     if dir.join(".git").exists() {
         return true;
     }
-    if let Ok(content) = fs::read_to_string(dir.join("Cargo.toml")) {
-        if content.contains("[workspace]") {
-            return true;
-        }
+    if let Ok(content) = fs::read_to_string(dir.join("Cargo.toml"))
+        && content.contains("[workspace]")
+    {
+        return true;
     }
-    if let Ok(content) = fs::read_to_string(dir.join("package.json")) {
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-            if json.get("workspaces").is_some() {
-                return true;
-            }
-        }
+    if let Ok(content) = fs::read_to_string(dir.join("package.json"))
+        && let Ok(json) = serde_json::from_str::<serde_json::Value>(&content)
+        && json.get("workspaces").is_some()
+    {
+        return true;
     }
     false
 }
