@@ -28,6 +28,7 @@ use wasmtime::{
 use wasmtime_wasi::{ResourceTable, WasiCtx};
 
 use crate::{
+    metrics::record_progress,
     module_store::{
         INIT_SQL,
         actor::{GetCryptoKeyById, ModuleStoreActor},
@@ -68,6 +69,7 @@ pub struct ModuleActor<A: EventHandlerModule> {
     output: ModuleOutput,
     stream: Box<dyn DcbReadResponseAsync + Send + 'static>,
     worker_pool: Option<WorkerPool<A>>,
+    query: DcbQuery,
 }
 
 #[derive(Clone)]
@@ -217,7 +219,7 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
         let start = store.data().last_position().map(|n| n + 1);
         let stream = match args
             .event_store
-            .read(Some(query), start, false, None, true)
+            .read(Some(query.clone()), start, false, None, true)
             .await
         {
             Ok(stream) => stream,
@@ -296,6 +298,7 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
             output: args.output,
             stream,
             worker_pool,
+            query,
         })
     }
 
@@ -361,6 +364,14 @@ impl<A: EventHandlerModule> ModuleActor<A> {
     #[message]
     pub fn last_position(&self) -> Option<u64> {
         self.store.data().last_position()
+    }
+
+    /// Returns `(last_position, query)` for lag reporting. The caller resolves
+    /// the query's head against the event store so lag stays accurate for
+    /// modules subscribed to only a subset of events.
+    #[message]
+    pub fn progress_inputs(&self) -> (Option<u64>, DcbQuery) {
+        (self.store.data().last_position(), self.query.clone())
     }
 }
 
@@ -501,6 +512,7 @@ impl<A: EventHandlerModule> ModuleActor<A> {
 
                 data.conn().execute_batch("COMMIT; BEGIN")?;
                 data.update_last_position(Some(new_position));
+                record_progress(A::MODULE_TYPE, &self.name);
                 debug!(
                     name = %self.name,
                     version = %self.version,
@@ -547,6 +559,7 @@ impl<A: EventHandlerModule> ModuleActor<A> {
             }
             data.conn().execute_batch("COMMIT; BEGIN")?;
             data.update_last_position(Some(watermark));
+            record_progress(A::MODULE_TYPE, &self.name);
             debug!(
                 name = %self.name,
                 version = %self.version,

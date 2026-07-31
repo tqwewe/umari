@@ -44,6 +44,9 @@ kameo = "0.20"
 kameo_actors = "0.5"
 libc = "0.2"
 maud = { version = "0.27", features = ["axum"] }
+metrics = "0.24"
+metrics-exporter-prometheus = { version = "0.18", default-features = false }
+metrics-util = "0.20"
 proc-macro2 = "1.0"
 quote = "1.0"
 rand = "0.10"

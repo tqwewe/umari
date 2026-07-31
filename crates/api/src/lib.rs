@@ -16,6 +16,7 @@ use tokio::{io, net::ToSocketAddrs};
 use umadb_client::AsyncUmaDbClient;
 use umari_runtime::{
     command::actor::CommandActor,
+    metrics::PrometheusHandle,
     module::supervisor::ModuleSupervisor,
     module_store::actor::ModuleStoreActor,
     wit::{effect::EffectWorld, projector::ProjectorWorld},
@@ -27,6 +28,7 @@ use utoipa_swagger_ui::SwaggerUi;
 use crate::routes::{
     crypto_keys::delete_crypto_key,
     execute::execute,
+    metrics::metrics,
     modules::{
         activate_command, activate_effect, activate_projector, deactivate_command,
         deactivate_effect, deactivate_projector, delete_command_env_var, delete_effect_env_var,
@@ -129,6 +131,7 @@ pub struct AppState {
     pub effect_supervisor_ref: ActorRef<ModuleSupervisor<EffectWorld>>,
     pub event_store: Arc<AsyncUmaDbClient>,
     pub api_key: Option<Arc<str>>,
+    pub metrics_handle: PrometheusHandle,
 }
 
 async fn auth_middleware(
@@ -149,6 +152,7 @@ async fn auth_middleware(
         || path.starts_with("/effects")
         || path.starts_with("/modules")
         || path.starts_with("/crypto-keys")
+        || path.starts_with("/metrics")
         || path.starts_with("/api-docs")
         || path.starts_with("/swagger-ui");
 
@@ -275,6 +279,8 @@ pub async fn start_server(addr: impl ToSocketAddrs, state: AppState) -> io::Resu
         .route("/effects/{name}/env", get(get_effect_env_vars))
         .route("/effects/{name}/env/{key}", put(set_effect_env_var))
         .route("/effects/{name}/env/{key}", delete(delete_effect_env_var))
+        // Prometheus metrics
+        .route("/metrics", get(metrics))
         // Cross-module operations
         .route("/modules/active", get(list_active_modules))
         // Runtime health per category

@@ -1,6 +1,7 @@
 pub mod command;
 pub mod compile_cache;
 pub mod events;
+pub mod metrics;
 pub mod module;
 pub mod module_store;
 pub mod output;

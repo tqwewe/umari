@@ -20,6 +20,7 @@ use crate::{
     command::actor::CommandActor,
     compile_cache::CompileCache,
     events::ModuleEvent,
+    metrics::{record_failure, record_restart, set_backoff},
     module_store::{
         ModuleType,
         actor::{GetActiveModule, GetAllActiveModules, GetEnvVars, ModuleStoreActor},
@@ -192,56 +193,64 @@ impl<A: EventHandlerModule> Actor for ModuleSupervisor<A> {
             return Ok(ControlFlow::Continue(()));
         }
 
-        if A::RETRY_ON_FAILURE
-            && let Some((name, module)) = self
-                .modules
-                .iter()
-                .find(|(_, m)| m.actor_ref.id() == id)
-                .map(|(n, m)| (n.clone(), m.clone()))
+        // A module still in `self.modules` when its actor dies is an unexpected
+        // failure; deactivation, reload and reset remove it beforehand.
+        if let Some((name, module)) = self
+            .modules
+            .iter()
+            .find(|(_, m)| m.actor_ref.id() == id)
+            .map(|(n, m)| (n.clone(), m.clone()))
         {
-            let current_pos = self.read_last_position(&name);
-            let state = self
-                .backoff
-                .entry(name.clone())
-                .or_insert(ModuleBackoffState {
-                    delay: Duration::from_secs(1),
-                    last_failed_position: None,
-                    attempt: 0,
-                });
+            record_failure(A::MODULE_TYPE, &name);
 
-            if state.last_failed_position == current_pos {
-                state.delay = (state.delay * 2).min(Duration::from_secs(600));
-            } else {
-                state.delay = Duration::from_secs(1);
-            }
-            state.last_failed_position = current_pos;
-            state.attempt += 1;
-            let delay = state.delay;
-            let attempt = state.attempt;
+            if A::RETRY_ON_FAILURE {
+                let current_pos = self.read_last_position(&name);
+                let state = self
+                    .backoff
+                    .entry(name.clone())
+                    .or_insert(ModuleBackoffState {
+                        delay: Duration::from_secs(1),
+                        last_failed_position: None,
+                        attempt: 0,
+                    });
 
-            warn!(
-                module_type = %A::MODULE_TYPE,
-                %name,
-                ?delay,
-                ?reason,
-                "module failed, retrying with backoff"
-            );
+                if state.last_failed_position == current_pos {
+                    state.delay = (state.delay * 2).min(Duration::from_secs(600));
+                } else {
+                    state.delay = Duration::from_secs(1);
+                }
+                state.last_failed_position = current_pos;
+                state.attempt += 1;
+                let delay = state.delay;
+                let attempt = state.attempt;
 
-            module.output.push_system(format!(
-                "restarting (attempt {attempt}, delay {delay:?}): {reason:?}"
-            ));
+                warn!(
+                    module_type = %A::MODULE_TYPE,
+                    %name,
+                    ?delay,
+                    ?reason,
+                    "module failed, retrying with backoff"
+                );
 
-            if let Some(supervisor_ref) = actor_ref.upgrade() {
-                let name = name.clone();
-                let version = module.version.clone();
-                let component = module.component.clone();
-                supervisor_ref
-                    .tell(RestartModule {
-                        name,
-                        version,
-                        component,
-                    })
-                    .send_after(delay);
+                module.output.push_system(format!(
+                    "restarting (attempt {attempt}, delay {delay:?}): {reason:?}"
+                ));
+
+                record_restart(A::MODULE_TYPE, &name);
+                set_backoff(A::MODULE_TYPE, &name, delay);
+
+                if let Some(supervisor_ref) = actor_ref.upgrade() {
+                    let name = name.clone();
+                    let version = module.version.clone();
+                    let component = module.component.clone();
+                    supervisor_ref
+                        .tell(RestartModule {
+                            name,
+                            version,
+                            component,
+                        })
+                        .send_after(delay);
+                }
             }
         }
 
@@ -479,6 +488,8 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
                 component: pending.component,
             },
         );
+
+        set_backoff(A::MODULE_TYPE, &name, Duration::ZERO);
 
         if startup {
             debug!(module_type = %A::MODULE_TYPE, %name, version = %pending.version, "module loaded");

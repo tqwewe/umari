@@ -18,6 +18,7 @@ use umadb_dcb::DcbError;
 use umari_api::{AppState, start_server};
 use umari_runtime::{
     command::actor::CommandActor,
+    metrics,
     module::supervisor::ModuleSupervisor,
     module_store::actor::ModuleStoreActor,
     supervisor::{RuntimeConfig, RuntimeError, RuntimeSupervisor},
@@ -62,6 +63,10 @@ struct Cli {
     /// API key required on all requests (via Authorization: Bearer <key>)
     #[arg(long, env = "UMARI_API_KEY")]
     api_key: Option<String>,
+
+    /// How often to refresh state-derived metrics (up, lag, positions); 0 disables the collector
+    #[arg(long, value_parser = humantime::parse_duration, default_value = "15s", env = "UMARI_METRICS_INTERVAL")]
+    metrics_interval: Duration,
 }
 
 #[tokio::main(name = "umari", flavor = "multi_thread")]
@@ -88,6 +93,9 @@ async fn main() {
     }
 
     let data_dir: Arc<PathBuf> = cli.data_dir.into();
+
+    // Install before actors start so their metric emissions are captured.
+    let metrics_handle = metrics::install();
 
     let start = Instant::now();
     let event_store_url = cli.event_store_url.clone();
@@ -143,6 +151,19 @@ async fn main() {
         .expect("failed to lookup effect supervisor")
         .expect("effect supervisor should be registered");
 
+    if cli.metrics_interval.is_zero() {
+        info!("metrics collector disabled (interval is 0)");
+    } else {
+        tokio::spawn(metrics::run_collector(
+            cli.metrics_interval,
+            metrics_handle.clone(),
+            event_store.clone(),
+            projector_supervisor_ref.clone(),
+            effect_supervisor_ref.clone(),
+            command_ref.clone(),
+        ));
+    }
+
     // Start API server
     let api_handle = tokio::spawn({
         let api_addr = cli.api_addr.clone();
@@ -157,6 +178,7 @@ async fn main() {
                 effect_supervisor_ref,
                 event_store,
                 api_key,
+                metrics_handle,
             };
             if let Err(err) = start_server(&api_addr, state).await {
                 error!("API server error: {err}");
