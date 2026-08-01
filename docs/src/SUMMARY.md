@@ -28,15 +28,11 @@
 
 # Runtime & Operations
 
+- [Deployment & Operations](./deployment.md)
 - [Monitoring & Alerting](./monitoring.md)
-
-<!-- Draft / unreviewed. Files exist on disk but are not yet linked; restore the
-     paths below as each chapter is reviewed against the current source. -->
-
-- [Runtime Deep Dive]()
-- [Encryption & Crypto-Shredding]()
-- [Deployment & Operations]()
-- [Idempotency Deep Dive]()
+- [Encryption & Crypto-Shredding](./encryption.md)
+- [Idempotency Deep Dive](./idempotency.md)
+- [Runtime Deep Dive](./runtime-deep-dive.md)
 
 # Appendices
 

@@ -18,22 +18,40 @@ Without idempotency, any of these would produce duplicate events, double-charge 
 
 ### Built-in: idempotency_key
 
-Commands accept an optional `idempotency_key` in `CommandContext`. When present, the runtime checks the event store for any event in the fold scope that carries the same key.
+Commands accept an optional idempotency key on their context. When present, the runtime checks the event store for any event in the fold scope that carries the same key.
+
+{{#tabs global="lang" }}
+{{#tab name="Rust" }}
 
 ```rust,noplayground
 let context = CommandContext::new()
     .with_idempotency_key(Some(request_id));
 ```
 
-If a matching event is found, the command's execute closure is never called. The runtime returns an empty `ExecuteOutput` with the position of the duplicate event.
+{{#endtab }}
+{{#tab name="TypeScript" }}
+
+External callers set the `idempotency-key` HTTP header. When one command invokes another, pass the key through explicitly:
+
+```ts
+await execute("register-user", input, { idempotencyKey: requestId });
+```
+
+{{#endtab }}
+{{#endtabs }}
+
+If a matching event is found, the command's execute body never runs. The runtime returns an empty result with the position of the duplicate event.
 
 **How it works**: During event replay (the fold application phase), the runtime checks each incoming event's `idempotency_key` against the command's key. On match, it commits the transaction with zero new events and returns early.
 
 **When to use**: For commands called with a client-generated request ID. The client retries with the same ID, and Umari ensures the command only executes once.
 
-### Domain-level: state check in execute closure
+### Domain-level: state check in the command body
 
 Commands can also check fold state to decide whether the operation already occurred:
+
+{{#tabs global="lang" }}
+{{#tab name="Rust" }}
 
 ```rust,noplayground
 Command::new(input, context)
@@ -45,6 +63,25 @@ Command::new(input, context)
         Ok(emit![UserRegistered { .. }])
     })
 ```
+
+{{#endtab }}
+{{#tab name="TypeScript" }}
+
+```ts
+const RegisterUser = defineCommand<Input, {
+  registered: ReturnType<typeof UserRegisteredFold>;
+}>({
+  domainIds: ["userId"] as const,
+  folds: ({ userId }) => ({ registered: UserRegisteredFold({ userId }) }),
+  execute: ({ input, folds, emit }) => {
+    if (folds.registered.exists) return emit();  // already registered, no-op
+    return emit(UserRegistered({ /* … */ }));
+  },
+});
+```
+
+{{#endtab }}
+{{#endtabs }}
 
 This is domain-level idempotency: the command understands its own business rules and can determine that "registering a user that's already registered" is a no-op.
 
@@ -114,7 +151,10 @@ If the effect crashes at any point:
 
 ### FoldQuery is the primary mechanism
 
-Unlike the older "scheduled event" pattern, the recommended approach uses `FoldQuery` to directly check for the completion event:
+Unlike the older "scheduled event" pattern, the recommended approach uses a fold query to check the event store directly for the completion event:
+
+{{#tabs global="lang" }}
+{{#tab name="Rust" }}
 
 ```rust,noplayground
 let already_done = FoldQuery::new()
@@ -126,16 +166,29 @@ if already_done {
 }
 ```
 
+{{#endtab }}
+{{#tab name="TypeScript" }}
+
+```ts
+const { registered } = foldQuery({
+  registered: EventFold(WebhookRegistered)({ userId }),
+}).run();
+
+if (registered.some((e) => e.data.topic === topic)) return;  // already done
+```
+
+{{#endtab }}
+{{#endtabs }}
+
 This is lighter than executing a separate private "schedule" command and avoids polluting the event store with intermediate scheduling events. The completion event itself (recorded in step 3) serves as the idempotency anchor.
 
 ### SQLite is NOT the idempotency source
 
 A common mistake is using SQLite to track whether work has been done:
 
-```rust,noplayground
-// WRONG: SQLite can be deleted and rebuilt
-let done: bool = query_row("SELECT done FROM tracking WHERE id = ?1", ...)?;
-if done { return Ok(()); }
+```
+// WRONG: the module's SQLite can be wiped and rebuilt
+if (readDoneFlagFromSqlite(id)) return;
 ```
 
 This fails under replay. SQLite databases are derivable: they can be wiped and rebuilt. The only durable source of truth is the event store.
@@ -144,28 +197,25 @@ This fails under replay. SQLite databases are derivable: they can be wiped and r
 
 ### Using timestamps for idempotency
 
-```rust,noplayground
-// WRONG: clock skew, replay produces different timestamps
-if event.timestamp > last_processed_timestamp {
-    return Ok(());
-}
+```
+// WRONG: clock skew, and replay produces different timestamps
+if (event.timestamp > lastProcessedTimestamp) return;
 ```
 
 Timestamps are not monotonic and change during replay.
 
 ### Using in-memory state
 
-```rust,noplayground
-// WRONG: doesn't survive restarts
-static mut PROCESSED: HashSet<Uuid> = HashSet::new();
+```
+// WRONG: in-memory state doesn't survive restarts
+processed.add(event.id);
 ```
 
 ### Checking external state
 
-```rust,noplayground
+```
 // WRONG: external systems aren't part of the event log
-let exists = external_api.check_webhook_exists(topic)?;
-if exists { return Ok(()); }
+if (await externalApi.checkWebhookExists(topic)) return;
 ```
 
 External APIs can fail, be rate-limited, or return different results over time. The idempotency check must be based on the event store.

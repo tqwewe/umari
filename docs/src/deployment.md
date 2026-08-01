@@ -4,36 +4,45 @@ This chapter covers building, deploying, and operating Umari in production.
 
 ## Building modules
 
+The `umari` CLI builds every module in the workspace, in either language, and handles the `wasm32-wasip2` (Rust) or componentize (TypeScript) build for you.
+
 ### Prerequisites
+
+{{#tabs global="lang" }}
+{{#tab name="Rust" }}
 
 ```sh
 rustup target add wasm32-wasip2
-cargo install cargo-make  # Optional, for convenience tasks
 ```
 
-### Building a single module
+{{#endtab }}
+{{#tab name="TypeScript" }}
 
 ```sh
-cargo build --target wasm32-wasip2 --release -p register-user
+npm install
 ```
 
-The output is at `target/wasm32-wasip2/release/register_user.wasm`.
+{{#endtab }}
+{{#endtabs }}
 
-### Building all modules
+### Building
 
 ```sh
-cargo build --target wasm32-wasip2 --release --workspace
+umari build                          # build every module in the workspace
+umari build commands/create-project  # build a single module
+umari build --debug                  # debug profile
 ```
 
-Or use cargo-make:
-
-```sh
-cargo make build
-```
+`umari deploy` runs the same build and then uploads and activates each module. See [Project Structure](./project-structure.md) for the full CLI.
 
 ### Versioning
 
-Each module crate has a version in its `Cargo.toml`. This version is used by the runtime for module management. Increment versions when you make changes:
+Each module has a version that the runtime uses for lifecycle management. Increment it when you make changes; the runtime tracks versions and supports rolling upgrades, where activating a new version stops the old one gracefully.
+
+{{#tabs global="lang" }}
+{{#tab name="Rust" }}
+
+Set the version in the module's `Cargo.toml`:
 
 ```toml
 [package]
@@ -41,7 +50,20 @@ name = "register-user"
 version = "1.0.18"
 ```
 
-The runtime tracks versions and supports rolling upgrades: activate a new version and the old one stops gracefully.
+{{#endtab }}
+{{#tab name="TypeScript" }}
+
+Set the version in the module's `package.json`:
+
+```json
+{
+  "name": "register-user",
+  "version": "1.0.18"
+}
+```
+
+{{#endtab }}
+{{#endtabs }}
 
 ## Starting the server
 
@@ -80,85 +102,101 @@ The API requires `Authorization: Bearer your-secret-key` on all requests. The We
 
 ## Deploying modules
 
+Most of the time you'll use `umari deploy`, which builds every module in the workspace, uploads it, and activates it in one step. The commands below are the lower-level operations it's built on. Each module type has its own subcommand group: `commands`, `projectors`, and `effects`.
+
 ### Via CLI
 
 ```sh
-# Upload a module
-umari command upload register-user ./register_user.wasm
+# Upload a version (name, version, then the wasm file)
+umari commands upload register-user 1.0.18 ./register_user.wasm
 
-# Activate a version
-umari command activate register-user 1.0.18
+# Upload and activate in one step
+umari commands upload register-user 1.0.18 ./register_user.wasm --activate
+
+# Activate a previously uploaded version
+umari commands activate register-user 1.0.18
 
 # List active modules
-umari module list-active
+umari modules active
 
-# Execute a command
-umari execute register-user '{"user_id": 42, "email": "example.com", ...}'
+# Execute a command (input is passed with --input)
+umari execute register-user --input '{"user_id": 42, "email": "user@example.com"}'
 ```
 
 ### Via API
 
 ```sh
-# Upload
-curl -X POST http://localhost:3000/commands/register-user/upload \
+# Upload a version (the wasm file goes in a multipart "wasm" field)
+curl -X POST "http://localhost:3000/commands/register-user/versions/1.0.18" \
   -H "Authorization: Bearer $UMARI_API_KEY" \
   -F "wasm=@register_user.wasm"
 
-# Activate
-curl -X POST http://localhost:3000/commands/register-user/activate \
+# Activate a version
+curl -X PUT http://localhost:3000/commands/register-user/active \
   -H "Authorization: Bearer $UMARI_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"version": "1.0.18"}'
 
-# Execute
-curl -X POST http://localhost:3000/execute \
+# Execute a command (the request body is the input JSON itself)
+curl -X POST http://localhost:3000/commands/register-user/execute \
   -H "Authorization: Bearer $UMARI_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"command": "register-user", "input": {"user_id": 42, ...}}'
+  -d '{"user_id": 42, "email": "user@example.com"}'
 ```
+
+To make a command idempotent, send a client-generated `idempotency-key` header on execute; the runtime skips execution if an event carrying that key already exists. The projector and effect groups use the same routes under `/projectors/{name}` and `/effects/{name}`.
 
 ## Environment variables for modules
 
-Modules can access environment variables via `env::var()`. Set them per-module:
+Modules read environment variables through the SDK (`env::var` in Rust, `env()` in TypeScript; see [Effects](./effects.md)). Set them per-module:
 
 ```sh
 # Via CLI
-umari effect env set register-webhooks WEBHOOK_ADDRESS "https://webhook.example.com"
+umari effects env register-webhooks set WEBHOOK_ADDRESS "https://webhook.example.com"
 
-# Via API
-curl -X PUT http://localhost:3000/effects/register-webhooks/env \
+# Via API (the key is in the path, the value in the body)
+curl -X PUT http://localhost:3000/effects/register-webhooks/env/WEBHOOK_ADDRESS \
   -H "Authorization: Bearer $UMARI_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"key": "WEBHOOK_ADDRESS", "value": "https://webhook.example.com"}'
+  -d '{"value": "https://webhook.example.com"}'
 ```
 
-The module's `Cargo.toml` can declare default env vars:
+Modules can also ship default env values that apply on upload:
+
+{{#tabs global="lang" }}
+{{#tab name="Rust" }}
+
+Declare them in the module's `Cargo.toml`, and `umari deploy` picks them up automatically:
 
 ```toml
 [package.metadata.umari.env]
 WEBHOOK_ADDRESS = "https://webhook.example.com"
 ```
 
+{{#endtab }}
+{{#tab name="TypeScript" }}
+
+TypeScript modules have no manifest field for this; pass `--env KEY=VALUE` when uploading:
+
+```sh
+umari effects upload register-webhooks 1.0.0 ./register_webhooks.wasm \
+  --env WEBHOOK_ADDRESS=https://webhook.example.com
+```
+
+{{#endtab }}
+{{#endtabs }}
+
 ## Operating
 
 ### Checking health
 
 ```
-GET /commands/{name}/health
-GET /projectors/{name}/health
-GET /effects/{name}/health
+GET /commands/active
+GET /projectors/active
+GET /effects/active
 ```
 
-Returns the current `last_position` for projectors and effects.
-
-### Viewing output
-
-```
-GET /projectors/{name}/output
-GET /effects/{name}/output
-```
-
-Returns stdout/stderr from the module. Useful for debugging effect HTTP errors or projector failures.
+Each returns the active modules of that type along with their liveness and, for projectors and effects, their committed `last_position`. For numeric metrics and alerting, see [Monitoring & Alerting](./monitoring.md).
 
 ### Replaying
 
