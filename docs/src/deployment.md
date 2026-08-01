@@ -65,6 +65,8 @@ umari \
 | `UMARI_LOG` | `umari=info` | Log filter (env_logger format) |
 | `UMARI_NO_BANNER` | (unset) | Set to any value to hide startup banner |
 | `UMARI_VERBOSE` | (unset) | Set to any value for trace-level logging |
+| `UMARI_METRICS_INTERVAL` | `15s` | How often to refresh state-derived metrics; `0` disables the collector. See [Monitoring & Alerting](./monitoring.md) |
+| `UMARI_SHUTDOWN_TIMEOUT` | `10s` | Graceful shutdown timeout |
 
 ### Security
 
@@ -193,4 +195,4 @@ The event store (UmaDB) should be compacted periodically to reclaim space from d
 - [ ] Data directory has sufficient disk space (event store grows indefinitely)
 - [ ] Logging is configured (`UMARI_LOG`)
 - [ ] Backup strategy is in place for UmaDB and `umari.sqlite`
-- [ ] Monitoring is set up for module health endpoints
+- [ ] [Monitoring and alerting](./monitoring.md) are set up (metrics scrape, dashboard, alerts)

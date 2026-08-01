@@ -1,0 +1,81 @@
+groups:
+  - name: umari-runtime
+    # Evaluate at least as often as the runtime's metrics-interval (default 15s).
+    interval: 30s
+    rules:
+      # The runtime (or its /metrics endpoint) stopped reporting entirely.
+      # umari_event_store_head_position is always present while the runtime is up,
+      # so its absence means the scrape target is down.
+      - alert: UmariRuntimeUnreachable
+        expr: absent(umari_event_store_head_position)
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Umari runtime is not reporting metrics"
+          description: "No umari metrics have been scraped for 3m. The runtime process or its /metrics endpoint is down."
+
+      # A projector died. Projectors do NOT auto-restart, so any sustained down
+      # state needs manual reactivation. This is the primary silent-failure alert.
+      - alert: UmariProjectorDown
+        expr: umari_module_up{module_type="projector"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Projector {{ $labels.name }} is down"
+          description: "Projector {{ $labels.name }} has been down for 2m. Projectors do not auto-restart and must be reactivated."
+
+      # An effect is down for longer than its max backoff (~10m), meaning it is
+      # not recovering on its own. Transient restarts are expected and won't fire.
+      - alert: UmariEffectNotRecovering
+        expr: umari_module_up{module_type="effect"} == 0
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Effect {{ $labels.name }} is not recovering"
+          description: "Effect {{ $labels.name }} has been down for 15m, longer than its max restart backoff. It is stuck."
+
+      # An effect keeps crashing and restarting. Catches crash loops without
+      # firing on a single transient restart.
+      - alert: UmariEffectCrashLooping
+        expr: increase(umari_module_restarts_total{module_type="effect"}[15m]) > 5
+        labels:
+          severity: warning
+        annotations:
+          summary: "Effect {{ $labels.name }} is crash-looping"
+          description: "Effect {{ $labels.name }} restarted {{ $value | humanize }} times in the last 15m."
+
+      # A module is a long way behind its own (query-aware) event head.
+      # Tune the 1000 threshold to your event volume.
+      - alert: UmariModuleLagging
+        expr: umari_module_lag{module_type=~"projector|effect"} > 1000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.module_type }} {{ $labels.name }} is lagging"
+          description: "{{ $labels.module_type }} {{ $labels.name }} is {{ $value | humanize }} events behind its query head and has stayed behind for 10m."
+
+      # A module is behind AND has committed no progress for 15m: genuinely
+      # stuck rather than just slow. Combines lag with a no-movement check so it
+      # does not false-positive on low-traffic subscriptions that are caught up.
+      - alert: UmariModuleStalled
+        expr: umari_module_lag{module_type=~"projector|effect"} > 0 and changes(umari_module_last_position{module_type=~"projector|effect"}[15m]) == 0
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.module_type }} {{ $labels.name }} is stalled"
+          description: "{{ $labels.module_type }} {{ $labels.name }} is {{ $value | humanize }} events behind and has made no progress for 15m."
+
+      # A module recovers but keeps dying: flaky, worth investigating even though
+      # it is currently up.
+      - alert: UmariModuleFlapping
+        expr: increase(umari_module_failures_total[1h]) > 3
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.module_type }} {{ $labels.name }} keeps failing"
+          description: "{{ $labels.module_type }} {{ $labels.name }} died {{ $value | humanize }} times in the last hour."

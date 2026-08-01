@@ -1,0 +1,182 @@
+{
+  "title": "Umari Runtime",
+  "rows": [
+    {
+      "title": "Health",
+      "panels": [
+        {
+          "title": "Modules down",
+          "description": "Only modules currently down (up == 0) are plotted. An empty graph means everything is healthy; any line is a module that died. Projectors don't auto-restart, so they stay here until reactivated. Deactivated modules disappear (their gauge expires) rather than showing as down.",
+          "width": 12,
+          "expr": [
+            "umari_module_up == 0"
+          ],
+          "alias": [
+            "{{module_type}}/{{name}}"
+          ]
+        },
+        {
+          "title": "Active modules by type",
+          "description": "Number of activated modules currently reporting, per type. A step down without a matching failure means a module was deactivated.",
+          "width": 6,
+          "expr": [
+            "count(umari_module_up) by (module_type)"
+          ],
+          "alias": [
+            "{{module_type}}"
+          ]
+        },
+        {
+          "title": "Down modules by type",
+          "description": "Count of activated modules currently down, per type. Should sit at 0.",
+          "width": 6,
+          "expr": [
+            "sum(1 - umari_module_up) by (module_type)"
+          ],
+          "alias": [
+            "{{module_type}}"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Lag & freshness",
+      "panels": [
+        {
+          "title": "Event lag (modules behind)",
+          "description": "Only modules with lag > 0 are plotted, measured against each module's own event query so narrowly-subscribed modules don't show false lag. Empty = everything caught up.",
+          "width": 6,
+          "unit": "events",
+          "expr": [
+            "umari_module_lag{module_type=~\"projector|effect\"} > 0"
+          ],
+          "alias": [
+            "{{module_type}}/{{name}}"
+          ]
+        },
+        {
+          "title": "Time since last progress (top 10)",
+          "description": "Seconds since each module last committed progress, ten stalest shown. Grows naturally for low-traffic subscriptions, so read alongside lag rather than alone.",
+          "width": 6,
+          "unit": "seconds",
+          "expr": [
+            "topk(10, time() - umari_module_last_progress_timestamp_seconds{module_type=~\"projector|effect\"})"
+          ],
+          "alias": [
+            "{{module_type}}/{{name}}"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Failures & restarts",
+      "panels": [
+        {
+          "title": "Failures (last 10m)",
+          "description": "Modules that died in the last 10 minutes. Empty during healthy operation; any line is a crash.",
+          "width": 6,
+          "unit": "failures",
+          "expr": [
+            "sum(increase(umari_module_failures_total[10m])) by (module_type, name) > 0"
+          ],
+          "alias": [
+            "{{module_type}}/{{name}}"
+          ]
+        },
+        {
+          "title": "Effect restarts (last 10m)",
+          "description": "Effects that restarted in the last 10 minutes. A sustained line is a crash loop.",
+          "width": 6,
+          "unit": "restarts",
+          "expr": [
+            "sum(increase(umari_module_restarts_total[10m])) by (name) > 0"
+          ],
+          "alias": [
+            "{{name}}"
+          ]
+        },
+        {
+          "title": "Effect restart backoff",
+          "description": "Effects currently backing off. A climbing value means repeated failures at the same event position.",
+          "width": 6,
+          "unit": "seconds",
+          "expr": [
+            "umari_module_backoff_seconds{module_type=\"effect\"} > 0"
+          ],
+          "alias": [
+            "{{name}}"
+          ]
+        },
+        {
+          "title": "Failures (last 24h)",
+          "description": "Modules that died at least once in the last day. Surfaces flaky modules that recover but keep dying.",
+          "width": 6,
+          "unit": "failures",
+          "expr": [
+            "sum(increase(umari_module_failures_total[24h])) by (module_type, name) > 0"
+          ],
+          "alias": [
+            "{{module_type}}/{{name}}"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Event store & throughput",
+      "panels": [
+        {
+          "title": "Event ingestion rate",
+          "description": "New events appended to the event store per second (5m rate).",
+          "width": 6,
+          "unit": "events/sec",
+          "expr": [
+            "rate(umari_event_store_head_position[5m])"
+          ],
+          "alias": [
+            "events/s"
+          ]
+        },
+        {
+          "title": "Event store head position",
+          "description": "Total events in the store.",
+          "width": 6,
+          "unit": "events",
+          "expr": [
+            "umari_event_store_head_position"
+          ],
+          "alias": [
+            "head"
+          ]
+        },
+        {
+          "title": "Module progress rate",
+          "description": "Rate at which each module's committed position advances (approximate activity signal). A drop to 0 while events are still being ingested means a module has stalled.",
+          "width": 12,
+          "unit": "events/sec",
+          "expr": [
+            "sum(rate(umari_module_last_position{module_type=~\"projector|effect\"}[5m])) by (module_type, name)"
+          ],
+          "alias": [
+            "{{module_type}}/{{name}}"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Deployments",
+      "panels": [
+        {
+          "title": "Modules per running version",
+          "description": "Count of active modules on each version, per type. During a rollout the old version's count falls as the new one rises, which is handy for correlating incidents with deploys. To read the exact version of a single module, query umari_module_info directly in the vmui query view.",
+          "width": 12,
+          "expr": [
+            "count(umari_module_info) by (module_type, version)"
+          ],
+          "alias": [
+            "{{module_type}} v{{version}}"
+          ]
+        }
+      ]
+    }
+  ]
+}

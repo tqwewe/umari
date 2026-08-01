@@ -28,6 +28,8 @@
 
 # Runtime & Operations
 
+- [Monitoring & Alerting](./monitoring.md)
+
 <!-- Draft / unreviewed. Files exist on disk but are not yet linked; restore the
      paths below as each chapter is reviewed against the current source. -->
 
