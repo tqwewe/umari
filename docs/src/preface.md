@@ -1,7 +1,5 @@
 # The Umari Book
 
-**Status**: Draft.
-
 This book is the official guide to building event-sourced systems with Umari. It covers concepts, patterns, API reference, and operations: everything you need to go from zero to production.
 
 ## Who this book is for
@@ -14,7 +12,7 @@ You should be comfortable with either **Rust** or **TypeScript**. Umari modules 
 - **Building Blocks**: Read straight through. You'll use every concept here.
 - **Module Types**: Reference each chapter as you build that module type.
 - **Working with Umari**: Practical patterns, project structure, and API reference.
-- **Runtime & Operations**: Read when deploying or debugging. *(These chapters are still in draft.)*
+- **Runtime & Operations**: Read when deploying or debugging.
 
 Code examples follow current API conventions and appear in language tabs: pick Rust or TypeScript once and every snippet in the book follows your choice.
 
