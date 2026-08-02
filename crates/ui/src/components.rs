@@ -28,6 +28,8 @@ pub fn module_summary_table(
         ModuleType::Effect => "effects",
     };
 
+    let show_position = module_type != ModuleType::Command;
+
     html! {
         div class="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" {
             table class="w-full text-sm" {
@@ -36,14 +38,16 @@ pub fn module_summary_table(
                         th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" { "Name" }
                         th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" { "Active Version" }
                         th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" { "Status" }
-                        th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" { "Position" }
+                        @if show_position {
+                            th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" { "Position" }
+                        }
                         th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" { "SHA256" }
                     }
                 }
                 tbody {
                     @if names.is_empty() {
                         tr {
-                            td colspan="5" class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400" { "No modules uploaded yet." }
+                            td colspan=(if show_position { "5" } else { "4" }) class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400" { "No modules uploaded yet." }
                         }
                     }
                     @for name in names {
@@ -79,9 +83,11 @@ pub fn module_summary_table(
                                     span class="text-amber-500" { "● Not running" }
                                 }
                             }
-                            td class="px-4 py-3 text-gray-500 dark:text-gray-400 font-mono text-xs" {
-                                @if let Some(pos) = module_health.and_then(|h| h.last_position) {
-                                    (pos)
+                            @if show_position {
+                                td class="px-4 py-3 text-gray-500 dark:text-gray-400 font-mono text-xs" {
+                                    @if let Some(pos) = module_health.and_then(|h| h.last_position) {
+                                        (pos)
+                                    }
                                 }
                             }
                             td class="px-4 py-3 text-gray-500 dark:text-gray-400 font-mono text-xs" {
