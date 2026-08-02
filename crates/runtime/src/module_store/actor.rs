@@ -104,6 +104,16 @@ impl ModuleStoreActor {
     }
 
     #[message]
+    pub fn delete_module_version(
+        &mut self,
+        module_type: ModuleType,
+        name: Arc<str>,
+        version: Version,
+    ) -> Result<bool, ModuleStoreError> {
+        self.store.delete_module_version(module_type, &name, version)
+    }
+
+    #[message]
     pub fn get_active_module(
         &self,
         module_type: ModuleType,
@@ -213,6 +223,33 @@ impl Message<DeactivateModule> for ModuleStoreActor {
                     .map_err(|err| ModuleStoreError::ModulePubSubSendError(err.map_msg(|_| ())))?;
             }
             Ok(())
+        }
+    }
+}
+
+pub struct DeleteModule {
+    pub module_type: ModuleType,
+    pub name: Arc<str>,
+}
+
+impl Message<DeleteModule> for ModuleStoreActor {
+    type Reply = Result<bool, ModuleStoreError>;
+
+    fn handle(
+        &mut self,
+        DeleteModule { module_type, name }: DeleteModule,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> impl Future<Output = Self::Reply> + Send {
+        let res = self.store.delete_module(module_type, &name);
+        async move {
+            let deleted = res?;
+            if deleted {
+                self.module_pubsub
+                    .tell(Publish(ModuleEvent::Deleted { module_type, name }))
+                    .await
+                    .map_err(|err| ModuleStoreError::ModulePubSubSendError(err.map_msg(|_| ())))?;
+            }
+            Ok(deleted)
         }
     }
 }

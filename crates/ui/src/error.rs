@@ -53,6 +53,7 @@ impl From<ModuleStoreError> for HtmlError {
         let status = match &err {
             ModuleStoreError::ModuleNotFound { .. } => StatusCode::NOT_FOUND,
             ModuleStoreError::ModuleAlreadyExists => StatusCode::CONFLICT,
+            ModuleStoreError::CannotDeleteActiveVersion { .. } => StatusCode::CONFLICT,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
         HtmlError::new(status, err.to_string())

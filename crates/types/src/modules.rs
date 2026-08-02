@@ -127,6 +127,36 @@ pub struct DeactivateResponse {
     pub previous_version: Option<String>,
 }
 
+// ========== Delete Responses ==========
+
+#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DeleteModuleResponse {
+    /// Type of module
+    #[serde(rename = "module_type")]
+    pub module_type: String,
+    /// Module name
+    pub name: String,
+    /// True if the module existed and was deleted
+    pub deleted: bool,
+    /// Number of versions that were removed
+    pub versions_deleted: usize,
+}
+
+#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DeleteVersionResponse {
+    /// Type of module
+    #[serde(rename = "module_type")]
+    pub module_type: String,
+    /// Module name
+    pub name: String,
+    /// Version that was targeted
+    pub version: String,
+    /// True if the version existed and was deleted
+    pub deleted: bool,
+}
+
 // ========== Replay Response ==========
 
 #[derive(Serialize, Deserialize)]

@@ -31,13 +31,15 @@ use crate::routes::{
     metrics::metrics,
     modules::{
         activate_command, activate_effect, activate_projector, deactivate_command,
-        deactivate_effect, deactivate_projector, delete_command_env_var, delete_effect_env_var,
-        delete_projector_env_var, get_command_details, get_command_env_vars, get_command_health,
-        get_command_version_details, get_effect_details, get_effect_env_vars, get_effect_health,
-        get_effect_version_details, get_projector_details, get_projector_env_vars,
-        get_projector_health, get_projector_version_details, list_active_modules, list_commands,
-        list_effects, list_projectors, replay_effect, replay_projector, set_command_env_var,
-        set_effect_env_var, set_projector_env_var, upload_command, upload_effect, upload_projector,
+        deactivate_effect, deactivate_projector, delete_command, delete_command_env_var,
+        delete_command_version, delete_effect, delete_effect_env_var, delete_effect_version,
+        delete_projector, delete_projector_env_var, delete_projector_version, get_command_details,
+        get_command_env_vars, get_command_health, get_command_version_details, get_effect_details,
+        get_effect_env_vars, get_effect_health, get_effect_version_details, get_projector_details,
+        get_projector_env_vars, get_projector_health, get_projector_version_details,
+        list_active_modules, list_commands, list_effects, list_projectors, replay_effect,
+        replay_projector, set_command_env_var, set_effect_env_var, set_projector_env_var,
+        upload_command, upload_effect, upload_projector,
     },
 };
 use umari_types::*;
@@ -63,6 +65,12 @@ use umari_types::*;
         routes::modules::deactivate_command,
         routes::modules::deactivate_projector,
         routes::modules::deactivate_effect,
+        routes::modules::delete_command,
+        routes::modules::delete_projector,
+        routes::modules::delete_effect,
+        routes::modules::delete_command_version,
+        routes::modules::delete_projector_version,
+        routes::modules::delete_effect_version,
         routes::modules::replay_projector,
         routes::modules::replay_effect,
         routes::modules::list_active_modules,
@@ -237,6 +245,11 @@ pub async fn start_server(addr: impl ToSocketAddrs, state: AppState) -> io::Resu
         )
         .route("/commands/{name}/active", put(activate_command))
         .route("/commands/{name}/active", delete(deactivate_command))
+        .route("/commands/{name}", delete(delete_command))
+        .route(
+            "/commands/{name}/versions/{version}",
+            delete(delete_command_version),
+        )
         // Command execution (new path)
         .route("/commands/{name}/execute", post(execute))
         // Projector module management
@@ -252,6 +265,11 @@ pub async fn start_server(addr: impl ToSocketAddrs, state: AppState) -> io::Resu
         )
         .route("/projectors/{name}/active", put(activate_projector))
         .route("/projectors/{name}/active", delete(deactivate_projector))
+        .route("/projectors/{name}", delete(delete_projector))
+        .route(
+            "/projectors/{name}/versions/{version}",
+            delete(delete_projector_version),
+        )
         .route("/projectors/{name}/replay", post(replay_projector))
         // Effect module management
         .route("/effects/{name}/versions/{version}", post(upload_effect))
@@ -263,6 +281,11 @@ pub async fn start_server(addr: impl ToSocketAddrs, state: AppState) -> io::Resu
         )
         .route("/effects/{name}/active", put(activate_effect))
         .route("/effects/{name}/active", delete(deactivate_effect))
+        .route("/effects/{name}", delete(delete_effect))
+        .route(
+            "/effects/{name}/versions/{version}",
+            delete(delete_effect_version),
+        )
         .route("/effects/{name}/replay", post(replay_effect))
         // Command env vars
         .route("/commands/{name}/env", get(get_command_env_vars))

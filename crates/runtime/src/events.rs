@@ -16,4 +16,8 @@ pub enum ModuleEvent {
         module_type: ModuleType,
         name: Arc<str>,
     },
+    Deleted {
+        module_type: ModuleType,
+        name: Arc<str>,
+    },
 }

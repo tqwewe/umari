@@ -434,7 +434,8 @@ impl Message<ModuleEvent> for CommandActor {
                     });
                 }
             }
-            ModuleEvent::Deactivated { module_type, name } => {
+            ModuleEvent::Deactivated { module_type, name }
+            | ModuleEvent::Deleted { module_type, name } => {
                 if module_type == ModuleType::Command
                     && let Some(module) = self.components.remove(&name)
                 {

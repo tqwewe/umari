@@ -240,6 +240,71 @@ impl SqliteModuleStore {
         Ok(rows_affected > 0)
     }
 
+    pub fn delete_module_version(
+        &mut self,
+        module_type: ModuleType,
+        name: &str,
+        version: Version,
+    ) -> Result<bool, ModuleStoreError> {
+        let tx = self.conn.transaction()?;
+
+        let module_id: Option<i64> = tx
+            .query_row(
+                "SELECT id FROM modules WHERE module_type = ?1 AND name = ?2 AND version = ?3",
+                params![module_type, name, version.to_string()],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        let Some(module_id) = module_id else {
+            return Ok(false);
+        };
+
+        let is_active: bool = tx
+            .query_row(
+                "SELECT 1 FROM active_modules WHERE module_id = ?1",
+                params![module_id],
+                |_| Ok(()),
+            )
+            .optional()?
+            .is_some();
+        if is_active {
+            return Err(ModuleStoreError::CannotDeleteActiveVersion {
+                module_type,
+                name: name.to_string(),
+                version,
+            });
+        }
+
+        let rows_affected = tx.execute("DELETE FROM modules WHERE id = ?1", params![module_id])?;
+        tx.commit()?;
+
+        Ok(rows_affected > 0)
+    }
+
+    pub fn delete_module(
+        &mut self,
+        module_type: ModuleType,
+        name: &str,
+    ) -> Result<bool, ModuleStoreError> {
+        let tx = self.conn.transaction()?;
+        tx.execute(
+            "DELETE FROM active_modules WHERE module_type = ?1 AND name = ?2",
+            params![module_type, name],
+        )?;
+        tx.execute(
+            "DELETE FROM module_env_vars WHERE module_type = ?1 AND name = ?2",
+            params![module_type, name],
+        )?;
+        let rows_affected = tx.execute(
+            "DELETE FROM modules WHERE module_type = ?1 AND name = ?2",
+            params![module_type, name],
+        )?;
+        tx.commit()?;
+
+        Ok(rows_affected > 0)
+    }
+
     pub fn get_all_active_modules(
         &self,
         module_type: Option<ModuleType>,
@@ -710,6 +775,146 @@ mod active_tests {
             .get_active_module(ModuleType::Command, "hello")
             .unwrap();
         assert!(active.is_none());
+    }
+
+    #[test]
+    fn test_delete_inactive_version() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        let mut store = SqliteModuleStore::new(conn);
+        store.init().unwrap();
+
+        store
+            .save_module(
+                ModuleType::Command,
+                "hello",
+                "0.1.0".parse().unwrap(),
+                BTreeMap::new(),
+                &[1],
+            )
+            .unwrap();
+        store
+            .save_module(
+                ModuleType::Command,
+                "hello",
+                "0.2.0".parse().unwrap(),
+                BTreeMap::new(),
+                &[2],
+            )
+            .unwrap();
+        store
+            .activate_module(ModuleType::Command, "hello", "0.2.0".parse().unwrap())
+            .unwrap();
+
+        let deleted = store
+            .delete_module_version(ModuleType::Command, "hello", "0.1.0".parse().unwrap())
+            .unwrap();
+        assert!(deleted);
+
+        let versions = store
+            .get_module_versions(ModuleType::Command, "hello")
+            .unwrap();
+        assert_eq!(versions.len(), 1);
+        assert_eq!(versions[0].version.to_string(), "0.2.0");
+    }
+
+    #[test]
+    fn test_delete_active_version_blocked() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        let mut store = SqliteModuleStore::new(conn);
+        store.init().unwrap();
+
+        store
+            .save_module(
+                ModuleType::Command,
+                "hello",
+                "0.1.0".parse().unwrap(),
+                BTreeMap::new(),
+                &[1],
+            )
+            .unwrap();
+        store
+            .activate_module(ModuleType::Command, "hello", "0.1.0".parse().unwrap())
+            .unwrap();
+
+        let result =
+            store.delete_module_version(ModuleType::Command, "hello", "0.1.0".parse().unwrap());
+        assert!(matches!(
+            result,
+            Err(ModuleStoreError::CannotDeleteActiveVersion { .. })
+        ));
+    }
+
+    #[test]
+    fn test_delete_missing_version() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        let mut store = SqliteModuleStore::new(conn);
+        store.init().unwrap();
+
+        let deleted = store
+            .delete_module_version(ModuleType::Command, "hello", "0.1.0".parse().unwrap())
+            .unwrap();
+        assert!(!deleted);
+    }
+
+    #[test]
+    fn test_delete_module_cascades() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        let mut store = SqliteModuleStore::new(conn);
+        store.init().unwrap();
+
+        store
+            .save_module(
+                ModuleType::Command,
+                "hello",
+                "0.1.0".parse().unwrap(),
+                BTreeMap::from([("KEY".to_string(), "value".to_string())]),
+                &[1],
+            )
+            .unwrap();
+        store
+            .save_module(
+                ModuleType::Command,
+                "hello",
+                "0.2.0".parse().unwrap(),
+                BTreeMap::new(),
+                &[2],
+            )
+            .unwrap();
+        store
+            .activate_module(ModuleType::Command, "hello", "0.2.0".parse().unwrap())
+            .unwrap();
+
+        let deleted = store.delete_module(ModuleType::Command, "hello").unwrap();
+        assert!(deleted);
+
+        assert!(
+            store
+                .get_module_versions(ModuleType::Command, "hello")
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            store
+                .get_active_module(ModuleType::Command, "hello")
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            store
+                .get_env_vars(ModuleType::Command, "hello")
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn test_delete_missing_module() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        let mut store = SqliteModuleStore::new(conn);
+        store.init().unwrap();
+
+        let deleted = store.delete_module(ModuleType::Command, "hello").unwrap();
+        assert!(!deleted);
     }
 }
 

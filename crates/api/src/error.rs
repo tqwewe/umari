@@ -123,6 +123,9 @@ impl AsErrorCode for umari_runtime::module_store::ModuleStoreError {
             umari_runtime::module_store::ModuleStoreError::ModuleNotFound { .. } => {
                 ErrorCode::NotFound
             }
+            umari_runtime::module_store::ModuleStoreError::CannotDeleteActiveVersion { .. } => {
+                ErrorCode::InvalidInput
+            }
             umari_runtime::module_store::ModuleStoreError::ModulePubSubSendError(_) => {
                 ErrorCode::Internal
             }

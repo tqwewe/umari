@@ -21,7 +21,10 @@ use umari_runtime::{
 };
 
 use crate::routes::{
-    activate::{activate, deactivate},
+    activate::{
+        activate, deactivate, delete_command_module, delete_effect_module,
+        delete_projector_module, delete_version,
+    },
     active::list_active,
     commands::{get_command, list_commands},
     effects::{get_effect, list_effects, query_effect},
@@ -53,16 +56,23 @@ pub fn ui_router(state: UiState) -> Router {
         .route("/", get(index))
         .route("/ui/commands", get(list_commands))
         .route("/ui/commands/{name}", get(get_command))
+        .route("/ui/commands/{name}", delete(delete_command_module))
         .route("/ui/projectors", get(list_projectors))
         .route("/ui/projectors/{name}", get(get_projector))
+        .route("/ui/projectors/{name}", delete(delete_projector_module))
         .route("/ui/projectors/{name}/query", post(query_projector))
         .route("/ui/effects", get(list_effects))
         .route("/ui/effects/{name}", get(get_effect))
+        .route("/ui/effects/{name}", delete(delete_effect_module))
         .route("/ui/effects/{name}/query", post(query_effect))
         .route("/ui/active", get(list_active))
         .route("/ui/upload/{module_type}", post(upload_module))
         .route("/ui/{module_type}/{name}/active", put(activate))
         .route("/ui/{module_type}/{name}/active", delete(deactivate))
+        .route(
+            "/ui/{module_type}/{name}/versions/{version}",
+            delete(delete_version),
+        )
         .route("/ui/commands/{name}/execute", post(execute_command))
         .route("/ui/{module_type}/{name}/replay", post(replay))
         .route("/ui/{module_type}/{name}/env", post(set_env_var))

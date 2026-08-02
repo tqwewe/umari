@@ -285,28 +285,39 @@ pub fn versions_table(
                                 }
                             }
                             td class="px-4 py-3 text-right" {
-                                @if is_active {
-                                    button
-                                        hx-delete={"/ui/" (module_type_str) "/" (name) "/active"}
-                                        hx-target={"#" (table_id)}
-                                        hx-swap="outerHTML"
-                                        class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                                        { "Deactivate" }
-                                } @else if major_differs {
-                                    @let modal_id = format!("confirm-activate-{name}-{}", info.version);
-                                    button
-                                        type="button"
-                                        onclick={"document.getElementById('" (modal_id) "').showModal()"}
-                                        class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
-                                        { "Activate" }
-                                } @else {
-                                    button
-                                        hx-put={"/ui/" (module_type_str) "/" (name) "/active"}
-                                        hx-vals={"{\"version\":\"" (info.version) "\"}"}
-                                        hx-target={"#" (table_id)}
-                                        hx-swap="outerHTML"
-                                        class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
-                                        { "Activate" }
+                                div class="flex items-center justify-end gap-2" {
+                                    @if is_active {
+                                        button
+                                            hx-delete={"/ui/" (module_type_str) "/" (name) "/active"}
+                                            hx-target={"#" (table_id)}
+                                            hx-swap="outerHTML"
+                                            class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                                            { "Deactivate" }
+                                    } @else if major_differs {
+                                        @let modal_id = format!("confirm-activate-{name}-{}", info.version);
+                                        button
+                                            type="button"
+                                            onclick={"document.getElementById('" (modal_id) "').showModal()"}
+                                            class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+                                            { "Activate" }
+                                    } @else {
+                                        button
+                                            hx-put={"/ui/" (module_type_str) "/" (name) "/active"}
+                                            hx-vals={"{\"version\":\"" (info.version) "\"}"}
+                                            hx-target={"#" (table_id)}
+                                            hx-swap="outerHTML"
+                                            class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+                                            { "Activate" }
+                                    }
+                                    @if !is_active {
+                                        button
+                                            hx-delete={"/ui/" (module_type_str) "/" (name) "/versions/" (info.version)}
+                                            hx-target={"#" (table_id)}
+                                            hx-swap="outerHTML"
+                                            hx-confirm={"Delete version " (info.version) "?"}
+                                            class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                            { "Delete" }
+                                    }
                                 }
                             }
                         }
@@ -314,6 +325,53 @@ pub fn versions_table(
                 }
             }
         }
+    }
+}
+
+pub fn delete_module_button(module_type: ModuleType, name: &str) -> Markup {
+    let module_type_str = match module_type {
+        ModuleType::Command => "commands",
+        ModuleType::Projector => "projectors",
+        ModuleType::Effect => "effects",
+    };
+    let builds_state = module_type != ModuleType::Command;
+
+    html! {
+        dialog
+            id="confirm-delete-module"
+            onclick="if(event.target===this)this.close()"
+            class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl backdrop:bg-black/40 p-0 w-full max-w-md"
+        {
+            div class="p-6" {
+                h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2" { "Delete Module" }
+                p class="text-sm text-gray-600 dark:text-gray-400 mb-4" {
+                    "This permanently deletes " strong { (name) } " and all of its versions"
+                    @if builds_state { " along with any state it has built up" }
+                    ". This cannot be undone."
+                }
+                div class="flex justify-end gap-2" {
+                    button
+                        type="button"
+                        onclick="document.getElementById('confirm-delete-module').close()"
+                        class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                        { "Cancel" }
+                    button
+                        type="button"
+                        hx-delete={"/ui/" (module_type_str) "/" (name)}
+                        hx-target="#delete-module-status"
+                        hx-swap="innerHTML"
+                        onclick="document.getElementById('confirm-delete-module').close()"
+                        class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-red-600 text-white hover:bg-red-700 transition-colors"
+                        { "Delete Module" }
+                }
+            }
+        }
+        button
+            type="button"
+            onclick="document.getElementById('confirm-delete-module').showModal()"
+            class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+            { "Delete module" }
+        div id="delete-module-status" class="text-xs text-red-700" {}
     }
 }
 

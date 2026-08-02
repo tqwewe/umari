@@ -1,4 +1,11 @@
-use std::{collections::HashMap, fs, ops::ControlFlow, path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    fs,
+    ops::ControlFlow,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Duration,
+};
 
 use kameo::{prelude::*, supervision::RestartPolicy};
 use kameo_actors::pubsub::{PubSub, Subscribe};
@@ -56,6 +63,9 @@ pub struct ModuleSupervisor<A: EventHandlerModule> {
     /// Modules waiting for their predecessor to stop before spawning.
     /// Keyed by the stopping actor's ID; value is (module name, pending info).
     pending: HashMap<ActorId, (Arc<str>, PendingModule)>,
+    /// Deleted modules whose state files are removed once their actor stops.
+    /// Keyed by the stopping actor's ID; value is the module name.
+    pending_deletions: HashMap<ActorId, Arc<str>>,
     backoff: HashMap<Arc<str>, ModuleBackoffState>,
     args: A::Args,
 }
@@ -127,6 +137,7 @@ impl<A: EventHandlerModule> Actor for ModuleSupervisor<A> {
             module_pubsub: args.module_pubsub,
             modules: HashMap::with_capacity(active_modules.len()),
             pending: HashMap::new(),
+            pending_deletions: HashMap::new(),
             backoff: HashMap::new(),
             args: args.args,
         };
@@ -190,6 +201,22 @@ impl<A: EventHandlerModule> Actor for ModuleSupervisor<A> {
             );
             self.spawn_module(&supervisor_ref, name, pending, false)
                 .await?;
+            return Ok(ControlFlow::Continue(()));
+        }
+
+        if let Some(name) = self.pending_deletions.remove(&id) {
+            // Skip removal if a same-named module was re-created while the old
+            // actor was stopping; those files now belong to the new module.
+            if self.modules.contains_key(&name) {
+                debug!(
+                    module_type = %A::MODULE_TYPE,
+                    %name,
+                    "skipping deleted module's state removal; a new module reuses the name"
+                );
+            } else {
+                self.remove_state_files(&name);
+                info!(module_type = %A::MODULE_TYPE, %name, "module deleted");
+            }
             return Ok(ControlFlow::Continue(()));
         }
 
@@ -318,10 +345,25 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
         Ok(())
     }
 
-    fn module_log_path(&self, name: &str) -> std::path::PathBuf {
+    fn module_log_path(&self, name: &str) -> PathBuf {
         self.data_dir
             .join(A::MODULE_TYPE.to_string())
             .join(format!("{}.log", name))
+    }
+
+    fn state_db_path(&self, name: &str) -> PathBuf {
+        self.data_dir
+            .join(A::MODULE_TYPE.to_string())
+            .join(format!("{}.sqlite", name))
+    }
+
+    fn remove_state_db(&self, name: &str) {
+        remove_state_db_files(&self.state_db_path(name));
+    }
+
+    fn remove_state_files(&self, name: &str) {
+        remove_state_db_files(&self.state_db_path(name));
+        let _ = fs::remove_file(self.module_log_path(name));
     }
 
     fn read_last_position(&self, name: &str) -> Option<u64> {
@@ -432,13 +474,7 @@ impl<A: EventHandlerModule> ModuleSupervisor<A> {
         startup: bool,
     ) -> Result<(), ModuleError> {
         if pending.reset_db {
-            let db_path = self
-                .data_dir
-                .join(A::MODULE_TYPE.to_string())
-                .join(format!("{}.sqlite", &name));
-            let _ = fs::remove_file(&db_path);
-            let _ = fs::remove_file(format!("{}-wal", db_path.display()));
-            let _ = fs::remove_file(format!("{}-shm", db_path.display()));
+            self.remove_state_db(&name);
         }
 
         let env_vars = self
@@ -519,6 +555,12 @@ impl<A: EventHandlerModule> Clone for VersionedModule<A> {
     }
 }
 
+fn remove_state_db_files(db_path: &Path) {
+    let _ = fs::remove_file(db_path);
+    let _ = fs::remove_file(format!("{}-wal", db_path.display()));
+    let _ = fs::remove_file(format!("{}-shm", db_path.display()));
+}
+
 impl<A: EventHandlerModule> Message<ModuleEvent> for ModuleSupervisor<A> {
     type Reply = Result<(), ModuleError>;
 
@@ -589,6 +631,28 @@ impl<A: EventHandlerModule> Message<ModuleEvent> for ModuleSupervisor<A> {
                             let _ = actor.stop_gracefully().await;
                             info!(module_type = %A::MODULE_TYPE, name = %module_name, %version, "module unloaded");
                         });
+                    }
+                }
+            }
+            ModuleEvent::Deleted { module_type, name } => {
+                if module_type == A::MODULE_TYPE {
+                    self.backoff.remove(&name);
+                    if let Some(module) = self.modules.remove(&name)
+                        && module.actor_ref.is_alive()
+                    {
+                        // Defer file removal until on_link_died reaps the stopped
+                        // actor, which sequences it on the supervisor thread and
+                        // lets us skip removal if a same-named module was since
+                        // re-created (its files would otherwise be unlinked).
+                        let old_id = module.actor_ref.id();
+                        self.pending_deletions.insert(old_id, name);
+                        let old_actor = module.actor_ref.clone();
+                        tokio::spawn(async move {
+                            let _ = old_actor.stop_gracefully().await;
+                        });
+                    } else {
+                        self.remove_state_files(&name);
+                        info!(module_type = %A::MODULE_TYPE, %name, "module deleted");
                     }
                 }
             }

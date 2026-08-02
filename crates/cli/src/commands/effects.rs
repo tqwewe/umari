@@ -3,11 +3,11 @@ use std::{collections::BTreeMap, path::PathBuf};
 use anyhow::Result;
 use colored::Colorize;
 use umari_types::{
-    ActivateRequest, ListModulesResponse, ModuleDetailsResponse, ReplayResponse,
-    VersionDetailsResponse,
+    ActivateRequest, DeleteModuleResponse, DeleteVersionResponse, ListModulesResponse,
+    ModuleDetailsResponse, ReplayResponse, VersionDetailsResponse,
 };
 
-use crate::{client::ApiClient, output};
+use crate::{client::ApiClient, commands::confirm_destructive, output};
 
 pub fn upload(
     client: &ApiClient,
@@ -105,6 +105,43 @@ pub fn deactivate(client: &ApiClient, name: String) -> Result<()> {
     println!("{} deactivated {name}", "✓".green());
     if let Some(prev) = response.previous_version {
         println!("  version was: {prev}");
+    }
+
+    Ok(())
+}
+
+pub fn delete(
+    client: &ApiClient,
+    name: String,
+    version: Option<String>,
+    yes: bool,
+) -> Result<()> {
+    if let Some(version) = version {
+        let path = format!("/effects/{name}/versions/{version}");
+        let response: DeleteVersionResponse = client.delete(&path)?;
+        if response.deleted {
+            println!("{} deleted {name} v{version}", "✓".green());
+        } else {
+            println!("{} {name} v{version} not found", "!".yellow());
+        }
+        return Ok(());
+    }
+
+    if !yes && !confirm_destructive(&format!("delete effect '{name}' and all its versions?"))? {
+        println!("aborted");
+        return Ok(());
+    }
+
+    let path = format!("/effects/{name}");
+    let response: DeleteModuleResponse = client.delete(&path)?;
+    if response.deleted {
+        println!(
+            "{} deleted effect {name} ({} versions)",
+            "✓".green(),
+            response.versions_deleted
+        );
+    } else {
+        println!("{} effect {name} not found", "!".yellow());
     }
 
     Ok(())

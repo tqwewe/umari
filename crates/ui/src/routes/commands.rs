@@ -19,8 +19,8 @@ use umari_runtime::{
 use crate::{
     UiState,
     components::{
-        ModuleHealth, env_vars_panel, execute_form, module_summary_table, output, tabs,
-        upload_form, versions_table,
+        ModuleHealth, delete_module_button, env_vars_panel, execute_form, module_summary_table,
+        output, tabs, upload_form, versions_table,
     },
     error::HtmlError,
     htmx::respond,
@@ -122,7 +122,12 @@ pub async fn get_command(
             hx-push-url="/ui/commands"
             class="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 mb-6"
             { "← Back to Commands" }
-        h2 class="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-6" { "Command: " (name) }
+        div class="flex items-start justify-between gap-4 mb-6" {
+            h2 class="text-2xl font-semibold text-gray-900 dark:text-gray-100" { "Command: " (name) }
+            div class="flex flex-col items-end gap-1" {
+                (delete_module_button(ModuleType::Command, &name))
+            }
+        }
         div class="mt-6" {
             (tabs(&format!("tabs-command-{name}"), vec![
                 ("Versions", versions_panel),

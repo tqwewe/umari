@@ -81,6 +81,13 @@ pub enum ModuleStoreError {
         version: Version,
     },
 
+    #[error("cannot delete active version: {module_type}/{name}/{version}")]
+    CannotDeleteActiveVersion {
+        module_type: ModuleType,
+        name: String,
+        version: Version,
+    },
+
     #[error("module pubsub error: {0}")]
     ModulePubSubSendError(SendError),
 }

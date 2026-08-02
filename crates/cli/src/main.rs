@@ -147,6 +147,16 @@ enum CommandsSubcommand {
         /// module name
         name: String,
     },
+    /// delete a command module, or a single version when one is given
+    Delete {
+        /// module name
+        name: String,
+        /// specific version to delete (deletes the whole module when omitted)
+        version: Option<String>,
+        /// skip the confirmation prompt
+        #[arg(long)]
+        yes: bool,
+    },
     /// manage environment variables for a command module
     Env {
         /// module name
@@ -200,6 +210,16 @@ enum ProjectorsSubcommand {
     Deactivate {
         /// module name
         name: String,
+    },
+    /// delete a projector module, or a single version when one is given
+    Delete {
+        /// module name
+        name: String,
+        /// specific version to delete (deletes the whole module when omitted)
+        version: Option<String>,
+        /// skip the confirmation prompt
+        #[arg(long)]
+        yes: bool,
     },
     /// reset and replay a projector module from position 0
     Replay {
@@ -259,6 +279,16 @@ enum EffectsSubcommand {
     Deactivate {
         /// module name
         name: String,
+    },
+    /// delete an effect module, or a single version when one is given
+    Delete {
+        /// module name
+        name: String,
+        /// specific version to delete (deletes the whole module when omitted)
+        version: Option<String>,
+        /// skip the confirmation prompt
+        #[arg(long)]
+        yes: bool,
     },
     /// reset and replay an effect module from position 0
     Replay {
@@ -424,6 +454,9 @@ fn main() -> Result<()> {
             CommandsSubcommand::Deactivate { name } => {
                 commands::commands::deactivate(&client, name)
             }
+            CommandsSubcommand::Delete { name, version, yes } => {
+                commands::commands::delete(&client, name, version, yes)
+            }
             CommandsSubcommand::Env { name, action } => match action {
                 EnvAction::List => commands::env_vars::list(&client, "commands", &name),
                 EnvAction::Set { key, value } => {
@@ -461,6 +494,9 @@ fn main() -> Result<()> {
             ProjectorsSubcommand::Deactivate { name } => {
                 commands::projectors::deactivate(&client, name)
             }
+            ProjectorsSubcommand::Delete { name, version, yes } => {
+                commands::projectors::delete(&client, name, version, yes)
+            }
             ProjectorsSubcommand::Replay { name } => commands::projectors::replay(&client, name),
             ProjectorsSubcommand::Env { name, action } => match action {
                 EnvAction::List => commands::env_vars::list(&client, "projectors", &name),
@@ -497,6 +533,9 @@ fn main() -> Result<()> {
                 commands::effects::activate(&client, name, version)
             }
             EffectsSubcommand::Deactivate { name } => commands::effects::deactivate(&client, name),
+            EffectsSubcommand::Delete { name, version, yes } => {
+                commands::effects::delete(&client, name, version, yes)
+            }
             EffectsSubcommand::Replay { name } => commands::effects::replay(&client, name),
             EffectsSubcommand::Env { name, action } => match action {
                 EnvAction::List => commands::env_vars::list(&client, "effects", &name),
