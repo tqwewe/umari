@@ -80,6 +80,8 @@ pub use indexmap::indexmap as domain_ids;
 pub use umari_macros::{DomainIds, Event, EventSet, FromDomainIds, export_command};
 use uuid::{Uuid, uuid};
 
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 pub mod command;
 pub mod domain_id;
 pub mod emit;

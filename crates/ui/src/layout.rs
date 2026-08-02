@@ -93,6 +93,7 @@ fn page_inner(title: &str, content: Markup, wide: bool) -> Markup {
                             span { "⎋" }
                             span { "Sign out" }
                         }
+                        p class="px-3 pt-1 text-xs text-gray-400 dark:text-gray-600" { "v" (umari_core::VERSION) }
                     }
                 }
                 div class="ml-52 flex-1 min-h-screen" {
