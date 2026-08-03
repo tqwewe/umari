@@ -1514,25 +1514,116 @@ const JSON_HIGHLIGHT_JS: &str = r#"
 })();
 "#;
 
+const PROJECTION_EDITOR_JS: &str = r#"
+(function() {
+  var VER = '5.65.16';
+  var BASE = 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/' + VER + '/';
+  var LS = 'umari-projections';
+  function store() { try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch (e) { return {}; } }
+  function persist(s) { localStorage.setItem(LS, JSON.stringify(s)); }
+  function css(href) {
+    if (document.querySelector('link[href="' + href + '"]')) return;
+    var l = document.createElement('link'); l.rel = 'stylesheet'; l.href = href;
+    document.head.appendChild(l);
+  }
+  function js(src, cb) {
+    var ex = document.querySelector('script[src="' + src + '"]');
+    if (ex) { if (ex.__loaded) cb(); else ex.addEventListener('load', cb); return; }
+    var s = document.createElement('script'); s.src = src;
+    s.addEventListener('load', function() { s.__loaded = true; cb(); });
+    document.head.appendChild(s);
+  }
+  function refresh(sel) {
+    var s = store(); var cur = sel.value;
+    sel.innerHTML = '';
+    var o = document.createElement('option'); o.value = ''; o.textContent = 'Saved projections…';
+    sel.appendChild(o);
+    Object.keys(s).sort().forEach(function(name) {
+      var op = document.createElement('option'); op.value = name; op.textContent = name;
+      sel.appendChild(op);
+    });
+    sel.value = cur;
+  }
+  function init() {
+    var ta = document.getElementById('projection-script');
+    if (!ta || ta.__cm) return;
+    ta.__cm = true;
+    var dark = document.documentElement.classList.contains('dark');
+    var cm = CodeMirror.fromTextArea(ta, {
+      mode: 'javascript', lineNumbers: true, tabSize: 2, indentUnit: 2,
+      lineWrapping: false, theme: dark ? 'material-darker' : 'default'
+    });
+    cm.setSize(null, 380);
+    window.__umariCM = cm;
+    if (!window.__umariCMHooked) {
+      window.__umariCMHooked = true;
+      document.body.addEventListener('htmx:configRequest', function() {
+        if (window.__umariCM) window.__umariCM.save();
+      });
+    }
+    var sel = document.getElementById('projection-saved');
+    refresh(sel);
+    sel.addEventListener('change', function() {
+      var s = store();
+      if (sel.value && s[sel.value] != null) cm.setValue(s[sel.value]);
+    });
+    document.getElementById('projection-save').addEventListener('click', function() {
+      var name = window.prompt('Save projection as:', sel.value || '');
+      if (!name || !(name = name.trim())) return;
+      var s = store(); s[name] = cm.getValue(); persist(s);
+      refresh(sel); sel.value = name;
+    });
+    document.getElementById('projection-delete').addEventListener('click', function() {
+      if (!sel.value) return;
+      if (!window.confirm('Delete saved projection "' + sel.value + '"?')) return;
+      var s = store(); delete s[sel.value]; persist(s);
+      refresh(sel); sel.value = '';
+    });
+  }
+  function boot() {
+    if (window.CodeMirror) { init(); return; }
+    css(BASE + 'codemirror.min.css');
+    css(BASE + 'theme/material-darker.min.css');
+    js(BASE + 'codemirror.min.js', function() {
+      js(BASE + 'mode/javascript/javascript.min.js', init);
+    });
+  }
+  boot();
+})();
+"#;
+
 /// The editor + run form for the Explore (in-memory projection) page.
 pub fn projection_editor(run_url: &str, starter_script: &str) -> Markup {
+    let toolbar_btn = "px-2.5 py-1.5 text-xs font-medium rounded-md border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors";
     html! {
         section class="flex flex-col gap-4" {
             form
                 hx-post=(run_url)
                 hx-target="#projection-results"
                 hx-swap="innerHTML"
+                hx-indicator="#projection-progress"
+                hx-disabled-elt="#projection-run"
                 class="flex flex-col gap-3"
             {
+                div class="flex items-center gap-2" {
+                    select id="projection-saved"
+                        class="text-xs rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    {
+                        option value="" { "Saved projections…" }
+                    }
+                    button type="button" id="projection-save" class=(toolbar_btn) { "Save" }
+                    button type="button" id="projection-delete" class=(toolbar_btn) { "Delete" }
+                }
                 textarea
+                    id="projection-script"
                     name="script"
                     rows="18"
                     spellcheck="false"
                     class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 px-3 py-2 text-xs font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                     { (starter_script) }
                 div class="flex items-center gap-4" {
-                    button type="submit"
-                        class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+                    button type="submit" id="projection-run"
+                        class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         { "Run projection" }
                     label class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1.5" {
                         "Limit"
@@ -1540,9 +1631,16 @@ pub fn projection_editor(run_url: &str, starter_script: &str) -> Markup {
                             class="w-24 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300";
                     }
                 }
+                div id="projection-progress" class="htmx-indicator flex items-center gap-3" {
+                    div class="relative h-1 flex-1 overflow-hidden rounded-full bg-indigo-100 dark:bg-indigo-500/20" {
+                        div class="umari-bar" {}
+                    }
+                    span class="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap" { "Running…" }
+                }
             }
             div id="projection-results" {}
         }
+        script { (PreEscaped(PROJECTION_EDITOR_JS)) }
     }
 }
 

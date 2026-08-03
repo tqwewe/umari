@@ -33,6 +33,10 @@ fn page_inner(title: &str, content: Markup, wide: bool) -> Markup {
   .dark [data-active] { background-color: rgba(79,70,229,0.15); color: #818cf8; }
   [data-tab-active] { color: #4f46e5; border-color: #4f46e5; }
   .dark [data-tab-active] { color: #818cf8; border-color: #818cf8; }
+  @keyframes umari-indeterminate { 0% { left: -40%; } 100% { left: 100%; } }
+  .umari-bar { position: absolute; top: 0; bottom: 0; width: 40%; border-radius: inherit; background: #6366f1; animation: umari-indeterminate 1s linear infinite; }
+  .CodeMirror { height: auto; border-radius: 0.375rem; border: 1px solid #d1d5db; }
+  .dark .CodeMirror { border-color: #4b5563; }
                     "#))
                 }
                 script {
@@ -124,6 +128,7 @@ function umariToggleDark() {
     const dark = document.documentElement.classList.toggle('dark');
     localStorage.setItem('umari-dark', dark ? 'dark' : 'light');
     updateDarkIcon();
+    if (window.__umariCM) window.__umariCM.setOption('theme', dark ? 'material-darker' : 'default');
 }
 function updateDarkIcon() {
     const el = document.getElementById('dark-icon');
