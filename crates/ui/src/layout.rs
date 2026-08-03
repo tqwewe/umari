@@ -79,6 +79,13 @@ fn page_inner(title: &str, content: Markup, wide: bool) -> Markup {
                             data-nav="/ui/events"
                             class="nav-link flex items-center px-3 py-2 rounded-md text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
                             { "Events" }
+                        a href="/ui/explore"
+                            hx-get="/ui/explore"
+                            hx-target="#content"
+                            hx-push-url="/ui/explore"
+                            data-nav="/ui/explore"
+                            class="nav-link flex items-center px-3 py-2 rounded-md text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+                            { "Explore" }
                     }
                     div class="border-t border-gray-200 dark:border-gray-700 p-3 shrink-0 space-y-1" {
                         button onclick="umariToggleDark()"

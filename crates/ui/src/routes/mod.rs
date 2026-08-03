@@ -4,6 +4,7 @@ pub mod commands;
 pub mod effects;
 pub mod env_vars;
 pub mod events;
+pub mod explore;
 pub mod execute;
 pub mod index;
 pub mod login;

@@ -1,9 +1,5 @@
-use std::{collections::HashMap, time::Duration};
+use std::collections::HashMap;
 
-use aes_gcm::{
-    Aes256Gcm, Nonce,
-    aead::{Aead, KeyInit},
-};
 use axum::{
     extract::{Query, State},
     http::HeaderMap,
@@ -14,22 +10,20 @@ use serde::Deserialize;
 use serde_json::Value;
 use umadb_dcb::{DcbEventStoreAsync, DcbQuery, DcbQueryItem};
 use umari_core::event::StoredEventData;
-use umari_runtime::module_store::actor::{GetCryptoKey, GetCryptoKeyById};
 use uuid::Uuid;
 
-use crate::{UiState, error::HtmlError, htmx::respond_wide};
+use crate::{
+    UiState,
+    error::HtmlError,
+    event_decode::{EventData, decrypt_event_data},
+    htmx::respond_wide,
+};
 
 #[derive(Deserialize, Default)]
 pub struct EventsQuery {
     pub types: Option<String>,
     pub tags: Option<String>,
     pub limit: Option<u32>,
-}
-
-enum EventData {
-    Plain(Value),
-    Decrypted(Value),
-    CryptoShredded,
 }
 
 struct EventView {
@@ -124,48 +118,7 @@ pub async fn list_events(
             Err(_) => continue,
         };
 
-        let data = match &stored.encryption_scope {
-            None => EventData::Plain(stored.data),
-            Some(scope) => {
-                let key: Option<[u8; 32]> = if let Some(key_id) = stored.encryption_key_id {
-                    state
-                        .module_store_ref
-                        .ask(GetCryptoKeyById { id: key_id })
-                        .reply_timeout(Duration::from_secs(5))
-                        .send()
-                        .await
-                        .ok()
-                        .flatten()
-                } else {
-                    state
-                        .module_store_ref
-                        .ask(GetCryptoKey {
-                            scope: scope.as_str().into(),
-                        })
-                        .reply_timeout(Duration::from_secs(5))
-                        .send()
-                        .await
-                        .ok()
-                        .flatten()
-                        .map(|(_id, key)| key)
-                };
-
-                match key {
-                    None => EventData::CryptoShredded,
-                    Some(key) => (|| -> Option<EventData> {
-                        let hex_str = stored.data.as_str()?;
-                        let ciphertext = hex::decode(hex_str).ok()?;
-                        let uuid = seq.event.uuid?;
-                        let cipher = Aes256Gcm::new_from_slice(&key).ok()?;
-                        let nonce = Nonce::try_from(&uuid.as_bytes()[..12]).ok()?;
-                        let plaintext = cipher.decrypt(&nonce, ciphertext.as_ref()).ok()?;
-                        let value = serde_json::from_slice(&plaintext).ok()?;
-                        Some(EventData::Decrypted(value))
-                    })()
-                    .unwrap_or(EventData::CryptoShredded),
-                }
-            }
-        };
+        let data = decrypt_event_data(&state.module_store_ref, &stored, seq.event.uuid).await;
 
         events.push(EventView {
             position: seq.position,

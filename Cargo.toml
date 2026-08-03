@@ -50,6 +50,7 @@ metrics-util = "0.20"
 proc-macro2 = "1.0"
 quote = "1.0"
 rand = "0.10"
+rquickjs = { version = "0.12", features = ["array-buffer"] }
 rustls = { version = "0.23", features = ["aws-lc-rs"] }
 rusqlite = "0.40"
 schemars = "1.2"

@@ -2,6 +2,7 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use maud::{Markup, PreEscaped, html};
 use rusqlite::{Connection, OpenFlags};
+use serde_json::Value;
 use schemars::Schema;
 use semver::Version;
 use umari_runtime::{
@@ -1486,5 +1487,162 @@ pub async fn run_sql_query(db_path: PathBuf, sql: String, module_label: &'static
         Ok(Ok(markup)) => markup,
         Ok(Err(msg)) => err_html(msg),
         Err(err) => err_html(err.to_string()),
+    }
+}
+
+/// The JSON syntax highlighter reused from the events view, applied to `pre.ev-json`.
+const JSON_HIGHLIGHT_JS: &str = r#"
+(function() {
+  function highlight(text) {
+    return text.replace(
+      /("(?:\\u[0-9a-fA-F]{4}|\\[^u]|[^\\"])*"(?:\s*:)?|true|false|null|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+      function(m) {
+        if (m[0] === '"') {
+          return m.slice(-1) === ':'
+            ? '<span style="color:#6366f1">' + m + '</span>'
+            : '<span style="color:#16a34a">' + m + '</span>';
+        }
+        if (m === 'true' || m === 'false') return '<span style="color:#d97706">' + m + '</span>';
+        if (m === 'null')  return '<span style="color:#9ca3af">' + m + '</span>';
+        return '<span style="color:#7c3aed">' + m + '</span>';
+      }
+    );
+  }
+  document.querySelectorAll('pre.ev-json').forEach(function(el) {
+    el.innerHTML = highlight(el.textContent);
+  });
+})();
+"#;
+
+/// The editor + run form for the Explore (in-memory projection) page.
+pub fn projection_editor(run_url: &str, starter_script: &str) -> Markup {
+    html! {
+        section class="flex flex-col gap-4" {
+            form
+                hx-post=(run_url)
+                hx-target="#projection-results"
+                hx-swap="innerHTML"
+                class="flex flex-col gap-3"
+            {
+                textarea
+                    name="script"
+                    rows="18"
+                    spellcheck="false"
+                    class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 px-3 py-2 text-xs font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    { (starter_script) }
+                div class="flex items-center gap-4" {
+                    button type="submit"
+                        class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+                        { "Run projection" }
+                    label class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1.5" {
+                        "Limit"
+                        input type="number" name="limit" min="1" placeholder="all"
+                            class="w-24 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300";
+                    }
+                }
+            }
+            div id="projection-results" {}
+        }
+    }
+}
+
+/// Renders a red error box for a failed projection run.
+pub fn projection_error(message: &str) -> Markup {
+    html! {
+        div class="rounded-md bg-red-50 border border-red-200 p-4 text-sm text-red-800" {
+            p class="font-semibold mb-1" { "Error" }
+            p class="whitespace-pre-wrap font-mono text-xs" { (message) }
+        }
+    }
+}
+
+/// Renders a projection's JSON result: an array of flat objects becomes a table;
+/// any other value is shown as pretty-printed JSON. Captured logs follow below.
+pub fn projection_result(result: &Value, logs: &[String]) -> Markup {
+    let body = match result {
+        Value::Array(items) => projection_rows(items),
+        other => projection_json(other),
+    };
+    html! {
+        (body)
+        @if !logs.is_empty() {
+            div class="mt-4" {
+                p class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1" { "console" }
+                pre class="text-xs font-mono text-gray-600 dark:text-gray-400 whitespace-pre-wrap bg-gray-50 dark:bg-gray-800 rounded-md p-3" {
+                    @for line in logs { (line) "\n" }
+                }
+            }
+        }
+    }
+}
+
+fn projection_rows(items: &[Value]) -> Markup {
+    if items.is_empty() {
+        return html! { p class="text-sm text-gray-400 italic" { "no rows returned" } };
+    }
+    let (columns, rows): (Vec<String>, Vec<Vec<String>>) = if items.iter().all(Value::is_object) {
+        let mut columns: Vec<String> = Vec::new();
+        for item in items {
+            if let Value::Object(map) = item {
+                for key in map.keys() {
+                    if !columns.contains(key) {
+                        columns.push(key.clone());
+                    }
+                }
+            }
+        }
+        let rows = items
+            .iter()
+            .map(|item| columns.iter().map(|col| cell_text(item.get(col))).collect())
+            .collect();
+        (columns, rows)
+    } else {
+        let rows = items.iter().map(|item| vec![cell_text(Some(item))]).collect();
+        (vec!["value".to_string()], rows)
+    };
+
+    html! {
+        div class="overflow-x-auto overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" {
+            table class="w-full text-xs font-mono" {
+                thead {
+                    tr class="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700" {
+                        @for col in &columns {
+                            th class="px-3 py-2 text-left font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap" { (col) }
+                        }
+                    }
+                }
+                tbody {
+                    @for row in &rows {
+                        tr class="border-b border-gray-100 dark:border-gray-700/50 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800" {
+                            @for cell in row {
+                                td class="px-3 py-1.5 text-gray-800 dark:text-gray-200 whitespace-nowrap" { (cell) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn projection_json(value: &Value) -> Markup {
+    let pretty = serde_json::to_string_pretty(value).unwrap_or_default();
+    html! {
+        pre class="ev-json text-xs text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-all bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-3" {
+            (pretty)
+        }
+        script { (PreEscaped(JSON_HIGHLIGHT_JS)) }
+    }
+}
+
+/// One table cell: strings verbatim, scalars stringified, null/missing blank, and
+/// nested values as compact JSON.
+fn cell_text(value: Option<&Value>) -> String {
+    match value {
+        None | Some(Value::Null) => String::new(),
+        Some(Value::String(s)) => s.clone(),
+        Some(Value::Bool(b)) => b.to_string(),
+        Some(Value::Number(n)) => n.to_string(),
+        Some(other) => other.to_string(),
     }
 }

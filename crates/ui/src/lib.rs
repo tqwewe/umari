@@ -1,7 +1,9 @@
 pub mod components;
 pub mod error;
+pub mod event_decode;
 pub mod htmx;
 pub mod layout;
+pub mod projection;
 mod routes;
 
 use std::{path::PathBuf, sync::Arc};
@@ -30,6 +32,7 @@ use crate::routes::{
     effects::{get_effect, list_effects, query_effect},
     env_vars::{delete_env_var, set_env_var},
     events::list_events,
+    explore::{explore_page, run_projection_handler},
     execute::execute_command,
     index::index,
     login::{login_get, login_post, logout},
@@ -78,5 +81,7 @@ pub fn ui_router(state: UiState) -> Router {
         .route("/ui/{module_type}/{name}/env", post(set_env_var))
         .route("/ui/{module_type}/{name}/env/{key}", delete(delete_env_var))
         .route("/ui/events", get(list_events))
+        .route("/ui/explore", get(explore_page))
+        .route("/ui/explore/run", post(run_projection_handler))
         .with_state(state)
 }
