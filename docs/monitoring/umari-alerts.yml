@@ -58,17 +58,23 @@ groups:
           summary: "{{ $labels.module_type }} {{ $labels.name }} is lagging"
           description: "{{ $labels.module_type }} {{ $labels.name }} is {{ $value | humanize }} events behind its query head and has stayed behind for 10m."
 
-      # A module is behind AND has committed no progress for 15m: genuinely
-      # stuck rather than just slow. Combines lag with a no-movement check so it
-      # does not false-positive on low-traffic subscriptions that are caught up.
+      # A module has been continuously behind its query head for 15m without ever
+      # catching up: genuinely stuck rather than just slow. Uses min_over_time
+      # instead of a lag threshold because lag is sampled from two independent
+      # sources (query_head advances the instant an event is appended;
+      # last_position advances a beat later, once the module delivers, handles,
+      # and commits it), so a healthy module momentarily reads a lag of 1 or 2.
+      # A healthy module drains back to 0 between events, so its minimum lag over
+      # any 15m window is 0; a stuck one never drains and its minimum stays > 0.
+      # This needs no magic threshold and is unaffected by different modules
+      # sitting at different positions, since lag is measured per query head.
       - alert: UmariModuleStalled
-        expr: umari_module_lag{module_type=~"projector|effect"} > 0 and changes(umari_module_last_position{module_type=~"projector|effect"}[15m]) == 0
-        for: 15m
+        expr: min_over_time(umari_module_lag{module_type=~"projector|effect"}[15m]) > 0
         labels:
           severity: critical
         annotations:
           summary: "{{ $labels.module_type }} {{ $labels.name }} is stalled"
-          description: "{{ $labels.module_type }} {{ $labels.name }} is {{ $value | humanize }} events behind and has made no progress for 15m."
+          description: "{{ $labels.module_type }} {{ $labels.name }} has been continuously behind its query head for 15m without catching up (min {{ $value | humanize }} events behind)."
 
       # A module recovers but keeps dying: flaky, worth investigating even though
       # it is currently up.

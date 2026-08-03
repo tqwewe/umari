@@ -116,7 +116,7 @@ The rules map directly onto the failure model described above:
 - **`UmariProjectorDown`** — a projector has been down for 2m. Projectors don't self-heal, so this is critical.
 - **`UmariEffectNotRecovering`** — an effect has been down longer than its max backoff, so it is genuinely stuck.
 - **`UmariEffectCrashLooping`** — an effect keeps restarting.
-- **`UmariModuleLagging`** / **`UmariModuleStalled`** — a module is behind its query head, or behind *and* making no progress.
+- **`UmariModuleLagging`** / **`UmariModuleStalled`** — a module is far behind its query head, or has stayed continuously behind for 15m without ever catching up.
 - **`UmariModuleFlapping`** — a module recovers but keeps dying.
 
 The thresholds (lag `> 1000`, restart/failure counts) are starting points — tune them to your event volume.
