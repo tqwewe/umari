@@ -113,17 +113,14 @@ impl DeployUi {
         let color = color_name(ty.color());
         let bar = self.mp.add(ProgressBar::new_spinner());
         bar.set_style(
-            ProgressStyle::with_template(&format!(
-                "    {{spinner:.{color}}} {{prefix}} {{msg}}"
-            ))
-            .unwrap()
-            .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ "),
+            ProgressStyle::with_template(&format!("    {{spinner:.{color}}} {{prefix}} {{msg}}"))
+                .unwrap()
+                .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ "),
         );
         bar.set_prefix(format!("{:<width$}", name, width = self.name_width));
-        bar.set_message(self.format_version_line(
-            &format!("v{version}"),
-            &action.dimmed().to_string(),
-        ));
+        bar.set_message(
+            self.format_version_line(&format!("v{version}"), &action.dimmed().to_string()),
+        );
         bar.enable_steady_tick(Duration::from_millis(80));
 
         let mut rows = self.rows.lock().unwrap();
@@ -139,10 +136,12 @@ impl DeployUi {
     pub fn set_action(&self, ty: ModuleType, name: &str, action: &str) {
         let rows = self.rows.lock().unwrap();
         if let Some(row) = rows.get(&(ty, name.to_string())) {
-            row.bar.set_message(self.format_version_line(
-                &format!("v{}", row.version),
-                &action.dimmed().to_string(),
-            ));
+            row.bar.set_message(
+                self.format_version_line(
+                    &format!("v{}", row.version),
+                    &action.dimmed().to_string(),
+                ),
+            );
         }
     }
 
@@ -199,10 +198,7 @@ impl DeployUi {
             }
             Status::Failed { msg } => (
                 "✗".red().bold().to_string(),
-                self.format_version_line(
-                    &format!("v{}", row.version),
-                    &msg.red().to_string(),
-                ),
+                self.format_version_line(&format!("v{}", row.version), &msg.red().to_string()),
             ),
         };
 
@@ -222,11 +218,7 @@ impl DeployUi {
     /// text aligns across rows. `plain_version` is the version string
     /// without ANSI codes (for width measurement).
     fn format_version_line(&self, plain_version: &str, tail: &str) -> String {
-        self.format_version_line_with_widths(
-            plain_version,
-            plain_version.chars().count(),
-            tail,
-        )
+        self.format_version_line_with_widths(plain_version, plain_version.chars().count(), tail)
     }
 
     fn format_version_line_with_widths(
@@ -270,7 +262,7 @@ impl DeployUi {
 
         let mut table = Table::new();
         table
-            .load_preset(ASCII_BORDERS_ONLY_CONDENSED)
+            .load_style(ASCII_BORDERS_ONLY_CONDENSED)
             .set_header(vec![
                 Cell::new("category"),
                 Cell::new("deployed").set_alignment(CellAlignment::Right),
