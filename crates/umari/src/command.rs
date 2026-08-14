@@ -7,7 +7,7 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use slotmap::SlotMap;
-use umadb_dcb::{DcbQuery, DcbQueryItem};
+use tephra_types::{EventType, Query, QueryItem, Tag, Tags};
 use uuid::Uuid;
 
 use crate::{
@@ -300,7 +300,7 @@ pub struct EmittedEventRef {
 pub(crate) fn build_dcb_query(
     domain_ids: Vec<EventDomainId>,
     bindings: &[DomainIdBindings],
-) -> DcbQuery {
+) -> Query {
     // Key: set of tags. Value: set of event types sharing those tags.
     // BTreeSet for tags ensures deterministic ordering for grouping.
     let mut grouped_items: IndexMap<BTreeSet<String>, BTreeSet<String>> = IndexMap::new();
@@ -326,13 +326,21 @@ pub(crate) fn build_dcb_query(
         }
     }
 
-    let items = grouped_items
+    let items: Vec<QueryItem> = grouped_items
         .into_iter()
-        .map(|(tags, types)| DcbQueryItem {
-            types: types.into_iter().collect(),
-            tags: tags.into_iter().collect(),
+        .map(|(tags, types)| {
+            let types = types
+                .into_iter()
+                .map(|ty| EventType::new(ty).expect("event type name is valid"))
+                .collect();
+            let tags = Tags::new(
+                tags.into_iter()
+                    .map(|tag| Tag::new(tag).expect("tag is non-empty")),
+            )
+            .expect("tags are unique within a query item");
+            QueryItem::new(types, tags)
         })
         .collect();
 
-    DcbQuery { items }
+    Query::items(items)
 }

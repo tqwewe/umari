@@ -8,7 +8,7 @@ use chrono::{DateTime, Utc};
 use maud::{Markup, html};
 use serde::Deserialize;
 use serde_json::Value;
-use umadb_dcb::{DcbEventStoreAsync, DcbQuery, DcbQueryItem};
+use tephra::{Event, EventType, Position, Query as EventQuery, QueryItem, Tag, Tags};
 use umari_core::event::StoredEventData;
 use uuid::Uuid;
 
@@ -90,41 +90,56 @@ pub async fn list_events(
         .collect();
 
     let query = if types.is_empty() && tags.is_empty() {
-        None
+        EventQuery::all()
     } else {
-        let mut item = DcbQueryItem::new();
-        if !types.is_empty() {
-            item = item.types(types.iter().map(String::as_str));
-        }
-        if !tags.is_empty() {
-            item = item.tags(tags.iter().map(String::as_str));
-        }
-        Some(DcbQuery::new().item(item))
+        let types = types
+            .iter()
+            .map(|ty| EventType::new(ty.clone()))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|err| HtmlError::internal(err.to_string()))?;
+        let tags = Tags::new(
+            tags.iter()
+                .map(|tag| Tag::new(tag.clone()))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|err| HtmlError::internal(err.to_string()))?,
+        )
+        .map_err(|err| HtmlError::internal(err.to_string()))?;
+        EventQuery::item(QueryItem::new(types, tags))
     };
 
-    let (raw_events, _head) = state
-        .event_store
-        .read(query, None, true, Some(limit))
-        .await
-        .map_err(|err| HtmlError::internal(err.to_string()))?
-        .collect_with_head()
-        .await
-        .map_err(|err| HtmlError::internal(err.to_string()))?;
+    // A backwards read yields newest-first and does work proportional to `limit`, so a page
+    // load never scans the whole store. The blocking scan runs off the async runtime.
+    let handle = state.event_store.clone();
+    let cap = limit as u64;
+    let raw_events = tokio::task::spawn_blocking(move || {
+        let mut reads = handle.read_back(&query, Position::MAX, Some(cap));
+        let mut out: Vec<(Position, Event)> = Vec::new();
+        while let Some(item) = reads.next() {
+            let seq = item?;
+            out.push((seq.position, seq.event.to_owned()));
+        }
+        Ok::<_, tephra::ReadError>(out)
+    })
+    .await
+    .map_err(|err| HtmlError::internal(err.to_string()))?
+    .map_err(|err| HtmlError::internal(err.to_string()))?;
 
     let mut events: Vec<EventView> = Vec::with_capacity(raw_events.len());
-    for seq in raw_events {
-        let stored: StoredEventData<Value> = match serde_json::from_slice(&seq.event.data) {
+    // `read_back` already yields newest-first.
+    for (position, event) in raw_events {
+        let stored: StoredEventData<Value> = match serde_json::from_slice(event.data()) {
             Ok(v) => v,
             Err(_) => continue,
         };
 
-        let data = decrypt_event_data(&state.module_store_ref, &stored, seq.event.uuid).await;
+        let data =
+            decrypt_event_data(&state.module_store_ref, &stored, Some(stored.event_id)).await;
 
         events.push(EventView {
-            position: seq.position,
-            uuid: seq.event.uuid,
-            event_type: seq.event.event_type,
-            tags: seq.event.tags,
+            position: position.get(),
+            uuid: Some(stored.event_id),
+            event_type: event.event_type().to_string(),
+            tags: event.tags().map(|tag| tag.to_string()).collect(),
             timestamp: stored.timestamp,
             correlation_id: stored.correlation_id,
             causation_id: stored.causation_id,

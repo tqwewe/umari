@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use umadb_dcb::{DcbQuery, DcbQueryItem};
+use tephra_types::{EventType, Query, QueryItem};
 use uuid::Uuid;
 
 use crate::event::{EventSet, StoredEvent};
@@ -24,8 +24,13 @@ pub trait Effect: Sized {
     fn init() -> anyhow::Result<Self>;
 
     /// Query describing what events this effect should receive
-    fn query(&self) -> DcbQuery {
-        DcbQuery::new().item(DcbQueryItem::new().types(Self::Query::event_types()))
+    fn query(&self) -> Query {
+        Query::item(QueryItem::of_types(
+            Self::Query::event_types()
+                .into_iter()
+                .map(|ty| EventType::new(ty).expect("static event type name is valid"))
+                .collect(),
+        ))
     }
 
     /// Partition key for parallel effects

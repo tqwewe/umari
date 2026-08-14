@@ -25,8 +25,10 @@ pub enum ModuleError {
     Database(#[from] rusqlite::Error),
     #[error("failed to deserialize event: {0}")]
     DeserializeEvent(serde_json::Error),
-    #[error("event store error: {0}")]
-    EventStore(#[from] umadb_dcb::DcbError),
+    #[error("event store read error: {0}")]
+    Read(#[from] tephra::ReadError),
+    #[error("invalid event query: {0}")]
+    Query(#[from] wit::common::QueryError),
     #[error("missing event id")]
     MissingEventId,
     #[error("module store error: {0}")]

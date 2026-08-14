@@ -14,8 +14,9 @@ interface types {
 
     type uuid = string;
 
-    record event-query {
-        items: list<event-filter>,
+    variant event-query {
+        all,
+        items(list<event-filter>),
     }
 
     record event-filter {

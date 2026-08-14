@@ -18,8 +18,7 @@ use rusqlite::{Connection, OptionalExtension};
 use semver::Version;
 use serde_json::Value;
 use tracing::{debug, error, info, warn};
-use umadb_client::AsyncUmaDbClient;
-use umadb_dcb::{DcbError, DcbQuery, DcbSequencedEvent, DcbSubscriptionAsync};
+use tephra::{Event, Position, Subscription, WriteHandle};
 use umari_core::event::{StoredEvent, StoredEventData};
 use wasmtime::{
     Engine, Store,
@@ -67,9 +66,8 @@ pub struct ModuleActor<A: EventHandlerModule> {
     name: Arc<str>,
     version: Version,
     output: ModuleOutput,
-    stream: Box<dyn DcbSubscriptionAsync + Send + 'static>,
+    stream: Subscription,
     worker_pool: Option<WorkerPool<A>>,
-    query: DcbQuery,
 }
 
 #[derive(Clone)]
@@ -77,7 +75,7 @@ pub struct ModuleActorArgs<A> {
     pub data_dir: Arc<PathBuf>,
     pub engine: Engine,
     pub linker: Linker<wit::EventHandlerComponentState>,
-    pub event_store: Arc<AsyncUmaDbClient>,
+    pub event_store: WriteHandle,
     pub module_store_ref: ActorRef<ModuleStoreActor>,
     pub command_ref: ActorRef<CommandActor>,
     pub component: Component,
@@ -204,32 +202,36 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
             return Err(err.into());
         }
 
-        let query = match instance
-            .query(&mut store, handler)
-            .await
-            .map(DcbQuery::from)
-        {
-            Ok(query) => query,
+        let query: tephra::Query = match instance.query(&mut store, handler).await {
+            Ok(query) => match query.try_into() {
+                Ok(query) => query,
+                Err(err) => {
+                    let err = ModuleError::from(err);
+                    args.output.push_stderr(format!("{err:#}"));
+                    return Err(err);
+                }
+            },
             Err(err) => {
                 args.output.push_stderr(format!("{err:#}"));
                 return Err(ModuleError::Wasmtime(err));
             }
         };
 
-        let start = store.data().last_position().map(|n| n + 1);
-        let stream = match args.event_store.subscribe(Some(query.clone()), start).await {
-            Ok(stream) => stream,
-            Err(err) => {
-                args.output.push_stderr(format!("{err:#}"));
-                return Err(err.into());
-            }
-        };
+        // `subscribe`'s `after` is an exclusive lower bound and `last_position` is the persisted
+        // subscription cursor, so resume from it directly (no `+ 1`); a fresh module starts at
+        // position zero.
+        let start = store
+            .data()
+            .last_position()
+            .map(Position::new)
+            .unwrap_or(Position::ZERO);
+        let stream = args.event_store.subscribe(query, start);
 
         debug!(
             module_type = %A::MODULE_TYPE,
             name = %args.name,
             version = %args.version,
-            start = start.unwrap_or_default(),
+            start = start.get(),
             "subscribed to event store"
         );
 
@@ -294,7 +296,6 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
             output: args.output,
             stream,
             worker_pool,
-            query,
         })
     }
 
@@ -336,15 +337,16 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
 
             tokio::select! {
                 msg = mailbox_rx.recv() => return Ok(msg),
-                res = self.stream.next_batch() => {
+                res = self.stream.next_batch_async() => {
                     let batch = match res {
-                        Ok(batch) => batch,
-                        Err(DcbError::CancelledByUser()) => return Ok(None),
-                        Err(err) => {
+                        Some(Ok(batch)) => batch,
+                        Some(Err(err)) => {
                             let err = ModuleError::from(err);
                             self.output.push_stderr(format!("{err:#}"));
                             return Err(err);
                         }
+                        // The store closed (writer gone); stop the actor cleanly.
+                        None => return Ok(None),
                     };
                     if let Err(err) = self.process_batch(batch).await {
                         self.output.push_stderr(format!("{err:#}"));
@@ -361,14 +363,6 @@ impl<A: EventHandlerModule> ModuleActor<A> {
     #[message]
     pub fn last_position(&self) -> Option<u64> {
         self.store.data().last_position()
-    }
-
-    /// Returns `(last_position, query)` for lag reporting. The caller resolves
-    /// the query's head against the event store so lag stays accurate for
-    /// modules subscribed to only a subset of events.
-    #[message]
-    pub fn progress_inputs(&self) -> (Option<u64>, DcbQuery) {
-        (self.store.data().last_position(), self.query.clone())
     }
 }
 
@@ -391,15 +385,18 @@ impl<A: EventHandlerModule> Message<WorkerAck> for ModuleActor<A> {
 }
 
 impl<A: EventHandlerModule> ModuleActor<A> {
-    fn deserialize_event(event: DcbSequencedEvent) -> Result<StoredEvent<Value>, ModuleError> {
+    fn deserialize_event(
+        position: Position,
+        event: Event,
+    ) -> Result<StoredEvent<Value>, ModuleError> {
         let data: StoredEventData<Value> =
-            serde_json::from_slice(&event.event.data).map_err(ModuleError::DeserializeEvent)?;
+            serde_json::from_slice(event.data()).map_err(ModuleError::DeserializeEvent)?;
 
         Ok(StoredEvent {
-            id: event.event.uuid.ok_or(ModuleError::MissingEventId)?,
-            position: event.position,
-            event_type: event.event.event_type,
-            tags: event.event.tags,
+            id: data.event_id,
+            position: position.get(),
+            event_type: event.event_type().to_string(),
+            tags: event.tags().map(|tag| tag.to_string()).collect(),
             timestamp: data.timestamp,
             correlation_id: data.correlation_id,
             causation_id: data.causation_id,
@@ -411,12 +408,12 @@ impl<A: EventHandlerModule> ModuleActor<A> {
         })
     }
 
-    async fn process_batch(&mut self, batch: Vec<DcbSequencedEvent>) -> Result<(), ModuleError> {
+    async fn process_batch(&mut self, batch: Vec<(Position, Event)>) -> Result<(), ModuleError> {
         let module_store_ref = self.store.data().module_store_ref.clone();
         if A::POOL_SIZE > 0 {
-            for event in batch {
-                let position = event.position;
-                let stored_event = Self::deserialize_event(event)?;
+            for (pos, event) in batch {
+                let position = pos.get();
+                let stored_event = Self::deserialize_event(pos, event)?;
                 let stored_event = decrypt_stored_event(stored_event, &module_store_ref).await;
                 if stored_event.encryption_scope.is_some() && stored_event.data == Value::Null {
                     let pool = self
@@ -471,10 +468,8 @@ impl<A: EventHandlerModule> ModuleActor<A> {
                 pool.in_flight.insert(position);
             }
         } else {
-            let mut new_position = None;
-            for event in batch {
-                new_position = Some(event.position);
-                let stored_event = Self::deserialize_event(event)?;
+            for (pos, event) in batch {
+                let stored_event = Self::deserialize_event(pos, event)?;
                 let stored_event = decrypt_stored_event(stored_event, &module_store_ref).await;
                 if stored_event.encryption_scope.is_some() && stored_event.data == Value::Null {
                     continue;
@@ -489,9 +484,12 @@ impl<A: EventHandlerModule> ModuleActor<A> {
                     .await?;
             }
 
-            if let Some(new_position) = new_position {
-                let data = self.store.data_mut();
-
+            // Persist the subscription cursor: it advances to the watermark past any
+            // non-matching tail, so a caught-up projector records the global head and reports
+            // zero lag regardless of query selectivity.
+            let new_position = self.stream.position().get();
+            let data = self.store.data_mut();
+            if data.last_position() != Some(new_position) {
                 let expected_position = data.last_position().map(|n| n as i64);
                 let rows = data.conn().execute(
                     "
@@ -524,6 +522,9 @@ impl<A: EventHandlerModule> ModuleActor<A> {
     }
 
     async fn handle_ack(&mut self, position: u64) -> Result<(), ModuleError> {
+        // The subscription cursor is the exclusive lower bound of everything delivered so far;
+        // captured before the pool borrow so it can be used in the drained branch below.
+        let cursor = self.stream.position().get();
         let pool = self
             .worker_pool
             .as_mut()
@@ -536,7 +537,10 @@ impl<A: EventHandlerModule> ModuleActor<A> {
                 assert_ne!(min, 0);
                 min - 1
             }
-            None => pool.highest_completed,
+            // Fully drained: every delivered event is acked, so it is safe to advance past the
+            // non-matching tail to the subscription cursor (never done while events are still
+            // in flight, which would break at-least-once on a crash).
+            None => cursor.max(pool.highest_completed),
         };
 
         let current = self.store.data().last_position();

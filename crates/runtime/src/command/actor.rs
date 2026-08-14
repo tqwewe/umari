@@ -7,9 +7,9 @@ use rand::{SeedableRng, rngs::StdRng};
 use schemars::Schema;
 use semver::Version;
 use slotmap::SlotMap;
+use tephra::WriteHandle;
 use tokio::task::JoinSet;
 use tracing::{debug, error, info, trace, warn};
-use umadb_client::AsyncUmaDbClient;
 use umari_core::command::CommandContext;
 use uuid::Uuid;
 use wasmtime::{
@@ -42,7 +42,7 @@ pub struct VersionedModule {
 pub struct CommandActor {
     engine: Engine,
     linker: Linker<CommandComponentState>,
-    event_store: Arc<AsyncUmaDbClient>,
+    event_store: WriteHandle,
     module_store_ref: ActorRef<ModuleStoreActor>,
     compile_cache: Arc<CompileCache>,
     components: HashMap<Arc<str>, VersionedModule>,
@@ -51,7 +51,7 @@ pub struct CommandActor {
 #[derive(Clone)]
 pub struct CommandActorArgs {
     pub engine: Engine,
-    pub event_store: Arc<AsyncUmaDbClient>,
+    pub event_store: WriteHandle,
     pub module_store_ref: ActorRef<ModuleStoreActor>,
     pub compile_cache: Arc<CompileCache>,
     pub module_pubsub: ActorRef<PubSub<ModuleEvent>>,

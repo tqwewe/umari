@@ -13,15 +13,13 @@ use clap::Parser;
 use kameo::{actor::ActorRef, error::HookError, prelude::Spawn};
 use tokio::{signal, task::JoinHandle};
 use tracing::{error, info, trace};
-use umadb_client::AsyncUmaDbClient;
-use umadb_dcb::DcbError;
 use umari_api::{AppState, start_server};
 use umari_runtime::{
     command::actor::CommandActor,
     metrics,
     module::supervisor::ModuleSupervisor,
     module_store::actor::ModuleStoreActor,
-    supervisor::{RuntimeConfig, RuntimeError, RuntimeSupervisor},
+    supervisor::{RuntimeConfig, RuntimeSupervisor},
     wit::{effect::EffectWorld, projector::ProjectorWorld},
 };
 
@@ -34,15 +32,6 @@ struct Cli {
     /// Path to the runtime database file
     #[arg(short, long, env = "UMARI_DATA_DIR", default_value = "./umari-data")]
     data_dir: PathBuf,
-
-    /// Event store URL
-    #[arg(
-        short,
-        long,
-        env = "UMARI_EVENT_STORE_URL",
-        default_value = "http://localhost:50051"
-    )]
-    event_store_url: String,
 
     /// API server bind address
     #[arg(short, long, env = "UMARI_API_ADDR", default_value = "127.0.0.1:3000")]
@@ -93,21 +82,31 @@ async fn main() {
     }
 
     let data_dir: Arc<PathBuf> = cli.data_dir.into();
+    let _ = std::fs::create_dir_all(data_dir.as_path());
 
     // Install before actors start so their metric emissions are captured.
     let metrics_handle = metrics::install();
 
+    // Open the embedded Tephra store once; the coordinator owns the writer thread and must
+    // stay alive for the whole process, while the handle is cloned to every consumer.
+    let (_coordinator, event_store) = match umari_runtime::open_event_store(data_dir.as_path()) {
+        Ok(store) => store,
+        Err(err) => {
+            error!("failed to open event store: {err}");
+            process::exit(1);
+        }
+    };
+
     let start = Instant::now();
-    let event_store_url = cli.event_store_url.clone();
     let runtime_ref = RuntimeSupervisor::spawn(RuntimeConfig {
         data_dir: data_dir.clone(),
-        event_store_url: cli.event_store_url,
+        event_store: event_store.clone(),
     });
 
     let startup_fut = runtime_ref.wait_for_startup_with_result(|res| match res {
         Ok(()) => true,
-        Err(HookError::Error(RuntimeError::EventStore(DcbError::TransportError(msg)))) => {
-            error!("failed to connect to UmaDB: {msg}");
+        Err(HookError::Error(err)) => {
+            error!("runtime failed to startup: {err}");
             false
         }
         Err(err) => {
@@ -128,13 +127,6 @@ async fn main() {
     }
 
     info!("runtime started after {:?}", start.elapsed());
-
-    let event_store: Arc<AsyncUmaDbClient> = Arc::new(
-        umadb_client::UmaDbClient::new(event_store_url)
-            .connect_async()
-            .await
-            .expect("failed to connect event store for UI"),
-    );
 
     // Get actor refs from registry
     let module_store_ref = ActorRef::<ModuleStoreActor>::lookup("module_store")
@@ -157,7 +149,7 @@ async fn main() {
         tokio::spawn(metrics::run_collector(
             cli.metrics_interval,
             metrics_handle.clone(),
-            event_store.clone(),
+            event_store.reader(),
             projector_supervisor_ref.clone(),
             effect_supervisor_ref.clone(),
             command_ref.clone(),

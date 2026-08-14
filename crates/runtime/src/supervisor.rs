@@ -2,9 +2,9 @@ use std::{path::PathBuf, sync::Arc};
 
 use kameo::{error::RegistryError, prelude::*, supervision::SupervisionStrategy};
 use kameo_actors::{DeliveryStrategy, pubsub::PubSub};
+use tephra::WriteHandle;
 use thiserror::Error;
 use tokio::fs;
-use umadb_client::AsyncUmaDbClient;
 use wasmtime::{Config, Engine};
 
 use crate::{
@@ -23,7 +23,7 @@ pub struct RuntimeSupervisor;
 
 pub struct RuntimeConfig {
     pub data_dir: Arc<PathBuf>,
-    pub event_store_url: String,
+    pub event_store: WriteHandle,
 }
 
 #[derive(Debug, Error)]
@@ -36,8 +36,6 @@ pub enum RuntimeError {
     EffectStartupFailed(String),
     #[error("module store startup failed: {0}")]
     ModuleStoreStartupFailed(String),
-    #[error("event store error: {0}")]
-    EventStore(#[from] umadb_dcb::DcbError),
     #[error("failed to subscribe to module events")]
     ModulePubSubSendError,
     #[error(transparent)]
@@ -63,12 +61,8 @@ impl Actor for RuntimeSupervisor {
         let compile_cache = CompileCache::new(&config.data_dir);
         let engine = Engine::new(Config::new().wasm_backtrace_max_frames(None))?;
 
-        // Setup event store
-        let event_store = Arc::new(
-            umadb_client::UmaDbClient::new(config.event_store_url)
-                .connect_async()
-                .await?,
-        );
+        // The embedded Tephra store is opened once in main and shared as a cloneable handle.
+        let event_store = config.event_store;
 
         // Setup pubsub
         let module_pubsub = PubSub::supervise_with(&supervisor_ref, || {
@@ -160,7 +154,7 @@ async fn spawn_event_handler_supervisor<A: EventHandlerModule>(
     supervisor_ref: &ActorRef<RuntimeSupervisor>,
     data_dir: Arc<PathBuf>,
     engine: Engine,
-    event_store: Arc<AsyncUmaDbClient>,
+    event_store: WriteHandle,
     module_store_ref: ActorRef<ModuleStoreActor>,
     command_ref: ActorRef<CommandActor>,
     compile_cache: Arc<CompileCache>,

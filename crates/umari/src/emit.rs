@@ -109,11 +109,13 @@ impl EmitEvent {
 
 pub fn encode_with_envelope(
     envelope: EventEnvelope,
+    event_id: Uuid,
     data: Value,
     encryption_scope: Option<String>,
     encryption_key_id: Option<Uuid>,
 ) -> Vec<u8> {
     serde_json::to_vec(&StoredEventData {
+        event_id,
         timestamp: envelope.timestamp,
         correlation_id: envelope.correlation_id,
         causation_id: envelope.causation_id,

@@ -111,6 +111,7 @@ pub mod prelude {
     pub use crate::sqlite::*;
     pub use crate::{emit, export_effect, export_projector, params};
     pub use indexmap::indexmap as domain_ids;
+    pub use tephra_types::{EventType, Query, QueryItem, Tag, Tags};
     pub use umari_macros::{DomainIds, Event, EventSet, FromDomainIds, export_command};
 }
 
@@ -120,5 +121,5 @@ pub const IDEMPOTENCY_NAMESPACE: Uuid = uuid!("e274f2bc-33c5-589f-8643-f3674d867
 #[doc(hidden)]
 pub mod __private {
     pub use serde_json;
-    pub use umadb_dcb;
+    pub use tephra_types;
 }

@@ -1,4 +1,4 @@
-use umadb_dcb::{DcbQuery, DcbQueryItem};
+use tephra_types::{EventType, Query, QueryItem};
 
 use crate::event::{EventSet, StoredEvent};
 
@@ -11,8 +11,13 @@ pub trait Projector: Sized {
     fn init() -> anyhow::Result<Self>;
 
     /// The initial query to process events with.
-    fn query(&self) -> DcbQuery {
-        DcbQuery::new().item(DcbQueryItem::new().types(Self::Query::event_types()))
+    fn query(&self) -> Query {
+        Query::item(QueryItem::of_types(
+            Self::Query::event_types()
+                .into_iter()
+                .map(|ty| EventType::new(ty).expect("static event type name is valid"))
+                .collect(),
+        ))
     }
 
     /// Handle a single event, updating the projector.

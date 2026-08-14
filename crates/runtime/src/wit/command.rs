@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, time::Duration};
 
 use aes_gcm::{
     Aes256Gcm, Nonce,
@@ -8,8 +8,7 @@ use chrono::Utc;
 use kameo::{actor::ActorRef, error::SendError};
 use serde_json::Value;
 use slotmap::DefaultKey;
-use umadb_client::AsyncUmaDbClient;
-use umadb_dcb::{DcbAppendCondition, DcbEvent, DcbEventStoreAsync, DcbQuery};
+use tephra::{AppendCondition, Event, Position, Query, ReadError, Tag, Tags, WriteHandle};
 use umari_core::{
     emit::encode_with_envelope,
     event::{EventEnvelope, StoredEventData},
@@ -104,6 +103,7 @@ impl transaction::HostTransaction for wit::CommandComponentState {
     async fn new(&mut self, query: EventQuery) -> wasmtime::Result<Resource<Transaction>> {
         transaction_new(
             &self.event_store,
+            true,
             &mut self.transactions,
             &mut self.resource_table,
             query,
@@ -140,6 +140,7 @@ impl transaction::HostTransaction for wit::CommandComponentState {
         };
         let (position, emitted) = transaction_commit(
             &self.event_store,
+            true,
             &self.module_store_ref,
             &mut self.transactions,
             &mut self.resource_table,
@@ -163,6 +164,7 @@ impl transaction::HostTransaction for wit::EventHandlerComponentState {
     async fn new(&mut self, query: EventQuery) -> wasmtime::Result<Resource<Transaction>> {
         transaction_new(
             &self.event_store,
+            false,
             &mut self.transactions,
             &mut self.resource_table,
             query,
@@ -202,6 +204,7 @@ impl transaction::HostTransaction for wit::EventHandlerComponentState {
         };
         let (position, _) = transaction_commit(
             &self.event_store,
+            false,
             &self.module_store_ref,
             &mut self.transactions,
             &mut self.resource_table,
@@ -218,32 +221,55 @@ impl transaction::HostTransaction for wit::EventHandlerComponentState {
     }
 }
 
-type Transactions = slotmap::SlotMap<
-    DefaultKey,
-    (
-        DcbQuery,
-        Option<Box<dyn umadb_dcb::DcbReadResponseAsync + Send + 'static>>,
-    ),
->;
+type Transactions = slotmap::SlotMap<DefaultKey, wit::TransactionItem>;
 
 async fn transaction_new(
-    event_store: &std::sync::Arc<umadb_client::AsyncUmaDbClient>,
+    event_store: &WriteHandle,
+    offload: bool,
     transactions: &mut Transactions,
     resource_table: &mut wasmtime_wasi::ResourceTable,
     query: EventQuery,
 ) -> wasmtime::Result<Resource<Transaction>> {
-    let query: DcbQuery = query.into();
-    let tx = if query.items.is_empty() {
+    let query: Query = query.try_into()?;
+    let read = if query_is_empty(&query) {
         None
     } else {
-        Some(
-            event_store
-                .read(Some(query.clone()), None, false, None)
-                .await?,
-        )
+        Some(read_matching(event_store, &query, offload).await?)
     };
-    let key = transactions.insert((query, tx));
+    let key = transactions.insert((query, read));
     Ok(resource_table.push(Transaction { key })?)
+}
+
+fn query_is_empty(query: &Query) -> bool {
+    matches!(query, Query::Items(items) if items.is_empty())
+}
+
+/// Reads the whole matching event set and captures the read's pinned watermark from the same
+/// `Reads`, so the fold events and the DCB fence come from one atomic snapshot. On the shared
+/// runtime (`offload`) the blocking scan runs on `spawn_blocking`; on a dedicated actor thread
+/// it runs inline.
+async fn read_matching(
+    event_store: &WriteHandle,
+    query: &Query,
+    offload: bool,
+) -> wasmtime::Result<wit::CommandRead> {
+    let (events, head) = if offload {
+        let handle = event_store.clone();
+        let query = query.clone();
+        tokio::task::spawn_blocking(move || {
+            let reads = handle.read(&query, Position::ZERO, None);
+            let head = reads.watermark();
+            let events = reads.collect_owned()?;
+            Ok::<_, ReadError>((events, head))
+        })
+        .await??
+    } else {
+        let reads = event_store.read(query, Position::ZERO, None);
+        let head = reads.watermark();
+        let events = reads.collect_owned()?;
+        (events, head)
+    };
+    Ok(wit::CommandRead { events, head })
 }
 
 async fn transaction_next_batch(
@@ -253,20 +279,20 @@ async fn transaction_next_batch(
     self_: Resource<Transaction>,
 ) -> wasmtime::Result<Vec<StoredEvent>> {
     let tx_resource = resource_table.get(&self_)?;
-    let (_query, tx) = transactions
+    let (_query, read) = transactions
         .get_mut(tx_resource.key)
         .context("transaction resource does not exist")?;
-    let Some(tx) = tx else {
+    let Some(read) = read else {
         return Ok(Vec::new());
     };
 
-    let batch = tx.next_batch().await?;
+    // The whole matching set was read up front; hand it out once, then leave it empty.
+    let batch = std::mem::take(&mut read.events);
     let mut results = Vec::with_capacity(batch.len());
-    for event in batch {
-        let id = event.event.uuid.ok_or(CommandError::MissingEventId)?;
-
+    for (position, event) in batch {
         let stored: StoredEventData<Value> =
-            serde_json::from_slice(&event.event.data).map_err(CommandError::DeserializeEvent)?;
+            serde_json::from_slice(event.data()).map_err(CommandError::DeserializeEvent)?;
+        let id = stored.event_id;
 
         let data_value = decrypt_event_data(
             module_store_ref,
@@ -282,10 +308,10 @@ async fn transaction_next_batch(
 
         results.push(StoredEvent {
             id: id.to_string(),
-            position: event.position as i64,
-            event_type: event.event.event_type,
-            tags: event.event.tags,
-            timestamp: stored.timestamp.timestamp(),
+            position: position.get() as i64,
+            event_type: event.event_type().to_string(),
+            tags: event.tags().map(|tag| tag.to_string()).collect(),
+            timestamp: stored.timestamp.timestamp_millis(),
             correlation_id: stored.correlation_id.to_string(),
             causation_id: stored.causation_id.to_string(),
             triggering_event_id: stored.triggering_event_id.map(|id| id.to_string()),
@@ -298,8 +324,10 @@ async fn transaction_next_batch(
     Ok(results)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn transaction_commit(
-    event_store: &Arc<AsyncUmaDbClient>,
+    event_store: &WriteHandle,
+    offload: bool,
     module_store_ref: &ActorRef<ModuleStoreActor>,
     transactions: &mut Transactions,
     resource_table: &mut ResourceTable,
@@ -308,7 +336,7 @@ async fn transaction_commit(
     envelope: EventEnvelope,
 ) -> wasmtime::Result<(Option<u64>, Vec<wit::EmittedEvent>)> {
     let tx_resource = resource_table.get(&self_)?;
-    let (query, tx) = transactions
+    let (query, read) = transactions
         .remove(tx_resource.key)
         .context("transaction resource does not exist")?;
 
@@ -318,23 +346,29 @@ async fn transaction_commit(
     let pending_events = events
         .into_iter()
         .map(|event| {
-            let event_id: uuid::Uuid =
-                event.id.parse().map_err(|_| CommandError::InvalidEventId)?;
-            let tags: Vec<String> = event
+            let event_id: uuid::Uuid = event.id.parse().map_err(|_| CommandError::InvalidEventId)?;
+            let event_type = tephra::EventType::new(event.event_type.clone())?;
+            let tag_strings: Vec<String> = event
                 .domain_ids
-                .into_iter()
+                .iter()
                 .map(|domain_id| format!("{}:{}", domain_id.name, domain_id.id))
                 .collect();
+            let tags = Tags::new(
+                tag_strings
+                    .iter()
+                    .map(|tag| Tag::new(tag.clone()))
+                    .collect::<Result<Vec<_>, _>>()?,
+            )?;
             emitted_events.push(wit::EmittedEvent {
                 id: event_id,
                 event_type: event.event_type.clone(),
-                tags: tags.clone(),
+                tags: tag_strings,
             });
             let data_value: Value =
                 serde_json::from_str(&event.data).map_err(CommandError::DeserializeEvent)?;
             Ok((
                 event_id,
-                event.event_type,
+                event_type,
                 tags,
                 data_value,
                 event.encryption_scope,
@@ -375,27 +409,36 @@ async fn transaction_commit(
             }
             None => (None, data_value),
         };
-        dcb_events.push(DcbEvent {
-            event_type,
-            tags,
-            data: encode_with_envelope(envelope, encrypted_value, encryption_scope, key_id),
-            uuid: Some(event_id),
-            metadata: Vec::new(),
-        });
+        dcb_events.push(Event::new(
+            &event_type,
+            &tags,
+            &encode_with_envelope(
+                envelope,
+                event_id,
+                encrypted_value,
+                encryption_scope,
+                key_id,
+            ),
+        )?);
     }
 
-    let head = match tx {
-        Some(mut tx) => Some(tx.head().await?),
-        None => None,
-    };
+    // `head` is the watermark pinned by the transaction's read; it fences the DCB append so
+    // the write fails if any matching event landed after we read.
+    let head = read.map(|read| read.head);
     let position = if !dcb_events.is_empty() {
-        let condition = head.map(|head| DcbAppendCondition {
+        let condition = head.map(|after| AppendCondition {
             fail_if_events_match: query,
-            after: head,
+            after,
         });
-        Some(event_store.append(dcb_events, condition, None).await?)
+        let range = if offload {
+            let handle = event_store.clone();
+            tokio::task::spawn_blocking(move || handle.append(dcb_events, condition)).await??
+        } else {
+            event_store.append(dcb_events, condition)?
+        };
+        Some(range.last.get())
     } else {
-        head.flatten()
+        head.map(|after| after.get())
     };
 
     Ok((position, emitted_events))

@@ -16,9 +16,8 @@ use kameo::actor::ActorRef;
 use rquickjs::{CatchResultExt, Context, Function, Runtime};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
+use tephra::{Event, EventType, Position, Query, QueryItem, Tag, Tags, WriteHandle};
 use tokio::sync::{mpsc, oneshot};
-use umadb_client::AsyncUmaDbClient;
-use umadb_dcb::{DcbEventStoreAsync, DcbQuery, DcbQueryItem, DcbSequencedEvent};
 use umari_core::event::StoredEventData;
 use umari_runtime::module_store::actor::ModuleStoreActor;
 
@@ -31,6 +30,8 @@ const RUN_TIMEOUT: Duration = Duration::from_secs(15);
 const MEM_LIMIT: usize = 256 * 1024 * 1024;
 /// Number of in-flight batches allowed between the async feeder and the JS worker.
 const BATCH_CHANNEL_CAP: usize = 4;
+/// Events per raw batch streamed from the reader thread to the async decoder.
+const READ_BATCH: usize = 256;
 
 /// The bootstrap defining `project`, `console.log` (captured), and the per-batch loop.
 const PREAMBLE: &str = r#"
@@ -121,7 +122,7 @@ fn tag_value(value: &Value) -> String {
 /// Builds the store query by grouping event types by their tag-set, mirroring
 /// `umari::command::build_dcb_query`: untagged types share one item; each distinct
 /// tag-set becomes its own item, with tags formatted `"field:value"`.
-fn build_query(entries: &[EventEntry]) -> DcbQuery {
+fn build_query(entries: &[EventEntry]) -> Result<Query, ProjectionError> {
     let mut grouped: BTreeMap<BTreeSet<String>, BTreeSet<String>> = BTreeMap::new();
     for entry in entries {
         let (event_type, tags) = match entry {
@@ -137,38 +138,43 @@ fn build_query(entries: &[EventEntry]) -> DcbQuery {
         grouped.entry(tags).or_default().insert(event_type);
     }
 
-    let mut query = DcbQuery::new();
+    let mut items = Vec::with_capacity(grouped.len());
     for (tags, types) in grouped {
-        query = query.item(
-            DcbQueryItem::new()
-                .types(types.iter().map(String::as_str))
-                .tags(tags.iter().map(String::as_str)),
-        );
+        let types = types
+            .into_iter()
+            .map(EventType::new)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|err| ProjectionError::Script(err.to_string()))?;
+        let tags = Tags::new(
+            tags.into_iter()
+                .map(Tag::new)
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|err| ProjectionError::Script(err.to_string()))?,
+        )
+        .map_err(|err| ProjectionError::Script(err.to_string()))?;
+        items.push(QueryItem::new(types, tags));
     }
-    query
+    Ok(Query::items(items))
 }
 
 /// Lifts a stored event into the TS-SDK `StoredEvent` shape (camelCase, parsed
 /// `data`), decrypting the payload. Returns `None` for an undecodable envelope.
 async fn lift_event(
     module_store_ref: &ActorRef<ModuleStoreActor>,
-    seq: DcbSequencedEvent,
+    position: Position,
+    event: Event,
 ) -> Option<Value> {
-    let stored: StoredEventData<Value> = serde_json::from_slice(&seq.event.data).ok()?;
-    let data = decrypt_event_data(module_store_ref, &stored, seq.event.uuid)
+    let stored: StoredEventData<Value> = serde_json::from_slice(event.data()).ok()?;
+    let data = decrypt_event_data(module_store_ref, &stored, Some(stored.event_id))
         .await
         .into_value();
 
-    let uuid = seq.event.uuid;
-    let position = seq.position;
-    let event_type = seq.event.event_type;
-    let tags = seq.event.tags;
+    let event_type = event.event_type();
+    let tags: Vec<&str> = event.tags().collect();
 
     let mut obj = Map::new();
-    if let Some(id) = uuid {
-        obj.insert("id".into(), json!(id.to_string()));
-    }
-    obj.insert("position".into(), json!(position));
+    obj.insert("id".into(), json!(stored.event_id.to_string()));
+    obj.insert("position".into(), json!(position.get()));
     obj.insert("type".into(), json!(event_type));
     obj.insert("tags".into(), json!(tags));
     obj.insert("timestamp".into(), json!(stored.timestamp.to_rfc3339()));
@@ -286,7 +292,7 @@ fn run_js_thread(
 /// Runs an in-memory projection: evaluates `script`, streams matching events (up to
 /// `limit`, or all) through its fold, and returns the rendered view plus logs.
 pub async fn run_projection(
-    event_store: &AsyncUmaDbClient,
+    event_store: &WriteHandle,
     module_store_ref: &ActorRef<ModuleStoreActor>,
     script: String,
     limit: Option<u32>,
@@ -314,24 +320,36 @@ pub async fn run_projection(
         };
         let entries: Vec<EventEntry> = serde_json::from_str(&events_json)
             .map_err(|err| ProjectionError::Script(format!("invalid `events` declaration: {err}")))?;
-        let query = build_query(&entries);
+        let query = build_query(&entries)?;
 
-        let mut stream = event_store
-            .read(Some(query), None, false, limit)
-            .await
-            .map_err(|err| ProjectionError::Store(err.to_string()))?;
-
-        loop {
-            let batch = stream
-                .next_batch()
-                .await
-                .map_err(|err| ProjectionError::Store(err.to_string()))?;
-            if batch.is_empty() {
-                break;
+        // Tephra reads are a blocking scan, so run them on a dedicated thread that streams raw
+        // event batches over a small bounded channel; the async side decodes and forwards them
+        // to the JS worker. Nothing but the in-flight batches accumulates in Rust.
+        let (raw_tx, mut raw_rx) = mpsc::channel::<Vec<(Position, Event)>>(2);
+        let handle = event_store.clone();
+        let read_limit = limit.map(|limit| limit as u64);
+        let reader = tokio::task::spawn_blocking(move || -> Result<(), tephra::ReadError> {
+            let mut reads = handle.read(&query, Position::ZERO, read_limit);
+            let mut batch: Vec<(Position, Event)> = Vec::with_capacity(READ_BATCH);
+            while let Some(item) = reads.next() {
+                let seq = item?;
+                batch.push((seq.position, seq.event.to_owned()));
+                if batch.len() >= READ_BATCH && raw_tx.blocking_send(std::mem::take(&mut batch)).is_err()
+                {
+                    // Receiver gone (the JS worker finished); stop scanning.
+                    return Ok(());
+                }
             }
-            let mut lifted: Vec<Value> = Vec::with_capacity(batch.len());
-            for seq in batch {
-                if let Some(event) = lift_event(module_store_ref, seq).await {
+            if !batch.is_empty() {
+                let _ = raw_tx.blocking_send(batch);
+            }
+            Ok(())
+        });
+
+        while let Some(raw_batch) = raw_rx.recv().await {
+            let mut lifted: Vec<Value> = Vec::with_capacity(raw_batch.len());
+            for (position, event) in raw_batch {
+                if let Some(event) = lift_event(module_store_ref, position, event).await {
                     lifted.push(event);
                 }
             }
@@ -343,6 +361,14 @@ pub async fn run_projection(
             }
         }
         drop(batch_tx);
+        // Drop the receiver so a still-running reader unblocks on its next send, then surface
+        // any read error it hit.
+        drop(raw_rx);
+        match reader.await {
+            Ok(Ok(())) => {}
+            Ok(Err(err)) => return Err(ProjectionError::Store(err.to_string())),
+            Err(err) => return Err(ProjectionError::Internal(err.to_string())),
+        }
 
         match result_rx.await {
             Ok(Ok((json, logs))) => {
@@ -392,32 +418,42 @@ mod tests {
                 {"type":"e","scope":{"region":"eu","tier":"gold"}}]"#,
         )
         .unwrap();
-        let query = build_query(&entries);
+        let items = match build_query(&entries) {
+            Ok(Query::Items(items)) => items,
+            Ok(Query::All) => panic!("expected query items"),
+            Err(_) => panic!("build_query failed"),
+        };
 
-        assert_eq!(query.items.len(), 3);
+        assert_eq!(items.len(), 3);
 
-        let untagged = query.items.iter().find(|i| i.tags.is_empty()).unwrap();
-        let mut types = untagged.types.clone();
-        types.sort();
-        assert_eq!(types, vec!["a", "b"]);
+        let types_of = |item: &QueryItem| {
+            let mut types: Vec<String> = item.types.iter().map(|t| t.as_str().to_string()).collect();
+            types.sort();
+            types
+        };
+        let tags_of = |item: &QueryItem| {
+            let mut tags: Vec<String> = item.tags.iter().map(|t| t.as_str().to_string()).collect();
+            tags.sort();
+            tags
+        };
 
-        let shared = query
-            .items
+        let untagged = items.iter().find(|i| i.tags.is_empty()).unwrap();
+        assert_eq!(types_of(untagged), vec!["a", "b"]);
+
+        let shared = items
             .iter()
-            .find(|i| i.tags == vec!["topic:t1".to_string()])
+            .find(|i| tags_of(i) == vec!["topic:t1".to_string()])
             .unwrap();
-        let mut types = shared.types.clone();
-        types.sort();
-        assert_eq!(types, vec!["c", "d"]);
+        assert_eq!(types_of(shared), vec!["c", "d"]);
 
-        let multi = query
-            .items
+        let multi = items
             .iter()
-            .find(|i| i.types == vec!["e".to_string()])
+            .find(|i| types_of(i) == vec!["e".to_string()])
             .unwrap();
-        let mut tags = multi.tags.clone();
-        tags.sort();
-        assert_eq!(tags, vec!["region:eu".to_string(), "tier:gold".to_string()]);
+        assert_eq!(
+            tags_of(multi),
+            vec!["region:eu".to_string(), "tier:gold".to_string()]
+        );
     }
 
     #[tokio::test]

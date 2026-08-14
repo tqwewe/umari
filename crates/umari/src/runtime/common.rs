@@ -1,6 +1,7 @@
 use std::fmt;
 
 use chrono::DateTime;
+use tephra_types::{Query, QueryItem};
 
 use crate::event::EventSet;
 
@@ -13,36 +14,30 @@ wit_bindgen::generate!({
     generate_unused_types: true,
 });
 
-impl From<umadb_dcb::DcbQueryItem> for EventFilter {
-    fn from(item: umadb_dcb::DcbQueryItem) -> Self {
+impl From<QueryItem> for EventFilter {
+    fn from(item: QueryItem) -> Self {
         EventFilter {
-            types: item.types,
-            tags: item.tags,
+            types: item
+                .types
+                .into_iter()
+                .map(|t| t.into_inner().into())
+                .collect(),
+            tags: item
+                .tags
+                .into_iter()
+                .map(|t| t.into_inner().into())
+                .collect(),
         }
     }
 }
 
-impl From<EventFilter> for umadb_dcb::DcbQueryItem {
-    fn from(item: EventFilter) -> Self {
-        umadb_dcb::DcbQueryItem {
-            types: item.types,
-            tags: item.tags,
-        }
-    }
-}
-
-impl From<umadb_dcb::DcbQuery> for EventQuery {
-    fn from(query: umadb_dcb::DcbQuery) -> Self {
-        EventQuery {
-            items: query.items.into_iter().map(|item| item.into()).collect(),
-        }
-    }
-}
-
-impl From<EventQuery> for umadb_dcb::DcbQuery {
-    fn from(query: EventQuery) -> Self {
-        umadb_dcb::DcbQuery {
-            items: query.items.into_iter().map(|item| item.into()).collect(),
+impl From<Query> for EventQuery {
+    fn from(query: Query) -> Self {
+        match query {
+            Query::All => EventQuery::All,
+            Query::Items(items) => {
+                EventQuery::Items(items.into_iter().map(|item| item.into()).collect())
+            }
         }
     }
 }

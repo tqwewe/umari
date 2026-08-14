@@ -70,6 +70,7 @@ impl<T> StoredEvent<T> {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StoredEventData<T> {
+    pub event_id: Uuid,
     pub timestamp: DateTime<Utc>,
     pub correlation_id: Uuid,
     pub causation_id: Uuid,

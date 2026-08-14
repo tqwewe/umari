@@ -1,5 +1,5 @@
 use std::{
-    sync::{Arc, OnceLock},
+    sync::OnceLock,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -8,16 +8,14 @@ use metrics::{counter, describe_counter, describe_gauge, gauge};
 use metrics_exporter_prometheus::PrometheusBuilder;
 pub use metrics_exporter_prometheus::PrometheusHandle;
 use metrics_util::MetricKindMask;
+use tephra::ReadHandle;
 use tokio::time::MissedTickBehavior;
-use tracing::warn;
-use umadb_client::AsyncUmaDbClient;
-use umadb_dcb::{DcbEventStoreAsync, DcbQuery};
 
 use crate::{
     command::actor::{ActiveCommands, CommandActor},
     module::{
         EventHandlerModule,
-        actor::ProgressInputs,
+        actor::LastPosition,
         supervisor::{ActiveModules, ModuleSupervisor},
     },
     module_store::ModuleType,
@@ -27,7 +25,6 @@ use crate::{
 const MODULE_UP: &str = "umari_module_up";
 const MODULE_INFO: &str = "umari_module_info";
 const MODULE_LAST_POSITION: &str = "umari_module_last_position";
-const MODULE_QUERY_HEAD: &str = "umari_module_query_head_position";
 const MODULE_LAG: &str = "umari_module_lag";
 const MODULE_LAST_PROGRESS: &str = "umari_module_last_progress_timestamp_seconds";
 const MODULE_FAILURES: &str = "umari_module_failures_total";
@@ -63,15 +60,11 @@ fn describe_metrics() {
     describe_gauge!(MODULE_INFO, "module version info, always 1");
     describe_gauge!(
         MODULE_LAST_POSITION,
-        "last global event position committed by the module"
-    );
-    describe_gauge!(
-        MODULE_QUERY_HEAD,
-        "global position of the latest event matching the module's query"
+        "last global event position committed by the module (its subscription cursor)"
     );
     describe_gauge!(
         MODULE_LAG,
-        "events behind the module's query head (0 when caught up)"
+        "positions behind the event store head (0 when caught up)"
     );
     describe_gauge!(
         MODULE_LAST_PROGRESS,
@@ -114,13 +107,12 @@ pub fn record_progress(module_type: ModuleType, name: &str) {
         .set(now);
 }
 
-/// Periodically samples state-derived gauges (up, last_position, query head,
-/// lag) from the running supervisors and event store. Runs until cancelled. A
-/// zero interval disables collection.
+/// Periodically samples state-derived gauges (up, last_position, lag) from the running
+/// supervisors and event store. Runs until cancelled. A zero interval disables collection.
 pub async fn run_collector(
     interval: Duration,
     handle: PrometheusHandle,
-    event_store: Arc<AsyncUmaDbClient>,
+    event_store: ReadHandle,
     projector_ref: ActorRef<ModuleSupervisor<ProjectorWorld>>,
     effect_ref: ActorRef<ModuleSupervisor<EffectWorld>>,
     command_ref: ActorRef<CommandActor>,
@@ -134,21 +126,19 @@ pub async fn run_collector(
         ticker.tick().await;
         handle.run_upkeep();
 
-        match event_store.head().await {
-            Ok(Some(head)) => gauge!(EVENT_STORE_HEAD).set(head as f64),
-            Ok(None) => gauge!(EVENT_STORE_HEAD).set(0.0),
-            Err(err) => warn!(%err, "failed to read event store head for metrics"),
-        }
+        // `head` is the durable tip (one atomic load); lag is `head - subscription cursor`.
+        let head = event_store.head().get();
+        gauge!(EVENT_STORE_HEAD).set(head as f64);
 
-        collect_supervisor(&projector_ref, &event_store).await;
-        collect_supervisor(&effect_ref, &event_store).await;
+        collect_supervisor(&projector_ref, head).await;
+        collect_supervisor(&effect_ref, head).await;
         collect_commands(&command_ref).await;
     }
 }
 
 async fn collect_supervisor<A: EventHandlerModule>(
     supervisor: &ActorRef<ModuleSupervisor<A>>,
-    event_store: &AsyncUmaDbClient,
+    head: u64,
 ) {
     let Ok(modules) = supervisor.ask(ActiveModules).await else {
         return;
@@ -166,34 +156,12 @@ async fn collect_supervisor<A: EventHandlerModule>(
         )
         .set(1.0);
 
-        if let Ok((last_position, query)) = module.actor_ref.ask(ProgressInputs).await {
+        if let Ok(last_position) = module.actor_ref.ask(LastPosition).await {
             let last = last_position.unwrap_or(0);
-            let head = query_head(event_store, query).await.unwrap_or(last);
             gauge!(MODULE_LAST_POSITION, "module_type" => module_type.to_string(), "name" => name.to_string())
                 .set(last as f64);
-            gauge!(MODULE_QUERY_HEAD, "module_type" => module_type.to_string(), "name" => name.to_string())
-                .set(head as f64);
             gauge!(MODULE_LAG, "module_type" => module_type.to_string(), "name" => name.to_string())
                 .set(head.saturating_sub(last) as f64);
-        }
-    }
-}
-
-/// Resolves the global position of the latest event matching `query` via a
-/// backwards, limit-1 read. `None` if the query matches no events or the read
-/// fails.
-async fn query_head(event_store: &AsyncUmaDbClient, query: DcbQuery) -> Option<u64> {
-    match event_store.read(Some(query), None, true, Some(1)).await {
-        Ok(mut stream) => match stream.next_batch().await {
-            Ok(batch) => batch.first().map(|event| event.position),
-            Err(err) => {
-                warn!(%err, "failed to read query head for metrics");
-                None
-            }
-        },
-        Err(err) => {
-            warn!(%err, "failed to read query head for metrics");
-            None
         }
     }
 }

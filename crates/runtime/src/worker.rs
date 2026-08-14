@@ -2,7 +2,7 @@ use std::{collections::HashMap, ops::ControlFlow, path::PathBuf, sync::Arc};
 
 use kameo::prelude::*;
 use rusqlite::Connection;
-use umadb_client::AsyncUmaDbClient;
+use tephra::WriteHandle;
 use uuid::Uuid;
 use wasmtime::{
     Engine, Store,
@@ -31,7 +31,7 @@ pub struct ModuleWorkerArgs<A: EventHandlerModule> {
     pub component: Component,
     pub command_ref: ActorRef<CommandActor>,
     pub ack_recipient: Recipient<WorkerAck>,
-    pub event_store: Arc<AsyncUmaDbClient>,
+    pub event_store: WriteHandle,
     pub module_store_ref: ActorRef<ModuleStoreActor>,
     pub name: Arc<str>,
     pub args: A::Args,

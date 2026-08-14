@@ -11,9 +11,9 @@ use kameo::{prelude::*, supervision::RestartPolicy};
 use kameo_actors::pubsub::{PubSub, Subscribe};
 use rusqlite::{Connection, OptionalExtension};
 use semver::Version;
+use tephra::WriteHandle;
 use tokio::task::JoinSet;
 use tracing::{debug, error, info, warn};
-use umadb_client::AsyncUmaDbClient;
 use wasmtime::{
     Engine,
     component::{Component, HasSelf, Linker},
@@ -53,7 +53,7 @@ pub struct ModuleSupervisor<A: EventHandlerModule> {
     data_dir: Arc<PathBuf>,
     engine: Engine,
     linker: Linker<wit::EventHandlerComponentState>,
-    event_store: Arc<AsyncUmaDbClient>,
+    event_store: WriteHandle,
     module_store_ref: ActorRef<ModuleStoreActor>,
     command_ref: ActorRef<CommandActor>,
     compile_cache: Arc<CompileCache>,
@@ -74,7 +74,7 @@ pub struct ModuleSupervisor<A: EventHandlerModule> {
 pub struct ModuleSupervisorArgs<A> {
     pub data_dir: Arc<PathBuf>,
     pub engine: Engine,
-    pub event_store: Arc<AsyncUmaDbClient>,
+    pub event_store: WriteHandle,
     pub module_store_ref: ActorRef<ModuleStoreActor>,
     pub command_ref: ActorRef<CommandActor>,
     pub compile_cache: Arc<CompileCache>,

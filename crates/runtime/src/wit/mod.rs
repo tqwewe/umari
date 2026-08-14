@@ -1,4 +1,3 @@
-use std::sync::Arc;
 #[cfg(debug_assertions)]
 use std::thread;
 
@@ -7,8 +6,7 @@ use kameo::actor::ActorRef;
 use rusqlite::{Connection, Statement};
 use serde::Serialize;
 use slotmap::{DefaultKey, SlotMap};
-use umadb_client::AsyncUmaDbClient;
-use umadb_dcb::{DcbQuery, DcbReadResponseAsync};
+use tephra::{Event, Position, Query, WriteHandle};
 use uuid::Uuid;
 use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxView, WasiView};
 use wasmtime_wasi_http::{
@@ -24,6 +22,16 @@ pub mod crypto;
 pub mod effect;
 pub mod projector;
 pub mod sqlite;
+
+/// A command/event-handler transaction's pinned read: the whole matching event set and the
+/// watermark captured from the same read, used to fence the DCB append condition. `events`
+/// are handed out to the guest in one `next-batch` and then emptied.
+pub struct CommandRead {
+    pub events: Vec<(Position, Event)>,
+    pub head: Position,
+}
+
+pub type TransactionItem = (Query, Option<CommandRead>);
 
 #[derive(Debug, Serialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -48,16 +56,10 @@ pub struct EmittedEvent {
 pub struct CommandComponentState {
     pub wasi_ctx: WasiCtx,
     pub resource_table: ResourceTable,
-    pub event_store: Arc<AsyncUmaDbClient>,
+    pub event_store: WriteHandle,
     pub module_store_ref: ActorRef<ModuleStoreActor>,
     pub timestamp: DateTime<Utc>,
-    pub transactions: SlotMap<
-        DefaultKey,
-        (
-            DcbQuery,
-            Option<Box<dyn DcbReadResponseAsync + Send + 'static>>,
-        ),
-    >,
+    pub transactions: SlotMap<DefaultKey, TransactionItem>,
     pub emitted_events: Vec<EmittedEvent>,
 }
 
@@ -74,20 +76,14 @@ pub struct EventHandlerComponentState {
     wasi_ctx: WasiCtx,
     wasi_http_ctx: WasiHttpCtx,
     resource_table: ResourceTable,
-    event_store: Arc<AsyncUmaDbClient>,
+    event_store: WriteHandle,
     pub module_store_ref: ActorRef<ModuleStoreActor>,
     conn: Connection,
     current_event_id: Uuid,
     current_correlation_id: Uuid,
     last_position: Option<u64>,
     statements: SlotMap<DefaultKey, Box<Statement<'static>>>,
-    transactions: SlotMap<
-        DefaultKey,
-        (
-            DcbQuery,
-            Option<Box<dyn DcbReadResponseAsync + Send + 'static>>,
-        ),
-    >,
+    transactions: SlotMap<DefaultKey, TransactionItem>,
     #[cfg(debug_assertions)]
     thread_id: thread::ThreadId,
 }
@@ -98,7 +94,7 @@ impl EventHandlerComponentState {
     pub fn new(
         wasi_ctx: WasiCtx,
         resource_table: ResourceTable,
-        event_store: Arc<AsyncUmaDbClient>,
+        event_store: WriteHandle,
         module_store_ref: ActorRef<ModuleStoreActor>,
         conn: Connection,
         last_position: Option<u64>,

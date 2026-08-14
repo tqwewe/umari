@@ -12,8 +12,8 @@ use axum::{
     routing::{delete, get, post, put},
 };
 use kameo::actor::ActorRef;
+use tephra::WriteHandle;
 use tokio::{io, net::ToSocketAddrs};
-use umadb_client::AsyncUmaDbClient;
 use umari_runtime::{
     command::actor::CommandActor,
     metrics::PrometheusHandle,
@@ -137,7 +137,7 @@ pub struct AppState {
     pub command_ref: ActorRef<CommandActor>,
     pub projector_supervisor_ref: ActorRef<ModuleSupervisor<ProjectorWorld>>,
     pub effect_supervisor_ref: ActorRef<ModuleSupervisor<EffectWorld>>,
-    pub event_store: Arc<AsyncUmaDbClient>,
+    pub event_store: WriteHandle,
     pub api_key: Option<Arc<str>>,
     pub metrics_handle: PrometheusHandle,
 }
