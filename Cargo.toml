@@ -61,6 +61,7 @@ sha2 = "0.11"
 slotmap = "1.1"
 strum = { version = "0.28", features = ["derive"] }
 syn = "3.0"
+tempfile = "3"
 thiserror = "2.0"
 tephra = { version = "0.3.2", features = ["async"] }
 tephra-types = "0.1.3"

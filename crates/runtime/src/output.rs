@@ -55,7 +55,9 @@ impl OutputInner {
             if let Err(err) = writeln!(
                 file,
                 "{} [{stream}] {}",
-                entry.timestamp.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+                entry
+                    .timestamp
+                    .to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
                 entry.message,
             ) {
                 warn!(%err, "failed to write to module log file; disabling file logging for this module");
@@ -258,5 +260,85 @@ impl StdoutStream for ModuleOutputPipe {
 
     fn p2_stream(&self) -> Box<dyn OutputStream> {
         Box::new(self.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bytes::Bytes;
+    use tempfile::TempDir;
+    use wasmtime_wasi::p2::OutputStream;
+
+    use super::{LogStream, ModuleOutput};
+
+    fn write_stdout(output: &ModuleOutput, text: &str) {
+        let mut pipe = output.stdout_pipe();
+        pipe.write(Bytes::copy_from_slice(text.as_bytes())).unwrap();
+    }
+
+    fn messages(output: &ModuleOutput) -> Vec<(LogStream, String)> {
+        output
+            .entries()
+            .into_iter()
+            .map(|entry| (entry.stream, entry.message))
+            .collect()
+    }
+
+    #[test]
+    fn stdout_is_split_into_one_entry_per_line() {
+        let output = ModuleOutput::new(16);
+        write_stdout(&output, "line1\nline2\n");
+        let msgs = messages(&output);
+        assert_eq!(msgs.len(), 2);
+        assert!(matches!(&msgs[0], (LogStream::Stdout, m) if m == "line1"));
+        assert!(matches!(&msgs[1], (LogStream::Stdout, m) if m == "line2"));
+    }
+
+    #[test]
+    fn partial_line_is_buffered_then_committed_on_newline() {
+        let output = ModuleOutput::new(16);
+        write_stdout(&output, "partial");
+
+        // Uncommitted text still surfaces via `entries()` as a trailing entry.
+        let peek = messages(&output);
+        assert_eq!(peek.len(), 1);
+        assert!(matches!(&peek[0], (LogStream::Stdout, m) if m == "partial"));
+
+        write_stdout(&output, "rest\n");
+        let msgs = messages(&output);
+        assert_eq!(msgs.len(), 1);
+        assert!(matches!(&msgs[0], (LogStream::Stdout, m) if m == "partialrest"));
+    }
+
+    #[test]
+    fn carriage_return_is_trimmed() {
+        let output = ModuleOutput::new(16);
+        write_stdout(&output, "line\r\n");
+        let msgs = messages(&output);
+        assert_eq!(msgs.len(), 1);
+        assert!(matches!(&msgs[0], (LogStream::Stdout, m) if m == "line"));
+    }
+
+    #[test]
+    fn ring_buffer_evicts_oldest_beyond_capacity() {
+        let output = ModuleOutput::new(2);
+        output.push_system("a");
+        output.push_system("b");
+        output.push_system("c");
+        let msgs: Vec<String> = messages(&output).into_iter().map(|(_, m)| m).collect();
+        assert_eq!(msgs, vec!["b".to_string(), "c".to_string()]);
+    }
+
+    #[test]
+    fn with_file_persists_entries_to_disk() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("nested/module.log");
+        let output = ModuleOutput::with_file(16, &path);
+        output.push_system("system message");
+        output.push_stderr("stderr message");
+
+        let contents = std::fs::read_to_string(&path).unwrap();
+        assert!(contents.contains("[system] system message"), "{contents}");
+        assert!(contents.contains("[stderr] stderr message"), "{contents}");
     }
 }

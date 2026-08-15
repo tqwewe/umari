@@ -3477,6 +3477,7 @@ dependencies = [
  "sha2 0.11.0",
  "slotmap",
  "strum",
+ "tempfile",
  "tephra",
  "thiserror 2.0.18",
  "tokio",

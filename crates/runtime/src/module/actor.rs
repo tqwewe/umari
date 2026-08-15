@@ -17,8 +17,8 @@ use kameo::prelude::*;
 use rusqlite::{Connection, OptionalExtension};
 use semver::Version;
 use serde_json::Value;
-use tracing::{debug, error, info, warn};
 use tephra::{Event, Position, Subscription, WriteHandle};
+use tracing::{debug, error, info, warn};
 use umari_core::event::{StoredEvent, StoredEventData};
 use wasmtime::{
     Engine, Store,
@@ -217,14 +217,7 @@ impl<A: EventHandlerModule> Actor for ModuleActor<A> {
             }
         };
 
-        // `subscribe`'s `after` is an exclusive lower bound and `last_position` is the persisted
-        // subscription cursor, so resume from it directly (no `+ 1`); a fresh module starts at
-        // position zero.
-        let start = store
-            .data()
-            .last_position()
-            .map(Position::new)
-            .unwrap_or(Position::ZERO);
+        let start = resume_position(store.data().last_position());
         let stream = args.event_store.subscribe(query, start);
 
         debug!(
@@ -532,16 +525,7 @@ impl<A: EventHandlerModule> ModuleActor<A> {
         pool.in_flight.remove(&position);
         pool.highest_completed = pool.highest_completed.max(position);
 
-        let watermark = match pool.in_flight.first() {
-            Some(&min) => {
-                assert_ne!(min, 0);
-                min - 1
-            }
-            // Fully drained: every delivered event is acked, so it is safe to advance past the
-            // non-matching tail to the subscription cursor (never done while events are still
-            // in flight, which would break at-least-once on a crash).
-            None => cursor.max(pool.highest_completed),
-        };
+        let watermark = calculate_watermark(&pool.in_flight, cursor, pool.highest_completed);
 
         let current = self.store.data().last_position();
         if Some(watermark) != current {
@@ -569,6 +553,27 @@ impl<A: EventHandlerModule> ModuleActor<A> {
             );
         }
         Ok(())
+    }
+}
+
+/// The subscription resume position for a durable handler. `subscribe`'s `after` is an exclusive
+/// lower bound and `last` is the persisted cursor, so it is used directly with no `+ 1`; a fresh
+/// module (no persisted cursor) starts at position zero.
+fn resume_position(last: Option<u64>) -> Position {
+    last.map(Position::new).unwrap_or(Position::ZERO)
+}
+
+/// The durable watermark to persist after an effect ack. While any event is still in flight it is
+/// pinned one below the lowest un-acked position, so an out-of-order ack never advances past a gap
+/// (the at-least-once guarantee). Once fully drained it advances to the subscription cursor (or the
+/// highest completed position, whichever is greater), skipping the non-matching tail.
+fn calculate_watermark(in_flight: &BTreeSet<u64>, cursor: u64, highest_completed: u64) -> u64 {
+    match in_flight.first() {
+        Some(&min) => {
+            assert_ne!(min, 0);
+            min - 1
+        }
+        None => cursor.max(highest_completed),
     }
 }
 
@@ -603,4 +608,102 @@ async fn decrypt_stored_event(
         .unwrap_or(Value::Null),
     };
     event
+}
+
+#[cfg(test)]
+mod watermark_tests {
+    use std::collections::BTreeSet;
+
+    use tephra::Position;
+
+    use super::{calculate_watermark, resume_position};
+
+    #[test]
+    fn fresh_module_resumes_at_zero() {
+        assert_eq!(resume_position(None), Position::ZERO);
+    }
+
+    #[test]
+    fn resume_uses_cursor_directly_without_plus_one() {
+        assert_eq!(resume_position(Some(7)).get(), 7);
+        assert_eq!(resume_position(Some(0)), Position::ZERO);
+    }
+
+    #[test]
+    fn drained_advances_to_max_of_cursor_and_highest_completed() {
+        let empty = BTreeSet::new();
+        assert_eq!(calculate_watermark(&empty, 20, 15), 20);
+        assert_eq!(calculate_watermark(&empty, 10, 15), 15);
+    }
+
+    #[test]
+    fn gap_holds_watermark_one_below_lowest_in_flight() {
+        let in_flight = BTreeSet::from([5, 8]);
+        assert_eq!(calculate_watermark(&in_flight, 10, 9), 4);
+    }
+
+    #[test]
+    fn out_of_order_acks_never_skip_the_oldest_in_flight() {
+        let in_flight = BTreeSet::from([1]);
+        assert_eq!(calculate_watermark(&in_flight, 5, 5), 0);
+    }
+}
+
+#[cfg(test)]
+mod subscription_integration_tests {
+    use tephra::{Position, Query, QueryItem, Tag, Tags};
+
+    use super::resume_position;
+    use crate::test_support::{event, test_store};
+
+    fn tagged_query(tag: &str) -> Query {
+        Query::item(QueryItem::with_tags(
+            Tags::new([Tag::new(tag).unwrap()]).unwrap(),
+        ))
+    }
+
+    fn positions(batch: &[(Position, tephra::Event)]) -> Vec<u64> {
+        batch.iter().map(|(pos, _)| pos.get()).collect()
+    }
+
+    fn drain(sub: &mut tephra::Subscription) -> Vec<u64> {
+        let mut seen = Vec::new();
+        loop {
+            let batch = sub.poll_batch().unwrap();
+            if batch.is_empty() {
+                break;
+            }
+            seen.extend(positions(&batch));
+        }
+        seen
+    }
+
+    #[tokio::test]
+    async fn resume_delivers_each_event_once_across_a_restart() {
+        let store = test_store();
+        let handle = &store.handle;
+        for _ in 0..3 {
+            handle
+                .append(vec![event("E", &["s:1"], b"{}")], None)
+                .unwrap();
+        }
+
+        let query = tagged_query("s:1");
+        let mut sub = handle.subscribe(query.clone(), Position::ZERO);
+        assert_eq!(drain(&mut sub), vec![1, 2, 3]);
+        let cursor = sub.position().get();
+        assert_eq!(cursor, 3);
+        drop(sub);
+
+        // Resume from the persisted cursor via the real helper (exclusive lower bound, no `+ 1`).
+        let mut resumed = handle.subscribe(query.clone(), resume_position(Some(cursor)));
+        // Nothing re-delivered (no duplicate) and nothing skipped: already caught up.
+        assert!(resumed.poll_batch().unwrap().is_empty());
+
+        // A new event after resume is delivered exactly once; a `+ 1` off-by-one would skip it.
+        handle
+            .append(vec![event("E", &["s:1"], b"{}")], None)
+            .unwrap();
+        assert_eq!(drain(&mut resumed), vec![4]);
+    }
 }

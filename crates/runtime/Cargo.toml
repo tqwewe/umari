@@ -39,5 +39,8 @@ wasmtime.workspace = true
 wasmtime-wasi.workspace = true
 wasmtime-wasi-http.workspace = true
 
+[dev-dependencies]
+tempfile.workspace = true
+
 [features]
 openapi = ["utoipa"]

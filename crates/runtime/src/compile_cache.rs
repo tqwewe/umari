@@ -53,3 +53,42 @@ impl CompileCache {
         Ok(component)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use tempfile::TempDir;
+
+    use super::CompileCache;
+
+    #[test]
+    fn store_then_load_round_trips() {
+        let dir = TempDir::new().unwrap();
+        let cache = CompileCache::new(dir.path());
+        assert!(cache.load("deadbeef").is_none());
+        cache.store("deadbeef", b"compiled-bytes");
+        assert_eq!(
+            cache.load("deadbeef").as_deref(),
+            Some(&b"compiled-bytes"[..])
+        );
+    }
+
+    #[test]
+    fn store_overwrites_existing_entry() {
+        let dir = TempDir::new().unwrap();
+        let cache = CompileCache::new(dir.path());
+        cache.store("k", b"first");
+        cache.store("k", b"second");
+        assert_eq!(cache.load("k").as_deref(), Some(&b"second"[..]));
+    }
+
+    #[test]
+    fn distinct_keys_are_independent() {
+        let dir = TempDir::new().unwrap();
+        let cache = CompileCache::new(dir.path());
+        cache.store("a", b"aaa");
+        cache.store("b", b"bbb");
+        assert_eq!(cache.load("a").as_deref(), Some(&b"aaa"[..]));
+        assert_eq!(cache.load("b").as_deref(), Some(&b"bbb"[..]));
+        assert!(cache.load("c").is_none());
+    }
+}

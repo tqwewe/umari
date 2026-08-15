@@ -161,7 +161,7 @@ async fn collect_supervisor<A: EventHandlerModule>(
             gauge!(MODULE_LAST_POSITION, "module_type" => module_type.to_string(), "name" => name.to_string())
                 .set(last as f64);
             gauge!(MODULE_LAG, "module_type" => module_type.to_string(), "name" => name.to_string())
-                .set(head.saturating_sub(last) as f64);
+                .set(module_lag(head, last) as f64);
         }
     }
 }
@@ -180,5 +180,64 @@ async fn collect_commands(command_ref: &ActorRef<CommandActor>) {
             "version" => module.version.to_string(),
         )
         .set(1.0);
+    }
+}
+
+/// Positions a module is behind the event store head; saturates to 0 when the module is caught
+/// up or reports a cursor ahead of the sampled head.
+fn module_lag(head: u64, last: u64) -> u64 {
+    head.saturating_sub(last)
+}
+
+#[cfg(test)]
+mod lag_tests {
+    use super::module_lag;
+
+    #[test]
+    fn lag_is_head_minus_cursor() {
+        assert_eq!(module_lag(100, 40), 60);
+    }
+
+    #[test]
+    fn caught_up_reads_zero() {
+        assert_eq!(module_lag(100, 100), 0);
+    }
+
+    #[test]
+    fn cursor_ahead_of_head_saturates_to_zero() {
+        assert_eq!(module_lag(100, 250), 0);
+    }
+
+    #[test]
+    fn lag_is_zero_when_a_selective_subscription_is_caught_up() {
+        use tephra::{Position, Query, QueryItem, Tag, Tags};
+
+        use crate::test_support::{event, test_store};
+
+        let store = test_store();
+        let handle = &store.handle;
+        // Two matching events, then a non-matching event as the durable tail.
+        handle
+            .append(vec![event("E", &["s:1"], b"{}")], None)
+            .unwrap();
+        handle
+            .append(vec![event("E", &["s:1"], b"{}")], None)
+            .unwrap();
+        handle
+            .append(vec![event("E", &["s:2"], b"{}")], None)
+            .unwrap();
+
+        let query = Query::item(QueryItem::with_tags(
+            Tags::new([Tag::new("s:1").unwrap()]).unwrap(),
+        ));
+        let mut sub = handle.subscribe(query, Position::ZERO);
+        while !sub.poll_batch().unwrap().is_empty() {}
+
+        // The cursor advances past the non-matching tail to the head, so lag reads 0 even though
+        // the last matching event is behind the head.
+        let head = handle.reader().head().get();
+        let cursor = sub.position().get();
+        assert_eq!(head, 3);
+        assert_eq!(module_lag(head, cursor), 0);
     }
 }

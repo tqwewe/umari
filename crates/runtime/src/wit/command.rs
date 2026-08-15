@@ -346,7 +346,8 @@ async fn transaction_commit(
     let pending_events = events
         .into_iter()
         .map(|event| {
-            let event_id: uuid::Uuid = event.id.parse().map_err(|_| CommandError::InvalidEventId)?;
+            let event_id: uuid::Uuid =
+                event.id.parse().map_err(|_| CommandError::InvalidEventId)?;
             let event_type = tephra::EventType::new(event.event_type.clone())?;
             let tag_strings: Vec<String> = event
                 .domain_ids
@@ -397,15 +398,10 @@ async fn transaction_commit(
                     crypto_keys.insert(scope.clone(), k);
                     k
                 };
-                let plaintext = serde_json::to_vec(&data_value)
-                    .expect("serde value should never fail to serialize");
-                let cipher = Aes256Gcm::new_from_slice(&key).expect("invalid key length");
-                let nonce =
-                    Nonce::try_from(&event_id.as_bytes()[..12]).expect("invalid event id bytes");
-                let ciphertext = cipher.encrypt(&nonce, plaintext.as_ref()).map_err(|err| {
-                    wasmtime::Error::msg(format!("aes-gcm encryption failed: {err}"))
-                })?;
-                (Some(key_id), Value::String(hex::encode(ciphertext)))
+                (
+                    Some(key_id),
+                    encrypt_event_data(&key, event_id, &data_value)?,
+                )
             }
             None => (None, data_value),
         };
@@ -516,14 +512,40 @@ async fn decrypt_event_data(
         return Ok(Value::Null);
     };
 
-    let ciphertext_hex = match &data {
+    decrypt_event_data_bytes(&key, event_id, &data)
+}
+
+/// Encrypts a JSON value with AES-256-GCM under `key`, using the first 12 bytes of the event
+/// UUID as a deterministic nonce, and returns the hex-encoded ciphertext as a JSON string.
+fn encrypt_event_data(
+    key: &[u8; 32],
+    event_id: uuid::Uuid,
+    value: &Value,
+) -> wasmtime::Result<Value> {
+    let plaintext = serde_json::to_vec(value).expect("serde value should never fail to serialize");
+    let cipher = Aes256Gcm::new_from_slice(key).expect("invalid key length");
+    let nonce = Nonce::try_from(&event_id.as_bytes()[..12]).expect("invalid event id bytes");
+    let ciphertext = cipher
+        .encrypt(&nonce, plaintext.as_ref())
+        .map_err(|err| wasmtime::Error::msg(format!("aes-gcm encryption failed: {err}")))?;
+    Ok(Value::String(hex::encode(ciphertext)))
+}
+
+/// Decrypts hex-encoded AES-256-GCM ciphertext (a JSON string) produced by
+/// [`encrypt_event_data`] back into its JSON value, using the same event-UUID-derived nonce.
+fn decrypt_event_data_bytes(
+    key: &[u8; 32],
+    event_id: uuid::Uuid,
+    data: &Value,
+) -> wasmtime::Result<Value> {
+    let ciphertext_hex = match data {
         Value::String(s) => s.as_str(),
         _ => return Err(wasmtime::Error::msg("encrypted event data is not a string")),
     };
     let ciphertext = hex::decode(ciphertext_hex)
         .map_err(|err| wasmtime::Error::msg(format!("hex decode failed: {err}")))?;
 
-    let cipher = Aes256Gcm::new_from_slice(&key).expect("invalid key length");
+    let cipher = Aes256Gcm::new_from_slice(key).expect("invalid key length");
     let nonce = Nonce::try_from(&event_id.as_bytes()[..12]).expect("invalid event id bytes");
     let plaintext = cipher
         .decrypt(&nonce, ciphertext.as_ref())
@@ -556,5 +578,160 @@ impl TryFrom<ExecuteOutput> for wit::ExecuteResult {
                 })
                 .collect::<Result<_, _>>()?,
         })
+    }
+}
+
+#[cfg(test)]
+mod crypto_tests {
+    use serde_json::{Value, json};
+    use uuid::Uuid;
+
+    use super::{decrypt_event_data_bytes, encrypt_event_data};
+
+    const KEY: [u8; 32] = [7u8; 32];
+
+    fn event_id() -> Uuid {
+        Uuid::parse_str("00112233-4455-6677-8899-aabbccddeeff").unwrap()
+    }
+
+    #[test]
+    fn round_trip_preserves_value() {
+        let id = event_id();
+        let value = json!({"name": "ada", "count": 42, "nested": [1, 2, 3]});
+        let encrypted = encrypt_event_data(&KEY, id, &value).unwrap();
+        assert!(matches!(encrypted, Value::String(_)));
+        let decrypted = decrypt_event_data_bytes(&KEY, id, &encrypted).unwrap();
+        assert_eq!(decrypted, value);
+    }
+
+    #[test]
+    fn nonce_is_deterministic_from_event_id() {
+        let value = json!({"a": 1});
+        let first = encrypt_event_data(&KEY, event_id(), &value).unwrap();
+        let second = encrypt_event_data(&KEY, event_id(), &value).unwrap();
+        assert_eq!(first, second);
+
+        let other = encrypt_event_data(&KEY, Uuid::nil(), &value).unwrap();
+        assert_ne!(first, other);
+    }
+
+    #[test]
+    fn wrong_key_fails_to_decrypt() {
+        let id = event_id();
+        let encrypted = encrypt_event_data(&KEY, id, &json!({"secret": true})).unwrap();
+        assert!(decrypt_event_data_bytes(&[9u8; 32], id, &encrypted).is_err());
+    }
+
+    #[test]
+    fn tampered_ciphertext_fails_auth() {
+        let id = event_id();
+        let encrypted = encrypt_event_data(&KEY, id, &json!({"x": 1})).unwrap();
+        let Value::String(hex_ct) = encrypted else {
+            panic!("expected hex string");
+        };
+        let mut bytes = hex_ct.into_bytes();
+        let last = bytes.last_mut().unwrap();
+        *last = if *last == b'0' { b'1' } else { b'0' };
+        let tampered = Value::String(String::from_utf8(bytes).unwrap());
+        assert!(decrypt_event_data_bytes(&KEY, id, &tampered).is_err());
+    }
+
+    #[test]
+    fn non_string_ciphertext_is_rejected() {
+        let err = decrypt_event_data_bytes(&KEY, event_id(), &json!(123)).unwrap_err();
+        assert!(err.to_string().contains("not a string"));
+    }
+}
+
+#[cfg(test)]
+mod dcb_fence_tests {
+    use tephra::{AppendCondition, AppendError, Event, Query, QueryItem, Tag, Tags};
+
+    use super::{query_is_empty, read_matching};
+    use crate::test_support::{event, test_store};
+
+    fn counter_query(id: &str) -> Query {
+        Query::item(QueryItem::with_tags(
+            Tags::new([Tag::new(format!("counter:{id}")).unwrap()]).unwrap(),
+        ))
+    }
+
+    fn counter_event(id: &str) -> Event {
+        event("Incremented", &[&format!("counter:{id}")], b"{}")
+    }
+
+    #[tokio::test]
+    async fn fenced_append_succeeds_when_nothing_landed() {
+        let store = test_store();
+        let handle = &store.handle;
+        handle.append(vec![counter_event("1")], None).unwrap();
+
+        let query = counter_query("1");
+        let read = read_matching(handle, &query, false).await.unwrap();
+        assert_eq!(read.events.len(), 1);
+        assert_eq!(read.head.get(), 1);
+
+        let condition = AppendCondition {
+            fail_if_events_match: query,
+            after: read.head,
+        };
+        let range = handle
+            .append(vec![counter_event("1")], Some(condition))
+            .unwrap();
+        assert_eq!(range.last.get(), 2);
+    }
+
+    #[tokio::test]
+    async fn concurrent_matching_append_fails_the_fence() {
+        let store = test_store();
+        let handle = &store.handle;
+        handle.append(vec![counter_event("1")], None).unwrap();
+
+        let query = counter_query("1");
+        let read = read_matching(handle, &query, false).await.unwrap();
+
+        handle.append(vec![counter_event("1")], None).unwrap();
+
+        let condition = AppendCondition {
+            fail_if_events_match: query,
+            after: read.head,
+        };
+        let result = handle.append(vec![counter_event("1")], Some(condition));
+        assert!(matches!(result, Err(AppendError::Conflict { .. })));
+    }
+
+    #[tokio::test]
+    async fn concurrent_non_matching_append_does_not_block() {
+        let store = test_store();
+        let handle = &store.handle;
+        handle.append(vec![counter_event("1")], None).unwrap();
+
+        let query = counter_query("1");
+        let read = read_matching(handle, &query, false).await.unwrap();
+
+        handle.append(vec![counter_event("2")], None).unwrap();
+
+        let condition = AppendCondition {
+            fail_if_events_match: query,
+            after: read.head,
+        };
+        assert!(
+            handle
+                .append(vec![counter_event("1")], Some(condition))
+                .is_ok()
+        );
+    }
+
+    #[tokio::test]
+    async fn empty_query_skips_the_read_and_appends_unconditionally() {
+        let store = test_store();
+        let handle = &store.handle;
+
+        assert!(query_is_empty(&Query::Items(vec![])));
+        assert!(!query_is_empty(&counter_query("1")));
+        assert!(!query_is_empty(&Query::All));
+
+        let range = handle.append(vec![counter_event("1")], None).unwrap();
+        assert_eq!(range.last.get(), 1);
     }
 }

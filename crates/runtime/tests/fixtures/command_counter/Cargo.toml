@@ -1,0 +1,16 @@
+[package]
+name = "command_counter"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+umari = { path = "../../../../umari" }
+anyhow = "1"
+schemars = "1.2"
+serde = { version = "1", features = ["derive"] }
+
+[workspace]
