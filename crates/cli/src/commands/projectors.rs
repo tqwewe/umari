@@ -112,12 +112,7 @@ pub fn deactivate(client: &ApiClient, name: String) -> Result<()> {
     Ok(())
 }
 
-pub fn delete(
-    client: &ApiClient,
-    name: String,
-    version: Option<String>,
-    yes: bool,
-) -> Result<()> {
+pub fn delete(client: &ApiClient, name: String, version: Option<String>, yes: bool) -> Result<()> {
     if let Some(version) = version {
         let path = format!("/projectors/{name}/versions/{version}");
         let response: DeleteVersionResponse = client.delete(&path)?;

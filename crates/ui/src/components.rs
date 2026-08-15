@@ -2,9 +2,9 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use maud::{Markup, PreEscaped, html};
 use rusqlite::{Connection, OpenFlags};
-use serde_json::Value;
 use schemars::Schema;
 use semver::Version;
+use serde_json::Value;
 use umari_runtime::{
     module_store::{Module, ModuleType, ModuleVersionInfo},
     output::{LogEntry, LogStream},
@@ -1695,7 +1695,10 @@ fn projection_rows(items: &[Value]) -> Markup {
             .collect();
         (columns, rows)
     } else {
-        let rows = items.iter().map(|item| vec![cell_text(Some(item))]).collect();
+        let rows = items
+            .iter()
+            .map(|item| vec![cell_text(Some(item))])
+            .collect();
         (vec!["value".to_string()], rows)
     };
 

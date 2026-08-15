@@ -142,11 +142,7 @@ pub struct AppState {
     pub metrics_handle: PrometheusHandle,
 }
 
-async fn auth_middleware(
-    State(state): State<AppState>,
-    request: Request,
-    next: Next,
-) -> Response {
+async fn auth_middleware(State(state): State<AppState>, request: Request, next: Next) -> Response {
     let Some(api_key) = &state.api_key else {
         return next.run(request).await;
     };
@@ -319,10 +315,7 @@ pub async fn start_server(addr: impl ToSocketAddrs, state: AppState) -> io::Resu
     let app = ui_router(ui_state)
         .merge(api_router)
         .merge(swagger_router)
-        .layer(axum::middleware::from_fn_with_state(
-            state,
-            auth_middleware,
-        ));
+        .layer(axum::middleware::from_fn_with_state(state, auth_middleware));
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await

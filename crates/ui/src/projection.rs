@@ -178,7 +178,10 @@ async fn lift_event(
     obj.insert("type".into(), json!(event_type));
     obj.insert("tags".into(), json!(tags));
     obj.insert("timestamp".into(), json!(stored.timestamp.to_rfc3339()));
-    obj.insert("correlationId".into(), json!(stored.correlation_id.to_string()));
+    obj.insert(
+        "correlationId".into(),
+        json!(stored.correlation_id.to_string()),
+    );
     obj.insert("causationId".into(), json!(stored.causation_id.to_string()));
     if let Some(id) = stored.triggering_event_id {
         obj.insert("triggeringEventId".into(), json!(id.to_string()));
@@ -227,8 +230,10 @@ fn run_js_thread(
 
     let setup = ctx.with(|ctx| -> Result<String, String> {
         let captured = logs.clone();
-        let log_fn = Function::new(ctx.clone(), move |msg: String| captured.borrow_mut().push(msg))
-            .map_err(|err| err.to_string())?;
+        let log_fn = Function::new(ctx.clone(), move |msg: String| {
+            captured.borrow_mut().push(msg)
+        })
+        .map_err(|err| err.to_string())?;
         ctx.globals()
             .set("__log", log_fn)
             .map_err(|err| err.to_string())?;
@@ -318,8 +323,9 @@ pub async fn run_projection(
                 ));
             }
         };
-        let entries: Vec<EventEntry> = serde_json::from_str(&events_json)
-            .map_err(|err| ProjectionError::Script(format!("invalid `events` declaration: {err}")))?;
+        let entries: Vec<EventEntry> = serde_json::from_str(&events_json).map_err(|err| {
+            ProjectionError::Script(format!("invalid `events` declaration: {err}"))
+        })?;
         let query = build_query(&entries)?;
 
         // Tephra reads are a blocking scan, so run them on a dedicated thread that streams raw
@@ -334,7 +340,8 @@ pub async fn run_projection(
             while let Some(item) = reads.next() {
                 let seq = item?;
                 batch.push((seq.position, seq.event.to_owned()));
-                if batch.len() >= READ_BATCH && raw_tx.blocking_send(std::mem::take(&mut batch)).is_err()
+                if batch.len() >= READ_BATCH
+                    && raw_tx.blocking_send(std::mem::take(&mut batch)).is_err()
                 {
                     // Receiver gone (the JS worker finished); stop scanning.
                     return Ok(());
@@ -427,7 +434,8 @@ mod tests {
         assert_eq!(items.len(), 3);
 
         let types_of = |item: &QueryItem| {
-            let mut types: Vec<String> = item.types.iter().map(|t| t.as_str().to_string()).collect();
+            let mut types: Vec<String> =
+                item.types.iter().map(|t| t.as_str().to_string()).collect();
             types.sort();
             types
         };
@@ -478,11 +486,17 @@ mod tests {
         assert_eq!(events_json, r#"["user.registered"]"#);
 
         batch_tx
-            .send(r#"[{"type":"user.registered","position":1,"data":{"userId":"u1","email":"a"}}]"#.to_string())
+            .send(
+                r#"[{"type":"user.registered","position":1,"data":{"userId":"u1","email":"a"}}]"#
+                    .to_string(),
+            )
             .await
             .unwrap();
         batch_tx
-            .send(r#"[{"type":"user.registered","position":2,"data":{"userId":"u2","email":"b"}}]"#.to_string())
+            .send(
+                r#"[{"type":"user.registered","position":2,"data":{"userId":"u2","email":"b"}}]"#
+                    .to_string(),
+            )
             .await
             .unwrap();
         drop(batch_tx);
@@ -506,12 +520,18 @@ mod tests {
         );
         setup_rx.await.unwrap().unwrap();
         batch_tx
-            .send(r#"[{"type":"e","position":1,"data":{}},{"type":"e","position":2,"data":{}}]"#.to_string())
+            .send(
+                r#"[{"type":"e","position":1,"data":{}},{"type":"e","position":2,"data":{}}]"#
+                    .to_string(),
+            )
             .await
             .unwrap();
         drop(batch_tx);
         let (result_json, _logs) = result_rx.await.unwrap().unwrap();
-        assert_eq!(serde_json::from_str::<Value>(&result_json).unwrap(), json!({ "count": 2 }));
+        assert_eq!(
+            serde_json::from_str::<Value>(&result_json).unwrap(),
+            json!({ "count": 2 })
+        );
     }
 
     #[tokio::test]

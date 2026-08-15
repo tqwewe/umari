@@ -84,7 +84,10 @@ pub async fn login_post(State(state): State<UiState>, Form(form): Form<LoginForm
         return (StatusCode::UNAUTHORIZED, login_markup(true)).into_response();
     }
 
-    let cookie = format!("{SESSION_COOKIE}={}; HttpOnly; SameSite=Strict; Path=/", form.key);
+    let cookie = format!(
+        "{SESSION_COOKIE}={}; HttpOnly; SameSite=Strict; Path=/",
+        form.key
+    );
     ([(header::SET_COOKIE, cookie)], Redirect::to("/")).into_response()
 }
 

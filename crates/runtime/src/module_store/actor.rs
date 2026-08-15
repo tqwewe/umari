@@ -110,7 +110,8 @@ impl ModuleStoreActor {
         name: Arc<str>,
         version: Version,
     ) -> Result<bool, ModuleStoreError> {
-        self.store.delete_module_version(module_type, &name, version)
+        self.store
+            .delete_module_version(module_type, &name, version)
     }
 
     #[message]

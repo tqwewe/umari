@@ -377,14 +377,16 @@ fn detect_workspace_lang() -> Option<Lang> {
     let cwd = std::env::current_dir().ok()?;
     for dir in cwd.ancestors() {
         if let Ok(content) = std::fs::read_to_string(dir.join("Cargo.toml"))
-            && content.contains("[workspace]") {
-                return Some(Lang::Rust);
-            }
+            && content.contains("[workspace]")
+        {
+            return Some(Lang::Rust);
+        }
         if let Ok(content) = std::fs::read_to_string(dir.join("package.json"))
             && let Ok(json) = serde_json::from_str::<serde_json::Value>(&content)
-                && json.get("workspaces").is_some() {
-                    return Some(Lang::Js);
-                }
+            && json.get("workspaces").is_some()
+        {
+            return Some(Lang::Js);
+        }
     }
     None
 }
@@ -551,9 +553,7 @@ fn main() -> Result<()> {
             ModulesSubcommand::Active { r#type } => commands::modules::active(&client, r#type),
         },
         Commands::Execute { name, input } => commands::execute::execute(&client, name, input),
-        Commands::Build { paths, debug, jobs } => {
-            commands::workspace::build(paths, debug, jobs)
-        }
+        Commands::Build { paths, debug, jobs } => commands::workspace::build(paths, debug, jobs),
         Commands::Deploy {
             paths,
             no_activate,

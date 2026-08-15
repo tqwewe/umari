@@ -6,8 +6,8 @@ pub mod layout;
 pub mod projection;
 mod routes;
 
-use std::{path::PathBuf, sync::Arc};
 pub use routes::login::SESSION_COOKIE;
+use std::{path::PathBuf, sync::Arc};
 
 use axum::{
     Router,
@@ -24,16 +24,16 @@ use umari_runtime::{
 
 use crate::routes::{
     activate::{
-        activate, deactivate, delete_command_module, delete_effect_module,
-        delete_projector_module, delete_version,
+        activate, deactivate, delete_command_module, delete_effect_module, delete_projector_module,
+        delete_version,
     },
     active::list_active,
     commands::{get_command, list_commands},
     effects::{get_effect, list_effects, query_effect},
     env_vars::{delete_env_var, set_env_var},
     events::list_events,
-    explore::{explore_page, run_projection_handler},
     execute::execute_command,
+    explore::{explore_page, run_projection_handler},
     index::index,
     login::{login_get, login_post, logout},
     projectors::{get_projector, list_projectors, query_projector},

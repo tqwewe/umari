@@ -53,7 +53,9 @@ pub async fn run_projection_handler(
 ) -> Markup {
     let limit = form.limit.as_deref().and_then(|value| {
         let value = value.trim();
-        (!value.is_empty()).then(|| value.parse::<u32>().ok()).flatten()
+        (!value.is_empty())
+            .then(|| value.parse::<u32>().ok())
+            .flatten()
     });
 
     match run_projection(

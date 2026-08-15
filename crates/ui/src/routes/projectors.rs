@@ -117,13 +117,13 @@ pub async fn get_projector(
     let (health, entries) = match &active_module {
         Some(module) => {
             let last_position = module
-            .actor_ref
-            .ask(LastPosition)
-            .reply_timeout(Duration::from_secs(2))
-            .send()
-            .await
-            .ok()
-            .flatten();
+                .actor_ref
+                .ask(LastPosition)
+                .reply_timeout(Duration::from_secs(2))
+                .send()
+                .await
+                .ok()
+                .flatten();
             let shutdown_reason = module.actor_ref.with_shutdown_result(|r| match r {
                 Ok(reason) => reason.to_string(),
                 Err(err) => err.to_string(),
