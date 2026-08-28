@@ -66,6 +66,7 @@ impl Actor for RuntimeSupervisor {
         // Setup event store
         let event_store = Arc::new(
             umadb_client::UmaDbClient::new(config.event_store_url)
+                .batch_size(256)
                 .connect_async()
                 .await?,
         );

@@ -131,6 +131,7 @@ async fn main() {
 
     let event_store: Arc<AsyncUmaDbClient> = Arc::new(
         umadb_client::UmaDbClient::new(event_store_url)
+            .batch_size(256)
             .connect_async()
             .await
             .expect("failed to connect event store for UI"),
